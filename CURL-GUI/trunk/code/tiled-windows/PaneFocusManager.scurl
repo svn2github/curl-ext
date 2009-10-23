@@ -1,0 +1,3 @@
+{define-class public open PaneFocusManager
+  field public focus-object:#PaneContent
+}

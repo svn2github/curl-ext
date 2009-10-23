@@ -1,0 +1,24 @@
+|| **********************************************************
+|| *** THIS FILE IS AUTOMATICALLY UPDATED BY THE CURL IDE ***
+|| ***              DO NOT MODIFY IT BY HAND              ***
+|| **********************************************************
+{project
+    version = 2,
+    manifest-location = "manifest.mcurl",
+    api-version = "7.0",
+    compiler-directives = "careful? = true",
+    use-style-sheets? = true,
+    style-package-name = "",
+    style-sheet-name = "",
+    {target
+        name = "default",
+        target-url-name = "deploy-default",
+        {package-transform "COM.CURL.GUI.SUPPORT\u0000package\u0000test-support.scurl", copy? = true},
+        {package-transform "COM.CURL.GUI.TILED-WINDOWS\u0000package\u0000tiled-windows/load.scurl", copy? = true},
+        {assembly-transform "COM.CURL.GUI", use-path? = true},
+        {assembly-transform "COM.CURL.CDU", use-path? = true},
+        {resource-transform "start.curl\u0000file\u0000start.curl", copy? = true},
+        {resource-transform "start-tests.curl\u0000file\u0000start-tests.curl", copy? = true}
+    },
+    {file-setting "start.curl", start-file? = true}
+}

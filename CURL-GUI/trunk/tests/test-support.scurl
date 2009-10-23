@@ -1,0 +1,236 @@
+{curl 7.0 package}
+{package COM.CURL.GUI.TEST-SUPPORT,
+    {compiler-directives careful? = true}
+}
+{import * from COM.CURL.GUI}
+{import * from CURL.GUI.STANDARD}
+{import * from COM.CURL.CDU.CURL-UNIT}
+
+|| test primitives
+|| --------------------
+{define-proc public {test-layout-spec
+                        name:String,
+                        layout-spec:String
+                    }:TestCase
+    {return
+        {test-case name,
+            def pc = {TestPaneContainer layout-spec}
+            || make sure its layed out, so percentages are valid
+            def v = {View width = 8in, height = 6in}
+            {v.add pc}
+            def pane-layout = pc.pane-layout
+            {v.clear}
+            {v.destroy}
+            def match? = {layout-spec-match? layout-spec, pane-layout}
+            {if-debuggable
+                {if not match? then
+                    {output "\n === EXPECTED:"}
+                    {output layout-spec}
+                    {output "\n === ACTUAL:"}
+                    {output pane-layout}
+                }}
+            {TestCondition.assert message = "layout spec mismatch",
+                match?}
+        }}
+}
+{define-proc public {test-layout-operation
+                        name:String,
+                        layout-spec:String,
+                        operation:{proc-type {PaneContainer}:void},
+                        expected-spec:String
+                    }:TestCase
+    {return
+        {test-case name,
+            def pc = {TestPaneContainer layout-spec}
+            {operation pc}
+            || make sure its layed out, so percentages are valid
+            def v = {View width = 8in, height = 6in}
+            {v.add pc}
+            def pane-layout = pc.pane-layout
+            {v.clear}
+            {v.destroy}
+            def match? = {layout-spec-match? expected-spec, pane-layout}
+            {if-debuggable
+                {if not match? then
+                    {output "\n === EXPECTED:"}
+                    {output expected-spec}
+                    {output "\n === ACTUAL:"}
+                    {output pane-layout}
+                }}
+            {TestCondition.assert message = "layout spec mismatch",
+                match?}
+        }}
+}
+{define-proc public {layout-spec-match?
+                        this:String,
+                        that:String
+                    }:bool
+    || TODO: report mismatch info
+    def this-spec = {LayoutSpec.from-string this}
+    def that-spec = {LayoutSpec.from-string that}
+||--    def match? = {this-spec.equal? that-spec}
+    def match? = {this-spec.consistent? that-spec}
+    {return match?}
+}
+|| spec comparison support
+|| --------------------
+{define-class public LayoutSpec
+  field public-get kind:String
+  field public-get members:Array
+  field public-get keys:StringArray
+  field public-get parameters:RecordData
+  {constructor public {default kind:String, ...}
+    set self.kind = kind
+    set self.members = {Array}
+    set self.parameters = {RecordData}
+    set self.keys = {StringArray}
+    {for (x, k) in ... do
+        {if-non-null k then
+            set self.parameters[k] = x
+            {self.keys.append k}
+         else
+            {self.members.append x}}}
+    {self.keys.sort}
+  }
+  {factory public {from-string spec:String}:LayoutSpec
+    {return
+        {evaluate package = LayoutSpec.evaluation-package, spec}
+        asa LayoutSpec}
+  }
+  def kinds =
+      {StringArray
+        "pane-container",
+        "single-pane",
+        "tiled-pane-group",
+        "tabbed-pane-group",
+        "mdi-pane-group",
+        "create-path"}
+  def evaluation-package =
+      {value
+        def p = {OpenPackage}
+        def K = LayoutSpec-for
+        {for k in LayoutSpec.kinds do
+            {p.add k, {K.construct k}}}
+        p}
+  {method public {equal? other:LayoutSpec}:bool
+    {return {self.match? other, strict? = true}}
+  }
+  {method public {consistent? other:LayoutSpec}:bool
+    {return {self.match? other, strict? = false}}
+  }
+  {method {match? other:LayoutSpec, strict?:bool = true}:bool
+    {if self.kind != other.kind then
+        {return false}}
+    {if self.members.size != other.members.size then
+        {return false}}
+    {if strict? and
+        not {self.keys.equal? other.keys}
+     then
+        {return false}}
+    def equal? =
+        {proc {x:any, y:any}:bool
+            {return
+                {LayoutSpec.equal-value? strict? = strict?,
+                    x, y}}}
+    {for k in self.keys do
+        def this = self.parameters[k]
+        def (that, that?) = {other.parameters.get-if-exists k}
+        {if not that? or not {equal? this, that} then
+            {return false}}}
+    {for this key i in self.members do
+        def that = other.members[i]
+        {if not {equal? this, that} then
+            {return false}}}
+    {return true}
+  }
+  {define-proc {equal-value? this:any, that:any, strict?:bool = true}:bool
+    {if this == that then
+        {return true}
+     elseif {type-of this} != {type-of that} then
+        {return false}}
+    def equal? =
+        {type-switch this
+         case this:LayoutSpec do
+            {this.match? strict? = strict?,
+                that asa LayoutSpec}
+         case xv:double do
+            def yv = that asa double
+            xv == yv or
+            {abs xv - yv} / {max {abs xv}, {abs yv}} < 1e-8
+         else this == that}
+    {return equal?}
+  }
+}
+{define-class public {LayoutSpec-for K:String} {inherits LayoutSpec}
+  {constructor public {default ...}
+    {construct-super K, {splice ...}}
+  }
+}
+|| interactive test support
+|| --------------------
+{define-class public ArbitraryContent {inherits PaneContent}
+  {constructor public {default name:PaneContentID}
+    def caption = {name.to-String}
+    def content =
+        || NOTE: this needs to be "super compliant"
+        || to supersede the effect of the add-stretch imposed by PaneContent
+        {hcenter stretch-order = 50,
+            {vcenter {big {bold {value caption}}}}}
+    {construct-super name, content,
+        title = caption}        
+    set self._style-element = "ArbitraryContent"
+  }
+}
+{define-proc {pane-debug-menu g:PaneContent}:MenuPane
+    {return
+        {MenuPane
+            {MenuAction label = "Test Pane Layout",
+                {on Action do
+                    || round trip test:
+                    {if-non-null pc = g.root-container then
+                        def layout-spec = pc.pane-layout
+                        || duplicate  model contents
+                        || - avoids detaching from orginal container
+                        def panes = {pc.known-content.clone}
+                        {for p key k in pc.known-content do
+                            set panes[k] = {ArbitraryContent k}}
+                        || duplicate the arrangement
+                        def cloned-spec =
+                            {try
+                                def cloned =
+                                    {PaneContainer.from-layout-spec layout-spec,
+                                        {fn name => panes[name]}}
+                                || success: note spec
+                                cloned.pane-layout asa String
+                             catch e:Exception do
+                                || failure: note error
+                                e.message asa String}
+                        || compare
+                        def match? = {layout-spec-match? layout-spec, cloned-spec}
+                        || report
+                        {popup-message
+                            {VBox spacing = 6px,
+                                {pre {value layout-spec}},
+                                {hrule height = 3px,
+                                    color =
+                                        {if match? then "green" else "red"}},
+                                {pre {value cloned-spec}}
+                            }}
+                    }}}
+        }}
+}
+{define-proc public {TestPaneContainer layout-spec:String}:PaneContainer
+    def  pane-factory =
+        {{Memoizer-of PaneContentID, PaneContent}
+            {fn name =>
+                def pc = {ArbitraryContent name}
+                || debugging
+                {add-context-popup pc,
+                    menu-pane = {pane-debug-menu pc}}
+                pc}}
+    {return
+        {PaneContainer.from-layout-spec
+            layout-spec,
+            {fn name => pane-factory[name]}
+        }}
+}

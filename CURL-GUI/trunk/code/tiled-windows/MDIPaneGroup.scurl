@@ -1,0 +1,92 @@
+{define-class public open MDIPaneGroup {inherits PaneGroup}
+  field protected pane-count:int
+
+  {constructor public {default
+                          percent:double = -1.0,
+                          ...:BasePane
+                      }
+    {construct-super {splice ...}}
+    set self.percent = percent
+  }
+
+  {getter public sealed {size}:int
+    || TODO:?
+    {return self.pane-count}
+  }
+
+  {getter package {drag-view-divisor}:int
+    {return 3}
+  }
+
+  {method package {get-percent pane:BasePane}:double
+    {return 1.0}
+  }
+
+|| TODO: Is returning only BasePanes too restrictive?
+  {method public {get index:int}:#BasePane
+    || TODO:
+    {return null}
+  }
+
+  {method public {find child:any}:int
+    || TODO:
+    {return 0}
+  }
+
+  {method protected {insert-pane
+                        pane:SinglePane,
+||--                        orientation:Orientation = Orientation.vertical,
+                        at-top-or-left?:bool = false
+                    }:void
+    || TODO:
+  }
+
+  {method protected {insert-pane-in-target
+                        pane:SinglePane,
+                        target:SinglePane,
+||--                        orientation:Orientation = Orientation.vertical,
+                        at-top-or-left?:bool = false
+                    }:void
+    || TODO:
+  }
+
+|| TODO: Is accepting only BasePanes too restrictive?
+  {method public {add-pane pane:BasePane}:void
+    || TODO:
+  }
+
+|| TODO: Is accepting only BasePanes too restrictive?
+  {method public {add-pane-at-index pane:BasePane, index:int}:void
+    || TODO:
+  }
+
+  {method public sealed {add-pane-and-resize
+                            pane:BasePane,
+                            index:int
+                        }:void
+    || TODO:
+  }
+
+  {method protected {swap-panes my-pane:SinglePane, other-pane:SinglePane}:void
+    || TODO:
+  }
+
+|| TODO: Is returning only BasePanes too restrictive?
+  {method public {remove-pane-at-index index:int}:#BasePane
+    || TODO:
+    {return null}
+  }
+
+  {method public sealed {remove-pane-and-resize index:int}:void
+    || TODO:
+  }
+
+  {method package {save-state out:TextOutputStream}:void
+    || TODO:
+  }
+
+  {method public {replicate invert-orientation?:bool = false}:PaneGroup
+    def replica = {MDIPaneGroup}
+    {return replica}
+  }
+}

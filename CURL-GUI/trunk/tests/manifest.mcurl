@@ -1,0 +1,28 @@
+{curl 7.0 manifest}
+{manifest COM.CURL.GUI.SUPPORT}
+
+|| libraries
+|| --------------------
+{delegate-to COM.CURL.GUI,
+    location = "../code/manifest.mcurl"
+}
+{delegate-to COM.CURL.CDU,
+    || use with svn:externals
+    location = "../lib/CDU/manifest.mcurl"
+}
+
+|| test infrastructure
+|| --------------------
+{component package COM.CURL.GUI.TEST-SUPPORT,
+    location = "test-support.scurl"
+}
+
+|| test cases
+|| --------------------
+{component file start-tests.curl,
+    location = "start-tests.curl"
+}
+{component file start.curl,
+    location = "start.curl"
+}
+

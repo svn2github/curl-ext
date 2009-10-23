@@ -1,0 +1,237 @@
+{curl 7.0 package}
+
+{package COM.CURL.GUI.TILED-WINDOWS,
+    {compiler-directives careful? = true}
+}
+
+{import * from CURL.GUI.STANDARD}
+{import * from CURL.UTIL.OBSERVER}
+{import WindowVisibility from CURL.GRAPHICS.WINDOW}
+
+{include
+    "BasePane.scurl",
+    "DragFeedbackFrame.scurl",
+    "EmptyPaneGroup.scurl",
+    "MDIPaneGroup.scurl",
+    "PaneContainer.scurl",
+    "PaneDragger.scurl",
+    "PaneFocusManager.scurl",
+    "PaneGroup.scurl",
+    "PaneTitleBar.scurl",
+    "ResizeableDecorationlessView.scurl",
+    "SinglePane.scurl",
+    "StatusBar.scurl",
+    "TabbedPaneGroup.scurl",
+    "TabDragger.scurl",
+    "TiledPaneGroup.scurl",
+    "PaneContent.scurl"
+}
+
+|| FIXME: This whole class should be moved into "CURL.GUI.BASE", but
+|| with the IDE decoration code added via subclassing of some kind.
+|| At that point, the images "close-normal.gif" and "close-pressed.gif"
+|| would move (or be copied) into "curl://install/curl-resources".
+|| The directory below is also defined in "ide/pane/cde-pane.scurl",
+|| using the variable name "ide-image-dir".  Both variables should be
+|| replaced by appropriate use of "host-localize-url", but first we
+|| need to create "curl://install/ide/curl-resources/translations.xml".
+|| Note that these two images also appear in the "ide/vle/images"
+|| directory, which may or may not eventually be merged into the
+|| "ide/curl-resources/default/images" directory.
+{let package constant pane-container-image-dir:Url =
+    {url "resources/images"}
+}
+
+{let package constant tab-background-color:FillPattern = "#ECE9D8"} ||""
+
+{define-enum public PaneState
+    docked,
+    dockable,
+    floating,
+    minimized,
+    maximized
+}
+
+{define-enum public DockingAction
+    none,
+    left,
+    right,
+    top,
+    bottom,
+    swap,
+    tab
+}
+
+{let package constant dock-zone-size:Distance = 1cm}
+
+{define-proc package {get-parent-pane-group child:Graphic}:PaneGroup
+    {if-non-null pane-group = {get-parent-pane-group-or-null child} then
+        {return pane-group}
+     else
+        {error {format "%s is not inside a PaneGroup", child}} ||""
+    }
+}        
+
+{define-proc package {get-parent-pane-group-or-null child:Graphic}:#PaneGroup
+    {while true do
+        let parent:#Box = child.parent
+        {type-switch parent
+         case pg:PaneGroup do
+            {return pg}
+         case box:Box do
+            set child = box
+         else
+            {return null}
+        }
+    }
+}
+
+{define-value-class public final PaneContentID
+  field public constant kind:String
+  field public constant identifier:String
+  {constructor public {default kind:String, identifier:String = ""}
+    set self.kind = kind
+    set self.identifier = identifier
+  }
+  {constructor public implicit {from-string name:String}
+    def i = {name.find PaneContentID.delimiter}
+    def (kind, identifier) =
+        {if i < 0 then (name, "")
+         else
+            ({name.substr 0, i}, {name.tail i + 1})
+        }
+    set self.kind = kind
+    set self.identifier = identifier
+  }
+  {constructor public implicit {empty}
+    set self.kind = ""
+    set self.identifier = ""
+  }
+  {getter public {empty?}:bool
+    {return self.kind.empty?}
+  }
+  {method public {to-String}:String
+    {return
+        {if self.identifier.empty? then self.kind
+         else self.kind & PaneContentID.delimiter & self.identifier}}
+  }
+  def delimiter = '`'
+}
+{define-class public PaneMap {inherits {HashTable-of PaneContentID, PaneContent}}
+    {constructor public {default ...}
+        {construct-super {splice ...}}
+    }
+}
+
+{define-proc public {evaluate-saved-windows-package
+                        map:{proc-type {PaneContentID}:PaneContent},
+                        pane-container:PaneContainer
+                    }:OpenPackage
+    def op = {OpenPackage}
+    {op.add "pane-container",
+        {proc {top:PaneGroup, ...:SinglePane}:void
+            {pane-container.replace-pane-group-with top, {splice ...}}
+        }
+    }
+    {op.add "single-pane",
+        {proc {pane-name:PaneContentID = "", ...}:SinglePane
+            def content = {map pane-name}
+            {return
+                {SinglePane content, root-container = pane-container, {splice ...}}
+            }
+        }
+    }
+    {op.add "tiled-pane-group",
+        {proc {...}:PaneGroup
+            {return {TiledPaneGroup {splice ...}}}
+        }
+    }
+    {op.add "tabbed-pane-group",
+        {proc {...}:PaneGroup
+            {return {TabbedPaneGroup {splice ...}}}
+        }
+    }
+    {op.add "mdi-pane-group",
+        {proc {...}:PaneGroup
+            {return {MDIPaneGroup {splice ...}}}
+        }
+    }
+    {op.add "create-path",
+        {proc {...:int}:{Array-of int}
+            {return {new {Array-of int}, {splice ...}}}
+        }
+    }
+    {return op}
+}
+
+|| testable operations
+|| --------------------
+{define-proc {pane-for
+                 pc:PaneContainer,
+                 name:PaneContentID
+             }:SinglePane
+    || TODO: check invariants of known-panes, .single-pane
+    {return {non-null {pc.get-content name}.single-pane}}
+}
+{define-proc public {test-sequence
+                        ...:{proc-type {PaneContainer}:void}
+                    }:{proc-type {PaneContainer}:void}
+    def tests = {{Array-of {proc-type {PaneContainer}:void}} {splice ...}}
+    {return
+        {proc {pc:PaneContainer}:void
+            {for test in tests do
+                {test pc}}}}
+}
+{define-proc public {test-dock-pane
+                        name:PaneContentID,
+                        action:DockingAction,
+                        target-name:PaneContentID
+                    }:{proc-type {PaneContainer}:void}
+    {return
+        {proc {pc:PaneContainer}:void
+            def pane = {pane-for pc, name}
+            def target =
+                {if not target-name.empty? then
+                    {pane-for pc, target-name}
+                 else null}
+            {pc.dock-pane pane, action, target}
+        }}
+}
+{define-proc public {test-float-pane
+                        name:PaneContentID,
+                        dockable?:bool
+                    }:{proc-type {PaneContainer}:void}
+    {return
+        {proc {pc:PaneContainer}:void
+            def pane = {pane-for pc, name}
+            {pc.float-pane pane, dockable?}
+        }}
+}
+{define-proc public {test-dock-pane-from-path
+                        name:PaneContentID
+                    }:{proc-type {PaneContainer}:void}
+    {return
+        {proc {pc:PaneContainer}:void
+            def pane = {pane-for pc, name}
+            {pc.heuristic-dock-pane-from-path pane}
+        }}
+}
+{define-proc public {test-show-pane
+                        name:PaneContentID
+                    }:{proc-type {PaneContainer}:void}
+    {return
+        {proc {pc:PaneContainer}:void
+            def pane = {pane-for pc, name}
+            {pc.show-pane pane}
+        }}
+}
+{define-proc public {test-hide-pane
+                        name:PaneContentID
+                    }:{proc-type {PaneContainer}:void}
+    {return
+        {proc {pc:PaneContainer}:void
+            def pane = {pane-for pc, name}
+            || TODO: content keyword was used for tabs
+            {pc.hide-pane pane, content = null}
+        }}
+}
