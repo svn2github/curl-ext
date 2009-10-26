@@ -1,0 +1,7 @@
+{curl 7.0 package}
+
+{package COM.CURL.GUI,
+    {compiler-directives careful? = true}
+}
+{import public * from COM.CURL.GUI.TILED-WINDOWS}
+

@@ -1,0 +1,10 @@
+{curl 7.0 manifest}
+{manifest COM.CURL.GUI}
+
+{component package COM.CURL.GUI,
+    location = "load.scurl"
+}
+{component package COM.CURL.GUI.TILED-WINDOWS,
+    location = "tiled-windows/load.scurl"
+}
+
