@@ -23,6 +23,32 @@
 {import * from COM.CURL.GUI}
 {import * from COM.CURL.GUI.TEST-SUPPORT}
 
+|| ===== \\
+{import * from CURL.IDE.COVERAGE}
+{import COM.CURL.GUI.TILED-WINDOWS}
+{def start-coverage =
+    {CommandButton
+        label = "Start Coverage",
+        {on Action do
+            {coverage-enable}
+            {coverage-instrument
+                COM.CURL.GUI.TILED-WINDOWS
+            }
+            {coverage-start}
+        }}
+}
+{def stop-coverage =
+    {CommandButton
+        label = "Stop Coverage",
+        {on Action do
+            {coverage-stop}
+            def data = {coverage-results}
+            {CoverageAdjustment.adjust-data data}
+            {coverage-view data}
+        }}
+} 
+|| ===== //
+
 {document-style PlainDocument}
 {set-document-properties hstretch? = true, vstretch? = true}
 
@@ -352,5 +378,11 @@
                                 }}}
                     }}
             }}
-    {test-ui suite}
+    || presentation
+    {VBox
+        {HBox
+            start-coverage,
+            stop-coverage,
+            {Fill}},
+        {test-ui suite}}
 }
