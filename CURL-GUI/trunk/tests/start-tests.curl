@@ -181,10 +181,30 @@
                                         {single-pane pane-name = "pane1"},
                                         {single-pane pane-name = "pane3"}}
                                 }}},
+                        {test-layout-operation "dock-top",
+                            before,
+                            {test-dock-pane "pane1", DockingAction.top, "pane2"},
+                            {stringify
+                                {pane-container
+                                    {tiled-pane-group max-cols = 1,
+                                        {single-pane pane-name = "pane1"},
+                                        {single-pane pane-name = "pane2"},
+                                        {single-pane pane-name = "pane3"}}
+                                }}},
                         {test-layout-operation "dock-right",
                             before,
                             {test-dock-pane "pane1", DockingAction.right, "pane2"},
-                            || this is wrong: should split middle pane
+                            {stringify
+                                {pane-container
+                                    {tiled-pane-group max-cols = 1,
+                                        {tiled-pane-group max-rows = 1,
+                                            {single-pane pane-name = "pane2"},
+                                            {single-pane pane-name = "pane1"}},
+                                        {single-pane pane-name = "pane3"}}
+                                }}},
+                        {test-layout-operation "dock-left",
+                            before,
+                            {test-dock-pane "pane1", DockingAction.left, "pane2"},
                             {stringify
                                 {pane-container
                                     {tiled-pane-group max-cols = 1,
@@ -206,7 +226,7 @@
                                 }}}
                     }},
                 || ------------------------------
-                || tiled-horixical-dock
+                || tiled-horizontal-dock
                 {value 
                     def before =
                         {stringify
@@ -216,11 +236,21 @@
                                     {single-pane pane-name = "pane2"},
                                     {single-pane pane-name = "pane3"}}
                             }}
-                    {TestSuite "tiled-horixical-dock",
+                    {TestSuite "tiled-horizontal-dock",
                         {test-layout-operation "dock-bottom",
                             before,
-                            {test-dock-pane "pane1", DockingAction.right, "pane2"},
-                            || this is wrong: should split middle pane
+                            {test-dock-pane "pane1", DockingAction.bottom, "pane2"},
+                            {stringify
+                                {pane-container
+                                    {tiled-pane-group max-rows = 1,
+                                        {tiled-pane-group max-cols = 1,
+                                            {single-pane pane-name = "pane2"},
+                                            {single-pane pane-name = "pane1"}},
+                                        {single-pane pane-name = "pane3"}}
+                                }}},
+                        {test-layout-operation "dock-top",
+                            before,
+                            {test-dock-pane "pane1", DockingAction.top, "pane2"},
                             {stringify
                                 {pane-container
                                     {tiled-pane-group max-rows = 1,
@@ -231,12 +261,22 @@
                                 }}},
                         {test-layout-operation "dock-right",
                             before,
-                            {test-dock-pane "pane1", DockingAction.bottom, "pane2"},
+                            {test-dock-pane "pane1", DockingAction.right, "pane2"},
                             {stringify
                                 {pane-container
                                     {tiled-pane-group max-rows = 1,
                                         {single-pane pane-name = "pane2"},
                                         {single-pane pane-name = "pane1"},
+                                        {single-pane pane-name = "pane3"}}
+                                }}},
+                        {test-layout-operation "dock-left",
+                            before,
+                            {test-dock-pane "pane1", DockingAction.left, "pane2"},
+                            {stringify
+                                {pane-container
+                                    {tiled-pane-group max-rows = 1,
+                                        {single-pane pane-name = "pane1"},
+                                        {single-pane pane-name = "pane2"},
                                         {single-pane pane-name = "pane3"}}
                                 }}},
                         {test-layout-operation "dock-tab",

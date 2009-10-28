@@ -27,7 +27,7 @@
 
   {method protected {insert-pane
                         pane:SinglePane,
-||--                        orientation:Orientation = Orientation.vertical,
+                        orientation:Orientation = Orientation.vertical,
                         at-top-or-left?:bool = false
                     }:void
     || Do nothing.
@@ -36,7 +36,7 @@
   {method protected {insert-pane-in-target
                         pane:SinglePane,
                         target:SinglePane,
-||--                        orientation:Orientation = Orientation.vertical,
+                        orientation:Orientation = Orientation.vertical,
                         at-top-or-left?:bool = false
                     }:void
     || Do nothing.

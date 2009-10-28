@@ -266,13 +266,13 @@
 
   {method public {insert-pane
                      pane:SinglePane,
-||--                     orientation:Orientation = Orientation.vertical,
+                     orientation:Orientation = Orientation.vertical,
                      at-top-or-left?:bool = false
                  }:void
     let pg:PaneGroup = self.pane-group
     {pg.insert-pane
         pane,
-||--        orientation = orientation,
+        orientation = orientation,
         at-top-or-left? = at-top-or-left?
     }
     {pane.mark-as-docked}
@@ -362,25 +362,25 @@
          case DockingAction.left do
             {target.insert-pane
                 pane,
-||--                orientation = Orientation.horizontal,
+                orientation = Orientation.horizontal,
                 at-top-or-left? = true
             }
          case DockingAction.right do
             {target.insert-pane
                 pane,
-||--                orientation = Orientation.horizontal,
+                orientation = Orientation.horizontal,
                 at-top-or-left? = false
             }
          case DockingAction.top do
             {target.insert-pane
                 pane,
-||--                orientation = Orientation.vertical,
+                orientation = Orientation.vertical,
                 at-top-or-left? = true
             }
          case DockingAction.bottom do
             {target.insert-pane
                 pane,
-||--                orientation = Orientation.vertical,
+                orientation = Orientation.vertical,
                 at-top-or-left? = false
             }
          case DockingAction.tab do
@@ -392,25 +392,25 @@
          case DockingAction.left do
             {self.insert-pane
                 pane,
-||--                orientation = Orientation.horizontal,
+                orientation = Orientation.horizontal,
                 at-top-or-left? = true
             }
          case DockingAction.right do
             {self.insert-pane
                 pane,
-||--                orientation = Orientation.horizontal,
+                orientation = Orientation.horizontal,
                 at-top-or-left? = false
             }
          case DockingAction.top do
             {self.insert-pane
                 pane,
-||--                orientation = Orientation.vertical,
+                orientation = Orientation.vertical,
                 at-top-or-left? = true
             }
          case DockingAction.bottom do
             {self.insert-pane
                 pane,
-||--                orientation = Orientation.vertical,
+                orientation = Orientation.vertical,
                 at-top-or-left? = false
             }
         }

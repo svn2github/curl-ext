@@ -153,70 +153,76 @@
 
   {method protected {insert-pane
                         pane:SinglePane,
-||--                        orientation:Orientation = Orientation.vertical,
+                        orientation:Orientation = Orientation.vertical,
                         at-top-or-left?:bool = false
                     }:void
-|| TODO: Handle the removal of orientation
 
-||--    {if self.orientation != orientation then
-||--        let new-parent:PaneGroup =
-||--            {TiledPaneGroup orientation = orientation, percent = 1.0}
-||--        {self.replace-with new-parent}
-||--        set self.pane-group = new-parent
-||--        set self.percent = .67
-||--        set pane.pane-group = new-parent
-||--        set pane.percent = .33
-||--        {if at-top-or-left? then
-||--            {new-parent.add-pane-and-resize pane, 0}
-||--            {new-parent.add-pane-and-resize self, 1}
-||--         else
-||--            {new-parent.add-pane-and-resize self, 0}
-||--            {new-parent.add-pane-and-resize pane, 1}
-||--        }
-||--     else
+    {if orientation != self.orientation then
+        def new-parent =
+            {switch orientation
+             case Orientation.horizontal do 
+                {TiledPaneGroup max-rows = 1, percent = 1.0}
+             else || Orientation.vertical
+                {TiledPaneGroup max-cols = 1, percent = 1.0}}
+        {self.replace-with new-parent}
+        set self.pane-group = new-parent
+        set self.percent = .67
+        set pane.pane-group = new-parent
+        set pane.percent = .33
+        {if at-top-or-left? then
+            {new-parent.add-pane-and-resize pane, 0}
+            {new-parent.add-pane-and-resize self, 1}
+         else
+            {new-parent.add-pane-and-resize self, 0}
+            {new-parent.add-pane-and-resize pane, 1}
+        }
+     else
         {self.add-pane-and-resize
             pane,
             {if at-top-or-left? then 0 else self.size}
         }
-||--    }
+    }
   }
 
   {method protected {insert-pane-in-target
                         pane:SinglePane,
                         target:SinglePane,
-||--                        orientation:Orientation = Orientation.vertical,
+                        orientation:Orientation = Orientation.vertical,
                         at-top-or-left?:bool = false
                     }:void
-|| TODO: Handle the removal of orientation
 
-||--    {if self.orientation != orientation then
-||--        let new-parent:PaneGroup =
-||--            {TiledPaneGroup orientation = orientation}
-||--        let index-in-parent:int = {self.find target}
-||--        set new-parent.pane-group = target.pane-group
-||--        set new-parent.percent = target.percent
-||--        set target.pane-group = new-parent
-||--        set target.percent = .67
-||--        set pane.pane-group = new-parent
-||--        set pane.percent = .33
-||--        {self.remove-pane-and-resize index-in-parent}
-||--        {self.add-pane-and-resize new-parent, index-in-parent}
-||--        {if at-top-or-left? then
-||--            {new-parent.add-pane-and-resize pane, 0}
-||--            {new-parent.add-pane-and-resize target, 1}
-||--         else
-||--            {new-parent.add-pane-and-resize target, 0}
-||--            {new-parent.add-pane-and-resize pane, 1}
-||--        }
-||--     else
+    def index-in-parent = {self.find target}
+    {if orientation != self.orientation then
+        def new-parent =
+            {switch orientation
+             case Orientation.horizontal do 
+                {TiledPaneGroup max-rows = 1, percent = 1.0}
+             else || Orientation.vertical
+                {TiledPaneGroup max-cols = 1, percent = 1.0}}
+        set new-parent.pane-group = target.pane-group
+        set new-parent.percent = target.percent
+        set target.pane-group = new-parent
+        set target.percent = .67
+        set pane.pane-group = new-parent
+        set pane.percent = .33
+        {self.remove-pane-and-resize index-in-parent}
+        {self.add-pane-and-resize new-parent, index-in-parent}
+        {if at-top-or-left? then
+            {new-parent.add-pane-and-resize pane, 0}
+            {new-parent.add-pane-and-resize target, 1}
+         else
+            {new-parent.add-pane-and-resize target, 0}
+            {new-parent.add-pane-and-resize pane, 1}
+        }
+     else
         {self.add-pane-and-resize
             pane, 
             {if at-top-or-left? then
-                {max {self.find target}, 0}
+                {max index-in-parent, 0}
              else
-                {self.find target} + 1}
+                index-in-parent + 1}
         }
-||--    }
+    }
   }
 
 || TODO: Is accepting only BasePanes too restrictive?
