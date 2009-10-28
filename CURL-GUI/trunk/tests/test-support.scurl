@@ -42,10 +42,10 @@
     {return
         {test-case name,
             def pc = {TestPaneContainer layout-spec}
-            {operation pc}
             || make sure its layed out, so percentages are valid
             def v = {View width = 8in, height = 6in}
             {v.add pc}
+            {operation pc}
             def pane-layout = pc.pane-layout
             {v.clear}
             {v.destroy}

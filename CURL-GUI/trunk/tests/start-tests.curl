@@ -55,8 +55,7 @@
                 {test-layout-spec "tiled horizontal",
                     {stringify
                         {pane-container
-                            {tiled-pane-group
-                                max-rows = 1,
+                            {tiled-pane-group max-rows = 1,
                                 {single-pane pane-name = "pane1"},
                                 {single-pane pane-name = "pane2"},
                                 {single-pane pane-name = "pane3"}}
@@ -64,8 +63,7 @@
                 {test-layout-spec "tiled vertical",
                     {stringify
                         {pane-container
-                            {tiled-pane-group
-                                max-cols = 1,
+                            {tiled-pane-group max-cols = 1,
                                 {single-pane pane-name = "pane1"},
                                 {single-pane pane-name = "pane2"},
                                 {single-pane pane-name = "pane3"}}
@@ -81,10 +79,8 @@
                 {test-layout-spec "compound",
                     {stringify
                         {pane-container
-                            {tiled-pane-group
-                                max-rows = 1,
-                                {tiled-pane-group
-                                    max-cols = 1,
+                            {tiled-pane-group max-rows = 1,
+                                {tiled-pane-group max-cols = 1,
                                     {single-pane pane-name = "pane1"},
                                     {single-pane pane-name = "pane2"},
                                     {single-pane pane-name = "pane3"}},
@@ -94,120 +90,290 @@
                                     {single-pane pane-name = "tab3"}}}
                         }}}
             },
-            || ==============================          
+            || ==============================
             {TestSuite "PaneContainer operations",
                 || ------------------------------
-                {TestSuite "tabbed",
-                    {test-layout-operation "float",
+                || tabbed
+                {value 
+                    def before =
                         {stringify
                             {pane-container
                                 {tabbed-pane-group
                                     {single-pane pane-name = "pane1"},
                                     {single-pane pane-name = "pane2"},
                                     {single-pane pane-name = "pane3"}}
-                            }},
-                        || TODO: what does the bool signify?
-                        {test-float-pane "pane1", true},
-                        {stringify
-                            {pane-container
-                                {tabbed-pane-group
-                                    {single-pane pane-name = "pane2"},
-                                    {single-pane pane-name = "pane3"}},
-                                {single-pane pane-name = "pane1"}}
-                        }},
-                    || TODO: not sure this is a 
-                    {test-layout-operation "show",
-                        {stringify
-                            {pane-container
-                                {tabbed-pane-group
-                                    {single-pane pane-name = "pane1"},
-                                    {single-pane pane-name = "pane2"},
-                                    {single-pane pane-name = "pane3"}}
-                            }},
-                        {test-show-pane "pane2"},
-                        {stringify
-                            {pane-container
-                                {tabbed-pane-group
-                                    {single-pane pane-name = "pane1"},
-                                    {single-pane pane-name = "pane2"},
-                                    {single-pane pane-name = "pane3"}}
-                            }}},
-                    {test-layout-operation "float-unfloat",
-                        {stringify
-                            {pane-container
-                                {tabbed-pane-group
-                                    {single-pane pane-name = "pane1"},
-                                    {single-pane pane-name = "pane2"},
-                                    {single-pane pane-name = "pane3"}}
-                            }},
-                        {test-sequence
+                            }}
+                    {TestSuite "tabbed",
+                        {test-layout-operation "float",
+                            before,
+                            || TODO: what does the bool signify?
                             {test-float-pane "pane1", true},
-                            {test-dock-pane-from-path "pane1"}},
-                        {stringify
-                            {pane-container
-                                {tabbed-pane-group
-                                    {single-pane pane-name = "pane1"},
-                                    {single-pane pane-name = "pane2"},
-                                    {single-pane pane-name = "pane3"}}
-                            }}}
-                },
+                            {stringify
+                                {pane-container
+                                    {tabbed-pane-group
+                                        {single-pane pane-name = "pane2"},
+                                        {single-pane pane-name = "pane3"}},
+                                    {single-pane pane-name = "pane1"}}
+                            }},
+                        || TODO: not sure this is a valid operation
+                        || - result spec unwritable, because of DNP
+                        {test-layout-operation "show",
+                            before,
+                            {test-show-pane "pane2"},
+                            {stringify
+                                {pane-container
+                                    {tabbed-pane-group
+                                        {single-pane pane-name = "pane1"},
+                                        {single-pane pane-name = "pane2"},
+                                        {single-pane pane-name = "pane3"}}
+                                }}},
+                        {test-layout-operation "float-unfloat",
+                            before,
+                            {test-sequence
+                                {test-float-pane "pane1", true},
+                                {test-dock-pane-from-path "pane1"}},
+                            {stringify
+                                {pane-container
+                                    {tabbed-pane-group
+                                        {single-pane pane-name = "pane1"},
+                                        {single-pane pane-name = "pane2"},
+                                        {single-pane pane-name = "pane3"}}
+                                }}}
+                    }},
                 || ------------------------------
-                {TestSuite "tiled-vertical",
-                    {test-layout-operation "dock-bottom",
-                        {stringify
-                            {pane-container
-                                {tiled-pane-group max-rows = 1,
-                                    {single-pane pane-name = "pane1"},
-                                    {single-pane pane-name = "pane2"},
-                                    {single-pane pane-name = "pane3"}}
-                            }},
-                        {test-dock-pane "pane1", DockingAction.bottom, "pane2"},
-                        {stringify
-                            {pane-container
-                                {tiled-pane-group max-rows = 1,
-                                    {single-pane pane-name = "pane2"},
-                                    {single-pane pane-name = "pane1"},
-                                    {single-pane pane-name = "pane3"}}
-                            }}},
-                    {test-layout-operation "dock-right",
-                        {stringify
-                            {pane-container
-                                {tiled-pane-group max-rows = 1,
-                                    {single-pane pane-name = "pane1"},
-                                    {single-pane pane-name = "pane2"},
-                                    {single-pane pane-name = "pane3"}}
-                            }},
-                        {test-dock-pane "pane1", DockingAction.right, "pane2"},
-                        || this is wrong: should split middle pane
+                || tiled-vertical-dock
+                {value 
+                    def before =
                         {stringify
                             {pane-container
                                 {tiled-pane-group max-cols = 1,
-                                    {tiled-pane-group max-rows = 1,
+                                    {single-pane pane-name = "pane1"},
+                                    {single-pane pane-name = "pane2"},
+                                    {single-pane pane-name = "pane3"}}
+                            }}
+                    {TestSuite "tiled-vertical-dock",
+                        {test-layout-operation "dock-bottom",
+                            before,
+                            {test-dock-pane "pane1", DockingAction.bottom, "pane2"},
+                            {stringify
+                                {pane-container
+                                    {tiled-pane-group max-cols = 1,
+                                        {single-pane pane-name = "pane2"},
                                         {single-pane pane-name = "pane1"},
-                                        {single-pane pane-name = "pane2"}},
-                                    {single-pane pane-name = "pane3"}
-                                }
-                            }}},
-                    {test-layout-operation "dock-tab",
+                                        {single-pane pane-name = "pane3"}}
+                                }}},
+                        {test-layout-operation "dock-right",
+                            before,
+                            {test-dock-pane "pane1", DockingAction.right, "pane2"},
+                            || this is wrong: should split middle pane
+                            {stringify
+                                {pane-container
+                                    {tiled-pane-group max-cols = 1,
+                                        {tiled-pane-group max-rows = 1,
+                                            {single-pane pane-name = "pane1"},
+                                            {single-pane pane-name = "pane2"}},
+                                        {single-pane pane-name = "pane3"}}
+                                }}},
+                        {test-layout-operation "dock-tab",
+                            before,
+                            {test-dock-pane "pane1", DockingAction.tab, "pane2"},
+                            {stringify
+                                {pane-container
+                                    {tiled-pane-group  max-cols = 1,
+                                        {tabbed-pane-group
+                                            {single-pane pane-name = "pane1"},
+                                            {single-pane pane-name = "pane2"}},
+                                        {single-pane pane-name = "pane3"}}
+                                }}}
+                    }},
+                || ------------------------------
+                || tiled-horixical-dock
+                {value 
+                    def before =
                         {stringify
                             {pane-container
                                 {tiled-pane-group max-rows = 1,
                                     {single-pane pane-name = "pane1"},
                                     {single-pane pane-name = "pane2"},
                                     {single-pane pane-name = "pane3"}}
-                            }},
-                        {test-dock-pane "pane1", DockingAction.tab, "pane2"},
+                            }}
+                    {TestSuite "tiled-horixical-dock",
+                        {test-layout-operation "dock-bottom",
+                            before,
+                            {test-dock-pane "pane1", DockingAction.right, "pane2"},
+                            || this is wrong: should split middle pane
+                            {stringify
+                                {pane-container
+                                    {tiled-pane-group max-rows = 1,
+                                        {tiled-pane-group max-cols = 1,
+                                            {single-pane pane-name = "pane1"},
+                                            {single-pane pane-name = "pane2"}},
+                                        {single-pane pane-name = "pane3"}}
+                                }}},
+                        {test-layout-operation "dock-right",
+                            before,
+                            {test-dock-pane "pane1", DockingAction.bottom, "pane2"},
+                            {stringify
+                                {pane-container
+                                    {tiled-pane-group max-rows = 1,
+                                        {single-pane pane-name = "pane2"},
+                                        {single-pane pane-name = "pane1"},
+                                        {single-pane pane-name = "pane3"}}
+                                }}},
+                        {test-layout-operation "dock-tab",
+                            before,
+                            {test-dock-pane "pane1", DockingAction.tab, "pane2"},
+                            {stringify
+                                {pane-container
+                                    {tiled-pane-group  max-rows = 1,
+                                        {tabbed-pane-group
+                                            {single-pane pane-name = "pane1"},
+                                            {single-pane pane-name = "pane2"}},
+                                        {single-pane pane-name = "pane3"}}
+                                }}}
+                    }},
+                || ------------------------------
+                || tiled-vertical-float
+                {value 
+                    def before =
                         {stringify
                             {pane-container
-                                {tiled-pane-group  max-rows = 1,
-                                    {tabbed-pane-group
+                                {tiled-pane-group max-cols = 1,
+                                    {single-pane pane-name = "pane1"},
+                                    {single-pane pane-name = "pane2"},
+                                    {single-pane pane-name = "pane3"}}
+                            }}
+                    {TestSuite "tiled-vertical-float",
+                        {test-layout-operation "float",
+                            before,
+                            || TODO: what does the bool signify?
+                            {test-float-pane "pane1", true},
+                            {stringify
+                                {pane-container
+                                    {tiled-pane-group max-cols = 1,
+                                        {single-pane pane-name = "pane2"},
+                                        {single-pane pane-name = "pane3"}},
+                                    {single-pane pane-name = "pane1"}}
+                            }},
+                        {test-layout-operation "float-unfloat",
+                            before,
+                            {test-sequence
+                                {test-float-pane "pane1", true},
+                                {test-dock-pane-from-path "pane1"}},
+                            {stringify
+                                {pane-container
+                                    {tiled-pane-group max-cols = 1,
                                         {single-pane pane-name = "pane1"},
-                                        {single-pane pane-name = "pane2"}},
-                                    {single-pane pane-name = "pane3"}
-                                }
-                            }}}
-                }
-            }
-        }
+                                        {single-pane pane-name = "pane2"},
+                                        {single-pane pane-name = "pane3"}}
+                                }}},
+                        {test-layout-operation "hide",
+                            before,
+                            {test-hide-pane "pane2"},
+                            {stringify
+                                {pane-container
+                                    {tiled-pane-group max-cols = 1,
+                                        {single-pane pane-name = "pane1"},
+                                        {single-pane pane-name = "pane3"}},
+                                    {single-pane pane-name = "pane2", hidden? = true}
+                                }}},
+                        || TODO: not sure this is a valid operation
+                        || - results in extra duplicate pane
+                        || - operation should be no-op if already "shown"
+                        {test-layout-operation "show",
+                            before,
+                            {test-show-pane "pane2"},
+                            {stringify
+                                {pane-container
+                                    {tiled-pane-group max-cols = 1,
+                                        {single-pane pane-name = "pane1"},
+                                        {single-pane pane-name = "pane2"},
+                                        {single-pane pane-name = "pane3"}}
+                                }}},
+                        {test-layout-operation "hide-show",
+                            before,
+                            {test-sequence
+                                {test-hide-pane "pane2"},
+                                {test-show-pane "pane2"}},
+                            {stringify
+                                {pane-container
+                                    {tiled-pane-group max-cols = 1,
+                                        {single-pane pane-name = "pane1"},
+                                        {single-pane pane-name = "pane2"},
+                                        {single-pane pane-name = "pane3"}}
+                                }}}
+                    }},
+                || ------------------------------
+                || tiled-horizontal-flost
+                {value 
+                    def before =
+                        {stringify
+                            {pane-container
+                                {tiled-pane-group max-rows = 1,
+                                    {single-pane pane-name = "pane1"},
+                                    {single-pane pane-name = "pane2"},
+                                    {single-pane pane-name = "pane3"}}
+                            }}
+                    {TestSuite "tiled-horizontal-float",
+                        {test-layout-operation "float",
+                            before,
+                            || TODO: what does the bool signify?
+                            {test-float-pane "pane1", true},
+                            {stringify
+                                {pane-container
+                                    {tiled-pane-group max-rows = 1,
+                                        {single-pane pane-name = "pane2"},
+                                        {single-pane pane-name = "pane3"}},
+                                    {single-pane pane-name = "pane1"}}
+                            }},
+                        {test-layout-operation "float-unfloat",
+                            before,
+                            {test-sequence
+                                {test-float-pane "pane1", true},
+                                {test-dock-pane-from-path "pane1"}},
+                            {stringify
+                                {pane-container
+                                    {tiled-pane-group max-rows = 1,
+                                        {single-pane pane-name = "pane1"},
+                                        {single-pane pane-name = "pane2"},
+                                        {single-pane pane-name = "pane3"}}
+                                }}},
+                        {test-layout-operation "hide",
+                            before,
+                            {test-hide-pane "pane2"},
+                            {stringify
+                                {pane-container
+                                    {tiled-pane-group max-rows = 1,
+                                        {single-pane pane-name = "pane1"},
+                                        {single-pane pane-name = "pane3"}},
+                                    {single-pane pane-name = "pane2", hidden? = true}
+                                }}},
+                        || TODO: not sure this is a valid operation
+                        || - results in extra duplicate pane
+                        || - operation should be no-op if already "shown"
+                        {test-layout-operation "show",
+                            before,
+                            {test-show-pane "pane2"},
+                            {stringify
+                                {pane-container
+                                    {tiled-pane-group max-rows = 1,
+                                        {single-pane pane-name = "pane1"},
+                                        {single-pane pane-name = "pane2"},
+                                        {single-pane pane-name = "pane3"}}
+                                }}},
+                        {test-layout-operation "hide-show",
+                            before,
+                            {test-sequence
+                                {test-hide-pane "pane2"},
+                                {test-show-pane "pane2"}},
+                            {stringify
+                                {pane-container
+                                    {tiled-pane-group max-rows = 1,
+                                        {single-pane pane-name = "pane1"},
+                                        {single-pane pane-name = "pane2"},
+                                        {single-pane pane-name = "pane3"}}
+                                }}}
+                    }}
+            }}
     {test-ui suite}
 }
