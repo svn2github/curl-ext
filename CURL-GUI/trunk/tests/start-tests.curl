@@ -115,18 +115,11 @@
                                         {single-pane pane-name = "pane3"}},
                                     {single-pane pane-name = "pane1"}}
                             }},
-                        || TODO: not sure this is a valid operation
-                        || - result spec unwritable, because of DNP
+                        || NOTE: a no-op unless the pane is hidden
                         {test-layout-operation "show",
                             before,
                             {test-show-pane "pane2"},
-                            {stringify
-                                {pane-container
-                                    {tabbed-pane-group
-                                        {single-pane pane-name = "pane1"},
-                                        {single-pane pane-name = "pane2"},
-                                        {single-pane pane-name = "pane3"}}
-                                }}},
+                            before},
                         {test-layout-operation "float-unfloat",
                             before,
                             {test-sequence
@@ -277,19 +270,11 @@
                                         {single-pane pane-name = "pane3"}},
                                     {single-pane pane-name = "pane2", hidden? = true}
                                 }}},
-                        || TODO: not sure this is a valid operation
-                        || - results in extra duplicate pane
-                        || - operation should be no-op if already "shown"
+                        || NOTE: a no-op unless the pane is hidden
                         {test-layout-operation "show",
                             before,
                             {test-show-pane "pane2"},
-                            {stringify
-                                {pane-container
-                                    {tiled-pane-group max-cols = 1,
-                                        {single-pane pane-name = "pane1"},
-                                        {single-pane pane-name = "pane2"},
-                                        {single-pane pane-name = "pane3"}}
-                                }}},
+                            before},
                         {test-layout-operation "hide-show",
                             before,
                             {test-sequence
@@ -348,19 +333,11 @@
                                         {single-pane pane-name = "pane3"}},
                                     {single-pane pane-name = "pane2", hidden? = true}
                                 }}},
-                        || TODO: not sure this is a valid operation
-                        || - results in extra duplicate pane
-                        || - operation should be no-op if already "shown"
+                        || NOTE: a no-op unless the pane is hidden
                         {test-layout-operation "show",
                             before,
                             {test-show-pane "pane2"},
-                            {stringify
-                                {pane-container
-                                    {tiled-pane-group max-rows = 1,
-                                        {single-pane pane-name = "pane1"},
-                                        {single-pane pane-name = "pane2"},
-                                        {single-pane pane-name = "pane3"}}
-                                }}},
+                            before},
                         {test-layout-operation "hide-show",
                             before,
                             {test-sequence

@@ -694,6 +694,8 @@
 
 
   {method package {show-pane pane:SinglePane}:void
+    {if not pane.hidden? then
+        {return}}
     set pane.hidden? =
         {if pane.state == PaneState.docked then
             {self.heuristic-dock-pane-from-path pane}
