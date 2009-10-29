@@ -1,0 +1,101 @@
+{curl 7.0 applet}
+
+{applet manifest = "manifest.mcurl"}
+
+{import * from COM.CURL.GUI}
+
+{document-style PlainDocument}
+
+{set-document-properties
+    hstretch? = true,
+    vstretch? = true
+}
+
+{define-class public SearchablePaneContent {inherits PaneContent}
+  field protected search-tf:TextField
+  field protected search-cb:CommandButton
+
+  {constructor public {default
+                          pane-name:PaneContentID,
+                          content:Visual,
+                          title:String = "",
+                          title-controls:Graphic = {Fill},
+                          request-focus?:bool = false
+                      }
+    let start:#GuiMark
+    let end:#GuiMark
+    set self.search-tf =
+        {TextField width = 5cm,
+            {on e:Action do
+                {self.search-cb.handle-event e}
+            }
+        }
+    set self.search-cb =
+        {CommandButton
+            label = "Search",
+            {on Action at cb:CommandButton do
+                def term = self.search-tf.value
+                {if not term.empty? then
+                    || Search in the pane content for
+                    || the term.
+                    set (start, end) =
+                        {self.search-next
+                            {TextSearchPattern pattern = term},
+                            gm = end
+                        }
+                    def g = self.content
+                    {type-switch g 
+                     case grsc:GuiRangeSelectionContext do
+                        {if-non-null start, end then
+                            {grsc.select start, end}
+                        }
+                    }
+                }
+            }
+        }
+    {construct-super
+        pane-name,
+        content,
+        title = title,
+        title-controls =
+            {StandardActiveTraversalContainer
+                {HBox
+                    self.search-tf,
+                    self.search-cb
+                }
+            },
+        request-focus? = request-focus?
+    }
+  }
+}
+{value
+    let pcid:PaneContentID = {PaneContentID "kind", identifier = "id"}
+    {PaneContainer.from-layout-spec
+        {stringify
+            {pane-container
+                {tiled-pane-group
+                    max-rows = 1,                    
+                    {single-pane pane-name = "pane1"}
+                }
+            }
+        },
+        {proc {pcid:PaneContentID}:PaneContent
+            {return
+                {SearchablePaneContent
+                    pcid,
+                    {GuiRangeSelectionFrame
+                        {VBox
+                            {text
+                                Now is the time for all great men to come to the
+                                aid of their country.
+                            },
+                            {text
+                                The quick brown fox jumped over the lazy dog.
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

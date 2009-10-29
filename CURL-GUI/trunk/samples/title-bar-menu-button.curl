@@ -1,0 +1,35 @@
+{curl 7.0 applet}
+
+{applet manifest = "manifest.mcurl"}
+
+{import * from COM.CURL.GUI}
+
+{document-style PlainDocument}
+
+{set-document-properties
+    hstretch? = true,
+    vstretch? = true
+}
+
+{value
+    let pcid:PaneContentID = {PaneContentID "kind", identifier = "id"}
+    {PaneContainer.from-layout-spec
+        {stringify
+            {pane-container
+                {tiled-pane-group
+                    max-rows = 1,                    
+                    {single-pane pane-name = "pane1"}
+                }
+            }
+        },
+        {proc {pcid:PaneContentID}:PaneContent
+            {return
+                {PaneContent
+                    pcid,
+                    {Frame "Just some content"},
+                    title-controls = {MenuButton "Hmm"}
+                }
+            }
+        }
+    }
+}
