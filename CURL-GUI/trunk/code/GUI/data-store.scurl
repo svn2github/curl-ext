@@ -1,0 +1,306 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{import * from CURL.IO.JSON}
+{import * from CURL.LANGUAGE.STRINGS}
+
+|| Bindings update each other, but if you change a value directly,
+|| you need to refresh the bindings that were affected.
+
+|| o keep a set of values that have bindings. If there is a
+||   binding for a.b, then a is the object to watch
+|| o When setting a value, check if the target has a watcher
+||   If so, refresh it's binding
+|| o When setting a value that is a JsonObject or JsonArray, (a.b)
+||   need to find any binding with that in the path, and refresh it
+
+||FIXME: remove this if passing url to JsonValue-parse works OK
+||--{define-proc public {read-json url:Url, out:StringBuf = {StringBuf}}:StringBuf
+||--    let myinput:#TextInputStream
+||--    {out.clear}
+||--    {try
+||--        set myinput={read-open url}
+||--     catch err:IOException do
+||--        {popup-message err.message}
+||--    }
+||--    {if-non-null myinput then
+||--        {try
+||--            {myinput.read-one-string buf = out}
+||--         catch err:IOException do
+||--            {popup-message err.message}
+||--         finally
+||--            {myinput.close}
+||--        }
+||--    }
+||--    {return {out.to-String}}
+||--}
+
+{doc-next
+    {purpose Provide persistent storage for application state
+        via data binding.
+    }
+    {details
+        A {ctext DataStore} is used to store and retreive values in
+        a {docref JsonObject}. Individual values are addressable by
+        strings that use a dot to select named attributes and
+        subscripting into array values. For example, the path
+        "a.b[2].c" retrieves the object "a", selects the attribute
+        "b", which must be an array, selects the third member, and
+        returns the attribute "c" of that value.
+
+        As a {docref DataBindingContext}, you can use the {docref
+        bind} macro to associate a value in the {ctext DataStore} with
+        a property of a control.
+        ||FIXME: write more about data binding
+    }
+}
+{define-class public open DataStore {inherits DataBindingContext}
+
+  field public source:JsonObject
+
+  {constructor public {default 
+                          source:JsonObject
+                      } 
+    set self.source = source
+    {construct-super.DataBindingContext}
+  }
+
+  ||FIXME: cache a few paths
+  || field protected cached-paths:{HashTable-of String, Array}
+
+||--  field protected bound-nodes:{Set-of any, DataBinding} = 
+||--      {new {Set-of any, DataBinding}}
+
+
+  {method public open {load location:Url}:void
+    set self.source = {JsonValue-parse location} asa JsonObject
+    {self.refresh} || Refresh all of the bindings
+  }
+
+  {method public open {save location:Url}:void
+    let tos:#TextOutputStream = null
+    {try
+        set tos =
+            {write-open
+                location, character-encoding = CharEncoding.utf8
+            }
+        def data = {JsonValue-to-String self.source, prettify? = true}
+        {tos.write-one-string data}
+     catch err:IOException do
+        {popup-message err.message}
+     finally
+        {tos.close}
+    }
+  }
+
+  field private last-path:String = ""
+  field private last-array:#Array = null
+
+  {method protected open {parse-path path:String}:Array
+    {if-non-null last-array = self.last-array then
+        {if path == self.last-path then
+            {return last-array}
+         else
+            set self.last-array = null
+        }
+    }
+
+    || FIXME: This is a hacky parser!
+    let r:Array = {Array}
+    {for s:String in {path.split split-chars = {CharClass ".["}} do
+        {if s.size == 0 then
+            {r.append "*"}
+         elseif  {digit? s[0], 10} then
+            {r.append {s.to-int}}
+         else
+            {r.append s}
+        }
+    }
+    set self.last-array = r
+    set self.last-path = path
+    {return r}
+  }
+
+  {method public open {get k:String}:any
+    {return {self.get-if-exists k}}
+  }
+
+  {method public open {get-DateTime
+                          k:String, default:DateTime = {DateTime}
+                      }:DateTime
+    def (v, found?) = {self.get-if-exists k}
+    {if found? then
+        {return {DateTime v}}
+     else
+        {return default}
+    }
+  }
+
+
+  {method public open {set k:String, x:any}:void
+    {if k == "$" then
+        set self.source = 
+            {type-switch x
+             case o:JsonObject do
+                o
+             else
+                {JsonValue-parse x} asa JsonObject
+            }
+        {self.refresh} || Refresh all of the bindings
+        {return}
+    }
+
+    let selectors:Array = {self.parse-path k}
+    let val:JsonValue = self.source
+    {for selector key ki in selectors do
+        {if ki == selectors.size - 1 then
+            {type-switch val
+             case vo:JsonObject do
+                set vo[selector asa String] = x
+             case va:JsonArray do
+                let si:int = selector asa int
+                {if si == va.size then
+                    {va.append x}
+                 else
+                    set va[si] = x
+                }
+            }
+         else
+            {type-switch selector
+             case i:int do
+                {type-switch val
+                 case va:JsonArray do
+                    set val = va[i]
+                 else
+                    {error
+                        {hlmessage "Value is not an array"}
+                    }
+                }
+             case s:String do
+                {type-switch val
+                 case vo:JsonObject do
+                    set val = vo[s]
+                 else
+                    {error
+                        {hlformat "Cannot select value '%s'", s}
+                    }
+                }
+            }
+        }
+    }
+    {self.refresh} ||FIXME: Refresh just the bindings that changed
+  }
+
+  {method public open {get-if-exists k:String}:(any, bool)
+    {if k == "$" then
+        {return ({JsonValue-to-String self.source, prettify? = true}, true)}
+    }
+    let selectors:Array = {self.parse-path k}
+    let val:JsonValue = self.source
+    let exists?:bool = true
+    {for selector in selectors do
+        {type-switch selector
+         case i:int do
+            {type-switch val
+             case va:JsonArray do
+                {if i < 0 or i >= va.size then
+                    set exists? = false
+                 else
+                    set val = va[i]
+                }
+             else
+                {error
+                    {hlmessage "Subscript used on object that is not an array."}
+                }
+            }
+         case s:String do
+            {type-switch val
+             case vo:JsonObject do
+                set (val, exists?) = {vo.get-if-exists s}
+             else
+                {error
+                    {hlformat "Cannot select '%s' from value", s}
+                }
+            }
+        }
+    }
+    {return (val, exists?)}
+  }
+
+  {method public open {key-exists? key:String}:bool
+    let (val:any, found?:bool) = {self.get-if-exists key}
+    {return found?}
+  }
+
+  || DataBinding implementation
+  {method public open {get-data selector:any}:(any, bool)
+    {return {self.get-if-exists selector asa String}}
+  }
+
+  {method protected open {update-internal 
+                             ...:DataBinding
+                         }:#DataBindingValidationFailure      
+    let vs:{Array-of DataBindingValidationFailure} = 
+        {{Array-of DataBindingValidationFailure}}
+    {for b in ... do   
+        let selector:String = b.data-selector asa String
+        let failure:#DataBindingValidationFailure = null
+        || get value from target
+        let val:any = {b.get-parsed-value}
+        {type-switch val
+         case v:DataBindingValidationFailure do 
+            set failure = v
+         else
+            {if failure == null then
+                {self.set selector, val}
+            }
+        }
+        || report status
+        set b.validation-failure = failure
+        {if-non-null failure then            
+            {vs.append failure}
+        }
+    }
+    {return 
+        {if vs.empty? then null
+         elseif vs.size == 1 then vs[0]
+         else {DataBindingMultipleValidationFailure {splice vs}}
+        }
+    }
+
+  }
+
+||--
+||--  {method public {parse val:any, binding:DataBinding}:any
+||--    {return val}
+||--  }
+||--
+||--  {method public {format val:any, binding:DataBinding}:any
+||--    {return
+||--        {if val == null then DataBinding.unset
+||--         else val
+||--        }
+||--    }
+||--  }
+||--
+||--  {method public {bindings-for selector:any}:{Set-of DataBinding}
+||--    {return
+||--        {self.registered-bindings.filter-clone 
+||--            {proc {b:DataBinding}:bool
+||--                {return b.data-selector == selector}}}}
+||--  }
+}

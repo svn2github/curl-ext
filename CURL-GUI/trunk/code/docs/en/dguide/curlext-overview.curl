@@ -1,0 +1,144 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0 applet}
+
+{applet manifest = "manifest.mcurl", locale = "en"}
+
+{include "../utils/guide-header.scurl"}
+{include "../utils/support.scurl"}
+
+{chapter
+    index= {HeadingIndex primary-key="Curl Extensions Overview"},
+    Curl Extensions Overview
+}
+{summary
+    {paragraph
+        The Curl Extensions library provides components that are
+        useful for building many kinds of applets.
+    }
+}
+
+{heading level=2,
+    What's New in the February 2010 Release of Curl Extensions
+}
+{definition-list
+}
+
+{heading level=2,
+    What's Included in the Curl Extensions Library
+}
+{definition-list
+    {term
+        {link href = {url "../../samples/sample-titled-view.curl"},
+            Titled View
+        }
+    }
+    {definition
+        The {ctext TitledView} is a standalone View with a
+        skinnable title bar. This is intended for use by a detached applet
+        where it is desirable to customize the appearance of the applet's
+        views using a style sheet. It can also be used to create a custom look
+        for any standalone View, such as a modeless tool palette.
+    }
+
+    {term
+        {link href = {url "../../sample-popup-balloon.curl"},
+            popup-balloon
+        }
+    }
+    {definition
+        The {ctext popup-balloon} API is used to create a customized
+        View with a pointer to some Graphic in your applet. Usually
+        such a popup is used to provide details about the thing it is
+        pointing at.
+    }
+
+    {term
+        {link href = {url "autocomplete-fields.curl"},
+            Autocompleting Text Fields
+        }
+    }
+    {definition
+        Autocompletion while typing into a {docref TextField} or 
+        {docref RecordGridCell}.
+    }
+
+    {term
+        {link href = {url "../../samples/sample-tree.curl"},
+            TreeGrid
+        }
+    }
+    {definition
+        The {ctext TreeGrid} uses a custom RecordGridCell to display
+        the tree structure from data stored in a RecordSet. It
+        requires a small number of dedicated columns to keep track of
+        the tree nodes, but any number of additional columns can be
+        added and displayed in the RecordGrid. You can use drag and
+        drop to rearrange the items in the tree.
+    }
+
+    {term
+        {link href = {url "../../gantt-demo.curl"},
+            Gantt Chart
+        }
+    }
+    {definition
+        The Curl Extensions library includes a number of classes that
+        can be used to create a Gantt chart. The demo applet shows how
+        a Gantt chart can be built using a {ctext TreeGrid} and
+        a {docref GanttCell}. It also includes a simple {docref
+        ProjectModel} class.
+    }
+
+    {term {docref FileApp}}
+    {definition
+        This is a class that does as much as possible to implement an
+        application with a file menu. To build an application you
+        create a subclass and implement the abstract methods to load a
+        file, save a file, create a new file and so on. You also
+        define and implement any additonal menus required by your
+        applet. The {docref FileApp} class takes care of basic logic,
+        such as promting the user to save before quitting.
+    }
+
+    {term
+        {docref COM.CURL.EXT.AUTO-TEST}
+    }
+    {definition
+        This is a basic automated test framework that can be used to
+        write test scripts to verify the operation of any GUI control.
+        The biggest limitation is that it can only test within one
+        {docref View}. In particular menus and dialogs are not accessible
+        to this framework if they pop up into a new {ctext View}.  The
+        framework is most useful for testing one control at a time.
+
+        This example is an
+        {link href = {url "../../samples/t-actf.curl"},
+            automated test for the {ctext AutocompleteTextField}
+        }
+        written using the test framework. Click the Run All button to
+        run all of the tests. You can click any Test button to run a
+        single test.
+    }
+}
+
+{paragraph
+    
+}
+
+{curl-copyright}

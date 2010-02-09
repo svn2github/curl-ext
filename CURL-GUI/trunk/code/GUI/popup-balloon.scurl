@@ -1,0 +1,1174 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{import * from CURL.GRAPHICS.WINDOW}
+{import * from CURL.GRAPHICS.DISPLAY}
+
+{define-enum public BalloonTailOrientation
+    left,
+    top,
+    right,
+    bottom
+}
+
+|| BalloonSide will be used as a logically different type.
+{define-alias public BalloonSide = BalloonTailOrientation}
+
+{define-class package BalloonCanvas {inherits Canvas}
+
+  field private-set public-get tail-orientation:BalloonTailOrientation
+  field private-set public-get corner-radius:Distance
+  field private-set public-get tail-x:Distance
+  field private-set public-get tail-y:Distance
+  field private-set public-get tail-w:Distance
+  field private-set public-get tail-h:Distance
+
+  {constructor package {default
+                           corner-radius:Distance = 9pt,
+                           ...
+                       }
+    {set self.corner-radius = corner-radius}
+
+    {construct-super {splice ...}}
+  }
+
+  || Combined setter for all the field, calls generate-path and set-path
+  || Can be overridden.
+  {method package {configure
+                      tail-orientation:BalloonTailOrientation,
+                      tail-x:Distance,
+                      tail-y:Distance,
+                      tail-w:Distance,
+                      tail-h:Distance
+                  }:void
+
+    set self.tail-orientation = tail-orientation
+    set self.tail-x = tail-x
+    set self.tail-y = tail-y
+    set self.tail-w = tail-w
+    set self.tail-h = tail-h
+
+    || Redraw everything as some fields may have changed.
+    {if self.layout-valid? then
+        def border-shape = {self.generate-path}
+        {self.set-path border-shape}
+    }
+  }
+
+  || Generate and return path based on all the private fields
+  || Can be overridden.
+  {method protected open {generate-path}:PathShape
+
+    let (width:Distance, height:Distance) = (0m, 0m)
+    || This method will not be called if layout is not valid
+    {if self.layout-valid? then
+        {if-non-null layout = self.layout then
+            def bounds = {layout.get-bounds}
+            set width = bounds.width
+            set height = bounds.height
+        }
+    }
+
+    def (tail-x, tail-y, tail-w, tail-h) =
+        (self.tail-x, self.tail-y, self.tail-w, self.tail-h)
+
+    || We have to shift borders with the amount equal the tail height.
+    {if self.tail-orientation == BalloonTailOrientation.bottom or
+        self.tail-orientation == BalloonTailOrientation.top
+     then
+        set height = height - self.tail-h
+     else
+        set width = width - self.tail-h
+    }
+
+    || Starting position of path
+    || We have to change this when we create tail in top or left side.
+    || We have to shift borders with the amount equal the tail height.
+    let path-x:Distance =
+        {if self.tail-orientation == BalloonTailOrientation.left then
+            tail-h
+         else
+            0pt
+        }
+    let path-y:Distance =
+        {if self.tail-orientation == BalloonTailOrientation.top then
+            tail-h
+         else
+            0pt
+        }
+
+    || We will need this amount many times further ahead.
+    def half-tw = tail-w / 2
+
+    || Rounding radius of popup
+    def radius = self.corner-radius
+    let balloon-path:Path = {Path}
+
+    || Starting point
+    {if (self.tail-orientation == BalloonTailOrientation.left and
+         (tail-y - half-tw) < radius) or
+        (self.tail-orientation == BalloonTailOrientation.top and
+         (tail-x - half-tw) < radius)
+     then
+        {balloon-path.move-to {Distance2d path-x, path-y}}
+     else
+        {balloon-path.move-to {Distance2d path-x + radius, path-y}}
+    }
+
+    || Draw Upper Line
+    {if self.tail-orientation == BalloonTailOrientation.top then
+        {if tail-x < half-tw then
+         else
+            {balloon-path.line-to
+                {Distance2d path-x + tail-x - half-tw, path-y}}
+        }
+
+        {balloon-path.line-to
+            {Distance2d path-x + tail-x, path-y - tail-h}}
+
+        {if (tail-x + half-tw) > width then
+         else
+            {balloon-path.line-to
+                {Distance2d path-x + tail-x + half-tw, path-y}}
+        }
+    }
+    || If we are close enough to corners then we should plot till ends.
+    {if (self.tail-orientation == BalloonTailOrientation.top and
+         (tail-x + half-tw) > (width - self.corner-radius))
+     then
+        {balloon-path.line-to {Distance2d path-x + width, path-y}}
+     else
+        {balloon-path.line-to {Distance2d path-x + width - radius, path-y}}
+    }
+
+    || Draw Top-Right Corner
+    || Right corner is overlapped by right side pointer
+    {if (self.tail-orientation == BalloonTailOrientation.right and
+         (tail-y - half-tw) < self.corner-radius) or
+        (self.tail-orientation == BalloonTailOrientation.top and
+         (tail-x + half-tw) > (width - self.corner-radius))
+     then
+        || Right corner is overlapped by right side pointer
+        || so convert the radius in square corner
+        {balloon-path.line-to
+            {Distance2d path-x + width, path-y}}
+     else
+        {balloon-path.curve-to
+            {Distance2d path-x + width - radius, path-y},
+            {Distance2d path-x + width, path-y},
+            {Distance2d path-x + width, path-y + radius}
+        }
+    }
+
+    || Draw Right Side Line
+    {if self.tail-orientation == BalloonTailOrientation.right then
+        || Pointer width should not exceed the top edge
+        {if tail-y < half-tw then
+         else
+            {balloon-path.line-to
+                {Distance2d path-x + width,
+                    path-y + tail-y - half-tw}}
+        }
+
+        {balloon-path.line-to
+            {Distance2d path-x + width + tail-h, path-y + tail-y}}
+        || Pointer width should not exceed the bottom edge
+        {if (tail-y + half-tw) > height then
+         else
+            {balloon-path.line-to
+                {Distance2d path-x + width,
+                    path-y + tail-y + half-tw}}
+        }
+    }
+    || We will not plot the Bottom-Right corner so we should plot till the
+    || end of corner
+    {if self.tail-orientation == BalloonTailOrientation.right and
+        (tail-y + half-tw) > (height - radius)
+     then
+        {balloon-path.line-to
+            {Distance2d path-x + width, path-y + height}}
+     else
+        {balloon-path.line-to
+            {Distance2d path-x + width, path-y + height - radius}}
+    }
+
+    || Draw Bottom-Right Corner
+    {if (self.tail-orientation == BalloonTailOrientation.right and
+         (tail-y + half-tw) > (height - radius))
+        or
+        (self.tail-orientation == BalloonTailOrientation.bottom and
+         (tail-x + half-tw) > (width - self.corner-radius))
+     then
+        {balloon-path.line-to
+            {Distance2d path-x + width, path-y + height}}
+     else
+        {balloon-path.curve-to
+            {Distance2d path-x + width, path-y + height - radius},
+            {Distance2d path-x + width, path-y + height},
+            {Distance2d path-x + width - radius, path-y + height}}
+    }
+
+    || Draw Part of the Bottom Lines
+    {if self.tail-orientation == BalloonTailOrientation.bottom then
+        {if (tail-x + half-tw) > width then
+         else
+            {balloon-path.line-to
+                {Distance2d path-x + tail-x + half-tw,
+                    path-y + height}}
+        }
+
+        {balloon-path.line-to
+            {Distance2d path-x + tail-x, path-y + height + tail-h}}
+
+        {if tail-x < half-tw then
+         else
+            {balloon-path.line-to
+                {Distance2d path-x + tail-x - half-tw,
+                    path-y + height}}
+        }
+    }
+    {if self.tail-orientation == BalloonTailOrientation.bottom and
+        (tail-x - half-tw) < radius
+     then
+        {balloon-path.line-to
+            {Distance2d path-x, path-y + height}}
+     else
+        {balloon-path.line-to
+            {Distance2d path-x + radius, path-y + height}}
+    }
+
+    || Draw Bottom-Left Corner
+    {if (self.tail-orientation == BalloonTailOrientation.left and
+         (tail-y + half-tw) > (height - radius)) or
+        (self.tail-orientation == BalloonTailOrientation.bottom and
+         (tail-x - half-tw) < radius)
+     then
+        {balloon-path.line-to
+            {Distance2d path-x, path-y + height}}
+     else
+        {balloon-path.curve-to
+            {Distance2d path-x + radius, path-y + height},
+            {Distance2d path-x, path-y + height},
+            {Distance2d path-x, path-y + height - radius}}
+    }
+
+    || Draw Left Line
+    {if self.tail-orientation == BalloonTailOrientation.left then
+        {if (tail-y + half-tw) > height then
+         else
+            {balloon-path.line-to
+                {Distance2d path-x, path-y + tail-y + half-tw}}
+        }
+
+        {balloon-path.line-to
+            {Distance2d path-x - tail-h, path-y + tail-y}}
+
+        {if tail-y < half-tw then
+         else
+            {balloon-path.line-to
+                {Distance2d path-x, path-y + tail-y - half-tw}}
+        }
+    }
+    {if self.tail-orientation == BalloonTailOrientation.left and
+        (tail-y - half-tw) < radius
+     then
+        {balloon-path.line-to
+            {Distance2d path-x, path-y}}
+     else
+        {balloon-path.line-to
+            {Distance2d path-x, path-y + radius}}
+    }
+
+    || Finish with Draw Top-Left Corner
+    {if (self.tail-orientation == BalloonTailOrientation.left and
+         (tail-y - half-tw) < radius) or
+        (self.tail-orientation == BalloonTailOrientation.top and
+         (tail-x - half-tw) < radius)
+     then
+        {balloon-path.line-to
+            {Distance2d path-x, path-y}}
+     else
+        {balloon-path.curve-to
+            {Distance2d path-x, path-y + radius},
+            {Distance2d path-x, path-y},
+            {Distance2d path-x + radius, path-y}}
+    }
+
+    {return
+        {PathShape
+            balloon-path,
+            color = "darkgray", ||""
+            stroke-thickness = 1.5pt
+        }
+    }
+  }
+
+  || Set the border-path and set the shape of the view containing this Canvas.
+  || Need not to override.
+  {method protected final {set-path border-shape:PathShape}:void
+    || Remove any other border, if any.
+    {self.clear}
+    {self.add border-shape}
+    || Set the shape of the view containing the canvas
+    {if-non-null view = {self.get-view} then
+        {view.set-window-shape
+            {Region.from-path border-shape.path}
+        }
+    }
+  }
+
+
+  || Reset border-path and shape of the view containing this Canvas.
+  || Need not to override.
+  {method public final {set-size lc:LayoutContext, bounds:GRect}:void
+    {super.set-size lc, bounds}
+    || Generate path
+    {if self.layout-valid? then
+        {if-non-null layout = self.layout then
+            def border-shape = {self.generate-path}
+            {self.set-path border-shape}
+        }
+    }
+  }
+}
+
+||  Graphical layout of popup-balloon:
+||
+||  {View
+||      {ScrollBox
+||          {OverlayBox
+||              Canvas
+||              {Frame
+||                  {HBox
+||                      left-margin
+||                      {VBox
+||                          top-margin
+||                          {LimitedWidthFrame
+||                              {VBox
+||                                {SkinnableFrame
+||                                  {HBox
+||                                      title,
+||                                      Fill,
+||                                      Fill, ||Seperator fill
+||                                      close-button
+||                                  },
+||                                 }
+||                                 {Dialog
+||                                     {SkinnableFrame
+||                                         content
+||                                     }
+||                                 }
+||                              }
+||                          },
+||                          bottom-margin,
+||                      },
+||                      right-margin,
+||                  }
+||              }
+||          }
+||      }
+||  }
+
+{define-class package side-helper
+
+  field package distance:Distance
+  field package space:Distance
+  field package side:BalloonSide
+  field package feasible:bool
+
+  {constructor package {default
+                           distance:Distance,
+                           space:Distance,
+                           side:BalloonSide,
+                           feasible:bool
+                       }
+    set self.distance = distance
+    set self.space = space
+    set self.side = side
+    set self.feasible = feasible
+  }
+}
+
+{define-class public sealed BalloonView {inherits View}
+
+  field private owner:Graphic
+  || BalloonTail x, y positions
+  field private tail-x:Distance
+  field private tail-y:Distance
+  || BalloonTail size
+  field private tail-size:Distance
+
+  field private move-window-alarm:Alarm
+  field private outer-frame:Frame
+  field protected balloon-canvas:BalloonCanvas
+  field private close-button:#CommandButton
+
+  field private left-margin:Fill = {Fill width = 0px}
+  field private right-margin:Fill = {Fill width = 0px}
+  field private top-margin:Fill = {Fill height = 0px}
+  field private bottom-margin:Fill = {Fill height = 0px}
+
+  field private current-window-x:Distance = 0m
+  field private current-window-y:Distance = 0m
+  field private content-frame:#SkinnableFrame
+  field private title-frame:#Frame
+  field private initializing?:bool = true
+  field private internal-hidden?:bool
+
+  {constructor package {default
+                           content:Graphic,
+                           owner:Graphic,
+                           x:Distance,
+                           y:Distance,
+                           tail-size:Distance = 9pt,
+                           corner-radius:Distance = 9pt,
+                           max-width:Distance = 4in,
+                           ...
+                       }
+
+||--    let t:Timer =
+||--        {Timer
+||--            interval = .3s,  repeat = 300,  delay = 0s,
+||--            {on TimerEvent do
+||--                {self.hide-if-inactive}
+||--            }
+||--        }
+
+
+    set self.move-window-alarm =
+        {Alarm
+            {proc {}:void
+                {self.handle-move-window-alarm}
+            }
+        }
+
+    {construct-super.default
+        owner = {owner.get-view},
+        center? = false,
+        decorations? = false,
+        _style-element = "BalloonView",  ||""
+        visibility = "normal", ||""
+       {splice ...}
+    }
+
+    set self.owner = owner
+    set self.tail-x = x
+    set self.tail-y = y
+
+    set self.tail-size = tail-size
+
+    set self.outer-frame = {LimitedWidthFrame
+                               max-width = max-width
+                           }
+
+    set self.content-frame =
+        {SkinnableFrame
+            border-width = 0pt,
+            content,
+            _style-element = "BalloonView/content" ||""
+        }
+
+    set self.title-frame =
+        {SkinnableFrame
+            border-width = 0pt,
+            _style-element = "BalloonView/titlebar", ||""
+            self.title
+        }
+
+    def em = {content.any-to-Distance 1em,
+                 convert-font-relative-values? = true
+             }
+
+    def tail-w = em * 1.5
+
+    set self.balloon-canvas =
+        {BalloonCanvas
+            corner-radius,
+            vorigin = "center", ||""
+            horigin = "center" ||""
+        }
+    {self.balloon-canvas.configure
+        BalloonTailOrientation.left, x, y, tail-w, tail-size
+    }
+
+    set self.close-button =
+        {CommandButton
+            label = "x",
+            height = 5mm,
+            width = 5mm,
+            takes-focus? = false,
+            searchable? = false,
+            selection-context = null,
+            _style-element = "BalloonView/close-button", ||""
+            {on Action do
+                {if not self.destroyed? then
+                    {self.destroy}
+                    {self.move-window-alarm.cancel}
+                }
+            }
+        }
+    {self.outer-frame.add
+        {VBox
+            || It helps to avoid any cutting due to rounded sides.
+            || Need to set this here so bound of ScrollBox will take
+            || account of this too.
+            || RC received from Mike(9/28/2009): I think the
+            || margin = corner-radius is too big. I think radius/2
+            || the corner touch the radius, but that doesn't
+            || is better. The minimum would have the corner touch
+            || the radius, but that doesn't look good.
+            margin = self.corner-radius / 2,
+            {SkinnableFrame
+                border-width = 0pt,
+                _style-element = "BalloonView/titlebar", ||""
+                {HBox
+                    self.title-frame,
+                    || space between title and close-button
+                    {Fill},
+                    || Litle margin after before close-button
+                    {Fill width = 4px},
+                    self.close-button,
+                    || Litle margin after close-button
+                    {Fill width = 1px}
+                }
+            },
+            {Dialog
+                self.content-frame
+            }
+        }
+    }
+    {self.add
+        {ScrollBox
+            shrink-hscroll? = true, always-disable-hscroll? = true,
+            shrink-vscroll? = true, always-disable-vscroll? = true,
+            {OverlayBox
+                self.balloon-canvas,
+                {Frame
+                    {HBox
+                        self.left-margin,
+                        {VBox
+                            self.top-margin,
+                            self.outer-frame,
+                            self.bottom-margin
+                        },
+                        self.right-margin
+                    }
+                }
+            }
+        }
+    }
+    {self.set-view-position}
+
+    || Check for visible area
+    || Once the popup display, schedule the alarm for AppletView
+    def owner-view = {self.owner.get-view}
+    let view:Type = {type-of owner-view}
+    || Get window position in case of AppletView or inside TitledView
+    || to check against resizing
+    set (self.current-window-x, self.current-window-y) =
+        {owner-view.get-window-position}
+    set (self.current-window-x, self.current-window-y) =
+        {self.owner.transform-to-display-coordinates
+            self.current-window-x, self.current-window-y
+        }
+
+    || Check for AppletView or TitledView
+    {if view.name == "AppletView" then ||""
+        || We did not get 'ViewMoveEvent' in case of AppletView so only
+        || in this case need to schedule an alarm.
+        {self.add-event-handler
+            {on e:ViewVisibilityEvent do
+                {self.start-alarm}
+            }
+        }
+     else
+        {self.resize-view-handler}
+    }
+    || When owner-view resize in case of AppletView and TitledView
+    {owner-view.add-event-handler
+        {on vre:ViewResizeEvent do
+            {self.check-owner-visible-area}
+        }
+    }
+
+    ||FIXME: debug
+||--    {owner-view.add-event-handler
+||--        {on e:RepaintNotify at v:View do
+||--            {dump e, v.active?}
+||--        }
+||--    }
+
+    set self.initializing? = false
+  }|| end of ctor
+
+  || A getter for tail-width
+  {getter package {tail-width}:Distance
+    {return self.balloon-canvas.tail-w}
+  }
+
+  || A getter for corner-radius
+  {getter package {corner-radius}:Distance
+    {return self.balloon-canvas.corner-radius}
+  }
+
+  {method private {start-alarm}:void
+    {if not self.move-window-alarm.scheduled? then
+        {self.move-window-alarm.schedule delay = 0.01s}
+    }
+  }
+
+  || Decide the position of the View
+  {method private {set-view-position}:void
+
+    def (current-x, current-y) =
+        {self.owner.transform-to-display-coordinates self.tail-x, self.tail-y}
+
+    let display:Display = {Display.get-primary}
+||--        {{Display.get-primary}.get-nearest current-x, current-y}
+    def (screen-x, screen-y, screen-w, screen-h) = {display.get-usable-area}
+
+    let outer-w:Distance = {self.outer-frame.get-bounds}.width
+    let outer-h:Distance = {self.outer-frame.get-bounds}.height
+    let owner-width:Distance = {self.owner.layout.get-bounds}.width
+    let owner-height:Distance = {self.owner.layout.get-bounds}.height
+
+    ||FIXME:Check found?
+    let (owner-x:Distance, owner-y:Distance, found?:bool) =
+        {self.owner.get-origin-in-graphical-ancestor {self.owner.get-view}}
+    || Get top-left corner
+    def (owner-ascent, owner-lextent) =
+        ({self.owner.layout.get-bounds}.ascent,
+         {self.owner.layout.get-bounds}.lextent
+        )
+    set (owner-x, owner-y) = (owner-x - owner-lextent, owner-y - owner-ascent)
+    set (owner-x, owner-y) =
+        {{self.owner.get-view}.transform-to-display-coordinates
+            owner-x, owner-y
+        }
+
+    let tail-height:Distance = self.tail-size
+
+    let list:{Array-of side-helper} = {{Array-of side-helper}}
+    || Right side
+    {list.append
+        {side-helper
+            owner-x + owner-width - current-x,
+            screen-w - (owner-x + owner-width) - outer-w,
+            BalloonSide.right,
+            screen-w >= current-x + outer-w + tail-height
+        }
+    }
+    || Left side
+    {list.append
+        {side-helper
+            current-x - owner-x,
+            owner-x - outer-w,
+            BalloonSide.left,
+            current-x >= outer-w + tail-height
+        }
+    }
+    || Bottom side
+    {list.append
+        {side-helper
+            owner-y + owner-height - current-y,
+            screen-h - (owner-y + owner-height) - outer-h,
+            BalloonSide.bottom,
+            screen-h >= current-y + outer-h + tail-height
+        }
+    }
+    || Top side
+    {list.append
+        {side-helper
+            current-y - owner-y,
+            owner-y - outer-h,
+            BalloonSide.top,
+            current-y >= outer-h + tail-height
+        }
+    }
+
+    || Sorting logic
+    || 1. Feasible side (Which can accommodate the popup-balloon with tail)
+    ||    1.1 Then the popup-balloon will be place to side which is nearest to
+    ||        the edge of the owner.
+    ||        (Nearest side)
+    ||    1.2 If two or more are nearest and equal the side with max
+    ||        remaining space.
+    || 2. Not Feasible
+    ||    1.1 Then max remaining space (which is the space between owner's edge
+    ||        and screen's edge minus outer-frame's width or height).
+    {list.sort
+        comparison-proc =
+            {proc {e1:side-helper, e2:side-helper }:bool
+                {if e1.feasible == e2.feasible then
+                    {if e1.feasible then
+                        || Feasible
+                        {if e1.distance < e2.distance then
+                            {return true}
+                         elseif e1.distance == e2.distance then
+                            {if e1.space > e2.space then
+                                {return true}
+                             else
+                                {return false}
+                            }
+                         else
+                            {return false}
+                        }
+                     else
+                        || Not feasible
+                        {if e1.space > e2.space then
+                            {return true}
+                         else
+                            {return false}
+                        }
+                    }
+                 else
+                    || Feasible should be before.
+                    {return e1.feasible}
+                }
+            }
+    }
+
+    let proposed-side:BalloonSide = list[0].side
+    let feasible:bool = list[0].feasible
+
+    || Set the margins
+    set self.right-margin.width = 0m
+    set self.left-margin.width = 0m
+    set self.top-margin.height = 0m
+    set self.bottom-margin.height = 0m
+
+    || Do the tail adjustments
+    let adjust-tail-x:Distance = 0m
+    let adjust-tail-y:Distance = 0m
+
+    || Position the View
+    let bto:BalloonTailOrientation
+    {switch proposed-side
+
+     case BalloonSide.right do
+        {if not feasible then
+            set tail-height =
+                {if (screen-w - current-x - outer-w) > 0m then
+                    screen-w - current-x - outer-w
+                 else
+                    0m
+                }
+        }
+        || Set margin
+        set self.left-margin.width = tail-height
+        || Do the tail x,y adjustments
+        {if screen-h - current-y <= outer-h then
+            set adjust-tail-y = -(screen-h - current-y - outer-h)
+            || We would like to avoid the overlapping of corner and tail
+         elseif adjust-tail-y == 0m then
+            set adjust-tail-y = self.corner-radius + self.tail-width / 2 + 1pt
+        }
+        || Position the View
+        set bto = BalloonTailOrientation.left
+        {self.set-window-position
+            current-x, current-y - adjust-tail-y
+        }
+
+     case BalloonSide.left do
+        {if not feasible then
+            set tail-height =
+                {if current-x - outer-w > 0m then
+                    current-x - outer-w
+                 else
+                    0m
+                }
+        }
+        || Set margin
+        set self.right-margin.width = tail-height
+        || Do the tail x,y adjustments
+        {if screen-h - current-y <= outer-h then
+            set adjust-tail-y = -(screen-h - current-y - outer-h)
+            || We would like to avoid the overlapping of corner and tail
+         elseif adjust-tail-y == 0m then
+            set adjust-tail-y = self.corner-radius + self.tail-width / 2 + 1pt
+        }
+        || Position the View
+        set bto = BalloonTailOrientation.right
+        {self.set-window-position
+            current-x - outer-w - tail-height, current-y - adjust-tail-y
+        }
+
+     case BalloonSide.bottom do
+        {if not feasible then
+            set tail-height =
+                {if screen-h - current-y - outer-h > 0m then
+                    screen-h - current-y - outer-h
+                 else
+                    0m
+                }
+        }
+        || Set margin
+        set self.top-margin.height = tail-height
+        || Do the tail x,y adjustments
+        {if screen-w - current-x <= outer-w then
+            set adjust-tail-x = -(screen-w - current-x - outer-w)
+         elseif adjust-tail-x == 0m then
+            set adjust-tail-x = self.corner-radius + self.tail-width / 2 + 1pt
+        }
+        || Position the View
+        set bto = BalloonTailOrientation.top
+        {self.set-window-position
+            current-x - adjust-tail-x, current-y}
+
+     case BalloonSide.top do
+        {if not feasible then
+            set tail-height =
+                {if current-y - outer-h > 0m then
+                    current-y - outer-h
+                 else
+                    0m
+                }
+        }
+        || Set margin
+        set self.bottom-margin.height = tail-height
+        || Do the tail x,y adjustments
+        {if screen-w - current-x <= outer-w then
+            set adjust-tail-x = -(screen-w - current-x - outer-w)
+         elseif adjust-tail-x == 0m then
+            set adjust-tail-x = self.corner-radius + self.tail-width / 2 + 1pt
+        }
+        || Position the View
+        set bto = BalloonTailOrientation.bottom
+        {self.set-window-position
+            current-x - adjust-tail-x, current-y - outer-h - tail-height
+        }
+    }
+    || If user dose not provide x, y values in proc, then default values
+    || for x = 0m and y = 0m, in this case we need to check for visible
+    || area of owner.
+    {self.check-owner-visible-area}
+    || Configure the balloon-canvas
+    {self.balloon-canvas.configure
+        bto,
+        adjust-tail-x, adjust-tail-y,
+        self.tail-width, tail-height
+    }
+    {self.set-size-from-child}
+  }
+
+  || Get new position for View and handle move window when provided owner
+  || is embedded into browser, AppletView. Also handle the condition in case
+  || of ScrollBar appears then hide and show the View
+
+  {method private {handle-move-window-alarm}:void
+    {if {self.hide-if-inactive} then
+        {return}
+    }
+
+    || When parent window move OR up/down using scrollbar, we need following
+    || since we do not get 'ViewMoveEvent' in case of AppletView.
+    let (new-win-x:Distance, new-win-y:Distance) =
+        {{self.owner.get-view}.get-window-position}
+    set (new-win-x, new-win-y) =
+        {self.owner.transform-to-display-coordinates new-win-x, new-win-y}
+
+    {if {abs(new-win-x - self.current-window-x)} > 0.5mm  or
+        {abs(self.current-window-y - new-win-y)} > 0.5mm
+     then
+        {if not self.destroyed? then
+            {self.check-owner-visible-area}
+            {self.set-view-position}
+        }
+        set self.current-window-x = new-win-x
+        set self.current-window-y = new-win-y
+    }
+    {self.start-alarm}
+  }
+
+  || Handle resize and move event in case of TitledView only.
+  {method private {resize-view-handler}:void
+
+    let owner-view:Graphic = {self.owner.get-view}
+    || Event when owner-window resize
+    {owner-view.add-event-handler
+        {on vre:ViewResizeEvent do
+            {if not self.destroyed? then
+                {self.set-view-position}
+            }
+        }
+    }
+    || We do not get the following event in case of AppletView
+    || we got only if owner-window is type-of View/TitledView
+    {owner-view.add-event-handler
+        {on vme:ViewMoveEvent do
+            {if not self.destroyed? then
+                {self.set-view-position}
+            }
+        }
+    }
+  }
+
+  {method private {hide-if-inactive}:bool
+    ||FIXME: disable this for now
+    {return false}
+
+    let active?:bool = false
+    {if-non-null
+        ov = {self.owner.get-view},
+        bv = {self.get-view}
+     then
+        set active? =
+            {ov.get-focus-manager}.have-keyboard-focus?
+            or {bv.get-focus-manager}.have-keyboard-focus?
+    }
+    {if not self.destroyed? then
+        {if not active? then
+            {if not self.internal-hidden? then
+                {super.hide}
+                set self.internal-hidden? = true
+                {return true}
+            }
+         else
+            {if self.internal-hidden? then
+                {super.show}
+                set self.internal-hidden? = false                
+            }
+        }
+    }
+    {return false}
+  }
+
+  || If tail-x and tail-y position of owner is not in visible area then hide
+  || the balloon and if it's in visible area then show the balloon.
+  {method private {check-owner-visible-area}:void
+    {if {self.hide-if-inactive} then
+        {return}
+    }
+
+    {if not self.destroyed? then
+
+        def owner-window = {self.owner.get-view}
+
+        || When control not in visible area?
+        def (current-x, current-y) =
+            {self.owner.transform-to-display-coordinates
+                self.tail-x,
+                self.tail-y
+            }
+        def (n-x, n-y) =
+            {owner-window.transform-from-display-coordinates
+                current-x, current-y}
+        {if not {{owner-window.get-bounds}.within? n-x, n-y} then
+            {if self.visibility == WindowVisibility.normal then
+                {super.hide}
+                set self.internal-hidden? = true
+            }
+         else
+            {if self.visibility == WindowVisibility.hidden and
+                self.internal-hidden? 
+             then
+                {super.show}
+                set self.internal-hidden? = false                
+            }   
+        }
+    }
+  }
+
+  || Overrides on BalloonView
+  || To add the contents in Dialog’s content-frame
+  {method public open {add g:any, ...}:#Visual
+    {return
+        {if self.initializing? then
+            {super.add g, ...}
+         else
+            {value
+                def val = {self.content-frame.add g, ...}
+                {self.set-view-position}
+                val
+            }
+        }
+    }
+  }
+
+  || To remove the contents from Dialog
+  {method public open {clear}:void
+    {if not self.initializing? then
+        {self.content-frame.clear}
+    }
+  }
+
+  || To remove the contents from Dialog
+  {method public open {remove-child}:void
+    {self.content-frame.remove-child}
+  }
+
+  || To set the title of popup-balloon
+  {setter public open {title caption:StringInterface}:void
+    set super.title = caption
+    {self.title-frame.add replace? = true, super.title}
+  }
+
+||--  || For hide and show, we can not find any usefull use-case where user needs
+||--  || to explicitly hide or show the balloon.
+||--  {method public open {show
+||--                     force-on-display?:bool = true,
+||--                     center?:bool = false }:void
+||--    || Ignore the call.  
+||--  }  
+||--
+||--  {method public open {hide}:void
+||--    || Ignore the call.
+||--  }
+||--
+
+  || we should not allow the user to set the visibility as well. if we allow
+  || then popup-balloon changed its visibility.
+  {setter public open {visibility popup-visibility:WindowVisibility}:void
+
+    {if popup-visibility == WindowVisibility.maximized or
+        popup-visibility == WindowVisibility.minimized then
+        || Ignore the call.
+    }
+    set super.visibility = popup-visibility
+  }
+
+  || To support moving the balloon, we should provide a set-pointer-position
+  || The use-case would be something like you are following a moving object
+  || on a map, and showing details about it in a balloon.
+  {method public open {set-pointer-position
+                     pointer-x:Distance,
+                     pointer-y:Distance
+                 }:void
+
+    set self.tail-x = pointer-x
+    set self.tail-y = pointer-y
+    def bounds = {self.owner.layout.get-bounds}
+
+    {if pointer-x < -bounds.lextent then
+        set self.tail-x = -bounds.lextent
+    }
+    {if pointer-y < -bounds.ascent then
+        set self.tail-y = -bounds.ascent
+    }
+    {if pointer-x > -bounds.lextent + bounds.width then
+        set self.tail-x = -bounds.lextent + bounds.width
+    }
+    {if pointer-y > -bounds.ascent + bounds.height then
+        set self.tail-y = -bounds.ascent + bounds.height
+    }
+    {self.check-owner-visible-area}
+    {self.set-view-position}
+  }
+
+}|| End of class BalloonView
+
+{define-proc public {popup-balloon
+                        content:Graphic,
+                        owner:Graphic,
+                        title:String = "",
+                        x:Distance = 0m,
+                        y:Distance = 0m,
+                        tail-size:Distance = 9pt,
+                        max-width:Distance = 4in,
+                        corner-radius:Distance = 9pt
+                    }:View
+
+    let popup-view:BalloonView =
+        {BalloonView
+            content,
+            owner,
+            title = title,
+            x,
+            y,
+            tail-size = tail-size,
+            max-width = max-width,
+            corner-radius = corner-radius
+        }
+    {return popup-view}
+}
+
+{do
+    def decorations-start-color = {FillPattern.from-color
+                                    {Color.from-rgb-uint8 166, 208, 258}
+                                }
+    def decorations-end-color = {get-shadow-for decorations-start-color}
+
+    def button-border-color = {get-highlight-for decorations-end-color}
+
+    def button-rollover-color = {get-shadow-for decorations-end-color}
+
+    || Shadow-spec and shadow-color for buttons
+    def button-shadow-spec =
+        {ShadowSpec
+            offset = 1px,
+            angle = 120deg,
+            corner-radius = 1px,
+            falloff = 2,
+            upper-left-rounded? = true,
+            upper-right-rounded? = true,
+            lower-right-rounded? = true,
+            lower-left-rounded? = true
+        }
+    def button-shadow-color =
+        {FillPattern.from-rgb
+            255, 255, 255,
+            opacity = 0.6
+        }
+
+    {StyleManager.append-base-style-rule
+        {StyleRule "BalloonView", ||""
+            background = "white", ||""
+            color = "black" ||""
+        },
+        {StyleRule "BalloonView/titlebar", ||""
+            color = "black", ||""
+            font-size = {prefs}["caption-font-size"], ||""
+            font-weight = {prefs}["caption-font-weight"], ||""
+            font-style = {prefs}["caption-font-style"] ||""
+        },
+        {StyleRule "BalloonView/content", ||""
+            border-width = 0px,
+            skin =
+                {ShadedSkinSpec
+                    "green", ||""
+                    "white", ||""
+                    draw-top-edge? = false,
+                    draw-right-edge? = false,
+                    draw-bottom-edge? = false,
+                    draw-left-edge? = false
+                }
+        },
+        {StyleRule "BalloonView/close-button", ||""
+            color = "black", ||""
+            font-size = {prefs}["caption-font-size"], ||""
+            font-weight = {prefs}["caption-font-weight"], ||""
+            font-style = {prefs}["caption-font-style"], ||""
+            skin =
+                {ShadedSkinSpec
+                    decorations-start-color,
+                    decorations-end-color,
+                    rollover-start-color = decorations-end-color,
+                    rollover-end-color = decorations-start-color,
+                    border-color = button-border-color,
+                    rollover-border-color = button-border-color,
+                    pressed-overlay = button-rollover-color,
+                    highlight-alpha-1 = 0.5,
+                    highlight-boundary = 1percent,
+                    corner-radius = 3px,
+                    upper-left-rounded? = true,
+                    upper-right-rounded? = true,
+                    lower-left-rounded? = true,
+                    lower-right-rounded? = true
+                }
+        }
+    }
+}

@@ -1,8 +1,8 @@
 {curl 7.0 package}
-{package COM.CURL.GUI.TEST-SUPPORT,
+{package COM.CURL.EXT.TEST-SUPPORT,
     {compiler-directives careful? = true}
 }
-{import * from COM.CURL.GUI}
+{import * from COM.CURL.EXT}
 {import * from CURL.GUI.STANDARD}
 {import * from COM.CURL.CDU.CURL-UNIT}
 

@@ -1,6 +1,6 @@
 ||| Copyright (C) 1998-2009, Sumisho Computer Systems Corp.  All Rights Reserved.
 |||
-||| An OpenCurl project.
+||| An Open Curl project.
 
 ||| Licensed under the Apache License, Version 2.0 (the "License");
 ||| you may not use this file except in compliance with the License.
@@ -20,19 +20,20 @@
 }
 {import * from COM.CURL.CDU.CURL-UNIT}
 {import * from COM.CURL.CDU.CURL-UNIT-UI}
-{import * from COM.CURL.GUI}
-{import * from COM.CURL.GUI.TEST-SUPPORT}
+{import * from COM.CURL.EXT}
+{import * from COM.CURL.EXT.TEST-SUPPORT}
+
 
 || ===== \\
 {import * from CURL.IDE.COVERAGE}
-{import COM.CURL.GUI.TILED-WINDOWS}
+{import COM.CURL.EXT.TILED-WINDOWS}
 {def start-coverage =
     {CommandButton
         label = "Start Coverage",
         {on Action do
             {coverage-enable}
             {coverage-instrument
-                COM.CURL.GUI.TILED-WINDOWS
+                COM.CURL.EXT.TILED-WINDOWS
             }
             {coverage-start}
         }}
@@ -49,6 +50,7 @@
 } 
 || ===== //
 
+
 {document-style PlainDocument}
 {set-document-properties hstretch? = true, vstretch? = true}
 
@@ -56,10 +58,11 @@
     def target = {RecordSetTestTarget}
     set TestTarget.current = target
 
-    def suite =
+    let suite:TestSuite =
         {TestSuite "main",
             || packages
-            {ManifestTestSuite.from-name "COM.CURL.GUI"},
+            {ManifestTestSuite.from-name "COM.CURL.EXT"},
+            {TestSuite.import {url "domain-tests.scurl"}},
 ||--            || dguide
 ||--            {TestSuite "dguide",
 ||--                {AppletTestCase {url "../code/docs/en/dguide/overview.curl"}},
@@ -417,12 +420,15 @@
                                         {single-pane pane-name = "pane3"}}
                                 }}}
                     }}
-            }}
+            }
+        }
+    
     || presentation
     {VBox
         {HBox
             start-coverage,
             stop-coverage,
             {Fill}},
-        {test-ui suite}}
+        {test-ui suite}
+    }
 }

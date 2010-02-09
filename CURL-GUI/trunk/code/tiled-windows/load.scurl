@@ -1,6 +1,6 @@
 {curl 7.0 package}
 
-{package COM.CURL.GUI.TILED-WINDOWS,
+{package COM.CURL.EXT.TILED-WINDOWS,
     {compiler-directives careful? = true}
 }
 
