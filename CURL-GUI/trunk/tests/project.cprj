@@ -29,7 +29,7 @@
         {resource-transform "t-domains.curl\u0000file\u0000t-domains.curl", copy? = true},
         {resource-transform "data\u0000directory\u0000data", copy? = true},
         {resource-transform "resources\u0000directory\u0000resources", copy? = true},
-        {resource-transform "curltest\u0000directory\u0000curltest", copy? = true}
+        {resource-transform "server\u0000directory\u0000server", copy? = true}
     },
     {file-setting "start-tests.curl", start-file? = true}
 }

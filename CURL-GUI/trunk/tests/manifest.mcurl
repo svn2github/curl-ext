@@ -56,8 +56,8 @@
     location = "t-treegrid.curl"
 }
 
-{component directory curltest,
-    location = "curltest"
+{component directory server,
+    location = "server"
 }
 
 {component directory data,

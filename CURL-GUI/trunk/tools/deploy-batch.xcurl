@@ -25,7 +25,7 @@
     let context:DeployContext =
         {DeployContext
             source-root = {url "../"},
-            target-root = {url "../build/"}}
+            target-root = {url "../build/DEPLOYED/"}}
     || progress messages
     {specs.add-event-handler
         {on e:DeployProgress do

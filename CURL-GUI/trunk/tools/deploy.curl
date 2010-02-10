@@ -28,5 +28,5 @@
 {DeployUI
     {evaluate {url "deploy-specs.scurl"}},
     source-root = {url "../"},
-    target-root = {url "../build/"}        
+    target-root = {url "../build/DEPLOYED/"}
 }
