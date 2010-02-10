@@ -1,8 +1,0 @@
-{curl 7.0 manifest}
-{manifest COM.CURL.GUI.SUPPORT}
-
-|| libraries
-|| --------------------
-{delegate-to COM.CURL.GUI,
-    location = "../code/manifest.mcurl"
-}
