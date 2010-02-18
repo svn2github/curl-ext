@@ -75,7 +75,7 @@
 
 || Prepare to run the tests
 {let results:Table = 
-    {GuiTest.setup "AutocompleteTextField Tests", script-url = script-url}
+    {GuiTest.setup "AutocompleteTextField Tests", script-url = {url ""}}
 }
 
 || -----------------

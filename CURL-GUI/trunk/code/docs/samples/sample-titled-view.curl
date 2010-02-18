@@ -324,7 +324,7 @@
                         }
                     {view.set-icon 
                         {Pixmap.from-url
-                            {url "../code/resources/sliconx16.gif"}}, null}
+                            {url "../../resources/sliconx16.gif"}}, null}
                     {show-view view}
                     {after 3s do
                         {view.set-size-from-child}

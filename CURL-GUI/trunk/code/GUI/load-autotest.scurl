@@ -44,19 +44,15 @@
   - Better doc for platform
   - For platform, allow any combination
   - Every constructor should take amount
-  o Replace Array-of String with StringArray everywhere
-  o Every gesture should allow target? (Why is it a class constant?)
+  - check-property is really two different things
+  o Every gesture should allow target?
   o Seems strange to pass in the display table everywhere
-  o check-property-arg-list seems bogus
   o Should default constructor take all fields as args?
-  o Why did they introduce check-property.test-proc? Seems bogus
-    If we keep it, add documentation.
   o Add a delay property and use amount for something else, or drop it
   - Better explanation of the parameters. Put doc on the fields and
     have the constructors refer to that
   o Rename rclick to right-click
   o Look for asa. Can we check in the UI constructor? (cf case UiGesture.focus)
-  o 
 
 How to use
 
@@ -261,7 +257,18 @@ o Maybe the MeasuringFrame is not needed now
 }
 {define-class public open MeasuringFrame {inherits Frame}
 
+  {doc-next
+    {purpose Measured width of this {ctext Frame} when {docref-abbr
+        Graphic.set-size} is called.
+    }
+  }
   field public measured-width:Distance = 1.8525mm
+
+  {doc-next
+    {purpose Measured height of this {ctext Frame} when {docref-abbr
+        Graphic.set-size} is called.
+    }
+  }
   field public measured-height:Distance = 4.445mm
 
   {constructor public {default ...}
@@ -303,6 +310,8 @@ o Maybe the MeasuringFrame is not needed now
     scroll,
     set-value,
     check-property,
+    check,
+    set-view,
     wait
 }
 
@@ -312,6 +321,7 @@ o Maybe the MeasuringFrame is not needed now
     }
 }
 {define-value-class public final UI
+||--{define-class public final UI
 
   || To keep it simple, there are fields for everything here.
   || Different gestures use different combinations of this data
@@ -364,8 +374,7 @@ o Maybe the MeasuringFrame is not needed now
   {doc-next
     {purpose Optional procedure to execute when the UI gesture is executed.}
   }
-  ||FIXME: rename tproc to do-proc
-  field public constant tproc:{proc-type {test:GuiTest}:void} =
+  field public constant do-proc:{proc-type {test:GuiTest}:void} =
       {proc {test:GuiTest}:void}
 
   {doc-next
@@ -404,10 +413,16 @@ o Maybe the MeasuringFrame is not needed now
     {purpose Optional procedure to be executed when
         {docref UI.check-property} is executed.
     }
+    {details
+        The {param args} come from the {docref UI.check-property}
+        constructor. The procedure should return an array of expected
+        values and an array of actual values. If these do not match,
+        the test will fail.
+    }
   }
-  field public constant test-proc:#{proc-type {t:Graphic, {Array-of any}
-                                              }:(expected:#{Array-of String},
-                                                 actual:#{Array-of String})
+  field public constant test-proc:#{proc-type {t:Graphic,
+                                               args:Array
+                                              }:(expected:Array, actual:Array)
                                    } = null
 
   {doc-next
@@ -415,8 +430,8 @@ o Maybe the MeasuringFrame is not needed now
         executed.
     }
   }
-  field protected constant check-property-arg-list:{Array-of any} =
-      {{Array-of any}}
+  field protected constant check-property-arg-list:Array =
+      {Array}
 
 
   {doc-next
@@ -493,6 +508,28 @@ o Maybe the MeasuringFrame is not needed now
   }
 
   {doc-next
+    {purpose Set the {docref View} that for events to be fired at.}
+    {details
+        Normally simulated events are fired at the {docref View} that
+        contains the test target. If a test causes a different {ctext
+        View} to be shown, this action can be used to request that
+        subsequent events be fired at the new {ctext View}. 
+
+        If {param view} is closed, events will once again be fired at
+        the target's {ctext View}. You can also code {ctext
+        UI.set-view null} to reinstate the target {ctext View}.
+    }
+  }
+  {constructor public {set-view
+                          view-proc:{proc-type {}:#View},
+                          platform:String = ""
+                      }
+    set self.gesture = UiGesture.set-view
+    set self.data = view-proc
+    set self.platform = platform
+  }
+
+  {doc-next
     {purpose Verify the current selection held by control against the
         specified value.
     }
@@ -533,8 +570,7 @@ o Maybe the MeasuringFrame is not needed now
   }
 
   {doc-next
-    {purpose Check a property of specified control.
-    }
+    {purpose Check properties of the test target.}
     {parameter property-name,
         The name of the property to be checked.
     }
@@ -548,29 +584,14 @@ o Maybe the MeasuringFrame is not needed now
         Specifies the platform on which this {ctext UiGesture} should be
         simulated. See {docref UI.platform} for details.
     }
-    {notes
-        {ctext check-property} could be called in two forms
-        {ctext \{UI.check-property "enabled?", true\} }or
-        {ctext \{UI.check-property "label", null, 
-            test-proc = label-test-proc\}}
-        In first form value could be expected property value and in second
-        when test-proc is used, it could be null or any value which needs to
-        check against.
-    }
     {for-example
-        {ctext check-property} could be called in two forms,
-        first, check the {docref radio-value} in RadioButton and
-        second, check ComboBox selectable item as follow,
-
         {curl-code
             {GuiTest {CheckButton label = "CheckButton", label-inset = 8px},
                 "Check property of CheckButton and label-inset", results,
                 {UI.focus},
                 {UI.dclick 0, 0},
                 {UI.check-property "value", false},
-                {UI.check-selection "123456789"},
-                {UI.check-property "label-inset", null,
-                    test-proc = test-label-inset, "8px"}
+                {UI.check-selection "123456789"}
             }
         }
     }
@@ -580,16 +601,55 @@ o Maybe the MeasuringFrame is not needed now
                           value:any,
                           target:#Graphic = null,
                           amount:double = 50.0,
-                          platform:String = "",
-                          test-proc:#{proc-type {t:Graphic, {Array-of any}
-                                                }:(expected:#{Array-of String},
-                                                   actual:#{Array-of String})
-                                     } = null,
-                          ...
+                          platform:String = ""
                       }
     set self.gesture = UiGesture.check-property
     set self.data = value
     set self.property-name = property-name
+    set self.target = target
+    set self.amount = amount
+    set self.platform = platform
+  }
+
+  {doc-next
+    {purpose Check the test target using an arbitrary procedure.}
+    {parameter amount, A time delay amount in milliseconds It specifies
+        how long to wait before firing the next synthetic event.
+    }
+    {parameter platform,
+        Specifies the platform on which this {ctext UiGesture} should be
+        simulated. See {docref UI.platform} for details.
+    }
+    {details
+        In the following example {ctext check-property} is used to verify
+        that the {ctext value} property is false. Then {ctext check} 
+        is used to apply the {ctext test-label-inset} procedure to the
+        test target. The value "8px" is passed to {ctext test-label-inset}.
+    }
+    {for-example
+        {curl-code
+            {GuiTest {CheckButton label = "CheckButton", label-inset = 8px},
+                "Check property of CheckButton and label-inset", results,
+                {UI.focus},
+                {UI.dclick 0, 0},
+                {UI.check-property "value", false},
+                {UI.check-selection "123456789"},
+                {UI.check test-proc = test-label-inset, "8px"}
+            }
+        }
+    }
+  }
+  {constructor public {check
+                          target:#Graphic = null,
+                          amount:double = 50.0,
+                          platform:String = "",
+                          test-proc:#{proc-type {t:Graphic,
+                                                 args:Array
+                                                }:(expected:Array, actual:Array)
+                                     } = null,
+                          ...
+                      }
+    set self.gesture = UiGesture.check
     set self.target = target
     set self.test-proc = test-proc
     set self.amount = amount
@@ -1213,6 +1273,7 @@ o Maybe the MeasuringFrame is not needed now
   }
   {constructor public {type
                           s:String,
+                          view:#View = null,
                           shift?:bool = false,
                           ctrl?:bool = false,
                           alt?:bool = false,
@@ -1321,7 +1382,7 @@ o Maybe the MeasuringFrame is not needed now
 
   {doc-next
     {purpose Execute an arbitrary procedure while running a test.}
-    {parameter tproc,
+    {parameter do-proc,
         The proc which will take a {docref GuiTest} as a argument.
         No result is expected.
     }
@@ -1376,9 +1437,9 @@ o Maybe the MeasuringFrame is not needed now
         }
     }
   }
-  {constructor public {do tproc:{proc-type {t:GuiTest}:void}}
+  {constructor public {do do-proc:{proc-type {t:GuiTest}:void}}
     set self.gesture = UiGesture.do
-    set self.tproc = tproc
+    set self.do-proc = do-proc
   }
 
   {doc-next
@@ -1404,7 +1465,7 @@ o Maybe the MeasuringFrame is not needed now
         {ctext check-events} could be used as follows
 
         {curl-code
-            || items is a proc which returns {Array-of any}
+            || items is a proc which returns Array
             {let item-y:Distance = 9.8pt}
             {def value-changed = {ValueChanged}}
             {def value-finished = {ValueFinished}}
@@ -1511,12 +1572,30 @@ o Maybe the MeasuringFrame is not needed now
 
 {define-class public open GuiTest
 
+  {doc-next
+    {purpose Amount added to the x coordinate in a gesture, to compensate
+        for decorations around the edges of a control.
+    }
+  }
   field public bias-x:Distance = 0m
+
+  {doc-next
+    {purpose Amount added to the y coordinate in a gesture, to compensate
+        for decorations around the edges of a control.
+    }
+  }
   field public bias-y:Distance = 0m
 
-  field protected steps:{Array-of UI}
+  {doc-next
+    {purpose The sequence of {docref UI} gestures that comprise a test.}
+  }
+  field public-get protected-set steps:{Array-of UI}
+
+  field public-get protected-set current-step:int = -1
 
   field public target:Graphic
+  field public target-view:#View
+  field public step-view:#View
   field public target-width:any = null
   field public target-height:any = null
   field protected button:CommandButton
@@ -1539,8 +1618,16 @@ o Maybe the MeasuringFrame is not needed now
   let public script-url:Url = {url ""}
   let public coverage?:bool = false
 
+  {doc-next
+    {purpose The test framework puts every test into this {docref ScrollBox}
+        so it can ensure that the test target is visible when the test is run.
+    }
+  }
   let public scrollbox:ScrollBox = {ScrollBox accept-focus? = false}
 
+  {doc-next
+    {purpose Construct a single test case.}
+  }
   {constructor public {default
                           target:Graphic,
                           description:Visual,
@@ -1754,11 +1841,12 @@ o Maybe the MeasuringFrame is not needed now
     {inc GuiTest.total-test-run}
     || Scroll view if needed
     def sb = GuiTest.scrollbox
-    def view = {GuiTest.mf.get-view}
-    def view-bounds = {view.get-bounds}
+    set self.target-view = {GuiTest.mf.get-view}
+    set self.step-view = null
+    def view-bounds = {self.target-view.get-bounds}
     def object-bounds = {self.target.layout.get-bounds}
     let (x:Distance, y:Distance, found?:bool) =
-        {self.target.get-origin-in-graphical-ancestor view}
+        {self.target.get-origin-in-graphical-ancestor self.target-view}
     {if y + object-bounds.height >= view-bounds.height or
         x + object-bounds.width >= view-bounds.width
      then
@@ -1769,7 +1857,7 @@ o Maybe the MeasuringFrame is not needed now
     {set self.result.background = "silver"}
     {self.result.add self.description}
     {self.events.clear}
-    {if-non-null view = {GuiTest.mf.get-view} then
+    {if-non-null view = self.target-view then
         {type-switch self.target-width
          case d:Distance do
             set self.target.width = d
@@ -1788,9 +1876,11 @@ o Maybe the MeasuringFrame is not needed now
             set self.target.height =
                 (self.target-height asa double) * GuiTest.mf.measured-height
         }
-        {for step in self.steps do
-            {self.do-step step, view}
+        {for step key si in self.steps do
+            set self.current-step = si
+            {self.do-step step}
         }
+        set self.current-step = -1
      else
         set self.result.background = "yellow"
         {self.result.add "?? No view"}
@@ -1845,7 +1935,7 @@ o Maybe the MeasuringFrame is not needed now
   }
 
   {doc-next
-    {purpose Decide weather to allow a UiGesture on the current platform.}
+    {purpose Decide whether to allow a UiGesture on the current platform.}
     {parameter step,
         {docref UiGesture} to be checked.
     }
@@ -1916,11 +2006,22 @@ o Maybe the MeasuringFrame is not needed now
         dispatch it to the specified View.
     }
   }
-  {method protected open {do-step step:UI, view:View}:void
+  {method protected open {do-step step:UI}:void
     {if not {self.proceed? step} then
         {return}
     }
 
+    {if-non-null sv = self.step-view then
+        {if sv.destroyed? then
+            set self.step-view = null
+        }
+    }
+    let view:View = {if-non-null sv = self.step-view then
+                        sv
+                     else
+                        {non-null self.target-view}
+                    }
+    {dump view}
     {dispatch-events false}
     {inc GuiTest.event-time, 50ms}
 
@@ -1956,7 +2057,17 @@ o Maybe the MeasuringFrame is not needed now
     let (x:Distance, y:Distance) =
         {transform-coordinates nx, ny, self.target, view}
 
+    let target:Graphic =
+        {if-non-null step.target then
+            step.target
+         else
+            self.target
+        }
+
     {switch step.gesture
+
+     case UiGesture.set-view do
+        set self.step-view = {(step.data asa {proc-type {}:#View})} asa #View
 
      case UiGesture.press do
         def e = {PointerPress}
@@ -2078,7 +2189,7 @@ o Maybe the MeasuringFrame is not needed now
         || 2) takes-focus?=false and exception is not raised
         {try
             ||FIXME: type-switch, or check in the constructor
-            def control = self.target asa ActiveTraversor
+            def control = target asa ActiveTraversor
             {try
                 {control.request-key-focus}
                 {self.compare-result
@@ -2111,7 +2222,6 @@ o Maybe the MeasuringFrame is not needed now
         {self.press-key view, step, s}
 
      case UiGesture.check-selection do
-        let target:Graphic = self.target
         {type-switch target
             || multiple cases could be added for other controls
          case sc:SpinControl do
@@ -2131,7 +2241,7 @@ o Maybe the MeasuringFrame is not needed now
             def reg-itr-size = selection.region-count
             
             let expected-items-row:{Array-of int} = {{Array-of int}}
-            let expected-items-col:{Array-of String} = {{Array-of String}}
+            let expected-items-col:StringArray = {StringArray}
             let expected-items-region:{Array-of RecordGridRegion} =
                 {{Array-of RecordGridRegion}}
             let (row:bool, col:bool, region:bool) = (false, false, false)
@@ -2141,13 +2251,13 @@ o Maybe the MeasuringFrame is not needed now
                 set expected-items-row = row-items
                 set row = true
                 || Column selection
-             case col-items:{Array-of String} do
+             case col-items:StringArray do
                 set expected-items-col = col-items
                 set col = true
                 || Row Column selection
-             case row-col-items:{Array-of any} do
+             case row-col-items:Array do
                 set expected-items-row = row-col-items[0] asa {Array-of int}
-                set expected-items-col = row-col-items[1] asa {Array-of String}
+                set expected-items-col = row-col-items[1] asa StringArray
                 set row = true
                 set col = true
                 || Region selection
@@ -2311,50 +2421,29 @@ o Maybe the MeasuringFrame is not needed now
         }
 
      case UiGesture.check-property do
-        let target:Graphic =
-            {if step.target == null then
-                self.target
-             else
-                step.target
+        let ctype:ClassType = {type-of target} asa ClassType
+        let prop:#Property = {ctype.get-property-for-get step.property-name}
+        {if-non-null prop then
+            {self.compare-result
+                prefix = step.property-name,
+                {prop.get-value target}, step.data
             }
-        {if step.test-proc == null then
-            let ctype:ClassType = {type-of target} asa ClassType
-            let prop:#Property = {ctype.get-property-for-get step.property-name}
-            {if-non-null prop then
+        }
+
+     case UiGesture.check do
+        let (expected:Array, actual:Array) =
+            {step.test-proc target, step.check-property-arg-list}
+        {if expected.size == actual.size then
+            {for count = 0 below actual.size do
                 {self.compare-result
                     prefix = step.property-name,
-                    {prop.get-value target}, step.data
+                    actual[count], expected[count]
                 }
             }
          else
-            let (expected:#{Array-of String}, actual:#{Array-of String}) =
-                {step.test-proc
-                    target, step.check-property-arg-list
-                }
-            def array-size = expected.size
-            {if array-size == actual.size then
-                {if expected != null and
-                    actual != null and
-                    array-size > 0
-                 then
-                    {for count = 0 below array-size do
-                        {self.compare-result
-                            prefix = step.property-name,
-                            actual[count], expected[count]
-                        }
-                    }
-                 else
-                    || To indicate successful test.
-                    {self.compare-result
-                        prefix = step.property-name,
-                        true, true
-                    }
-                }
-             else
-                {self.compare-result
-                    prefix = step.property-name,
-                    actual.size, array-size
-                }
+            {self.compare-result
+                prefix = "check",
+                expected.size, actual.size
             }
         }
 
@@ -2461,7 +2550,7 @@ o Maybe the MeasuringFrame is not needed now
         }
 
      case UiGesture.do do
-        {step.tproc self}
+        {step.do-proc self}
 
      case UiGesture.check-events do
         def events = self.events
@@ -2671,12 +2760,12 @@ o Maybe the MeasuringFrame is not needed now
 ||FIXME: Remove this
 {define-proc deprecated public {test-get-text
                  t:Graphic,
-                 val:{Array-of any}
-             }:(expected:#{Array-of String},
-                actual:#{Array-of String})
+                 val:Array
+             }:(expected:#StringArray,
+                actual:#StringArray)
 
     {return
-        {{Array-of String} {String val[0]}},
-        {{Array-of String} {t.get-text}}
+        {StringArray {String val[0]}},
+        {StringArray {t.get-text}}
     }
 }

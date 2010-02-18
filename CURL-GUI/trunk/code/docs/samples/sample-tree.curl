@@ -1,6 +1,6 @@
 ||| Maintained by: mgordon
 {curl 7.0 applet}
-{applet manifest = "en/dguide/manifest.mcurl",
+{applet manifest = "manifest.mcurl",
     {compiler-directives careful? = true}
 }
 {document-style PlainDocument}

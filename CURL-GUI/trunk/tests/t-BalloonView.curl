@@ -1,0 +1,195 @@
+||| Maintained by: mgordon
+
+{curl 7.0 applet}
+{applet manifest = "manifest.mcurl",
+    {compiler-directives careful? = true}
+}
+
+{import * from COM.CURL.EXT.AUTO-TEST}
+{import * from COM.CURL.EXT.GUI}
+
+{import * from CURL.GRAPHICS.WINDOW}
+
+{import * from CURL.GUI.STANDARD} || For events
+{import * from CURL.GUI.CONTROL-BASE} || Control
+
+|| Run this script using curl.exe:
+|| "C:\Program Files\Curl Corporation\Surge\8\bin\curl.exe" %1 --manual
+
+{let package balloon:#BalloonView = null}
+
+{define-proc {make-test ...}:Graphic
+    def args = {Arguments ...}
+    let cc:CalendarControl =
+        {CalendarControl
+            vorigin = "top", horigin = "left",
+            value = {DateTime},
+            show-date-controls? = false,
+            {on e:PointerRelease do
+                let content:Dialog = {Dialog background = "white"}
+                {content.add
+                    {spaced-vbox
+                        {spaced-hbox "Date:", cc.value.info.iso-date},
+                        {bold Add notes},
+                        {TextArea
+                            width = 1in,
+                            height = 1in
+                        }
+                    }
+                }
+                {if-non-null bv = balloon then
+                    {bv.close-popup}
+                }
+                set balloon =
+                    {BalloonView
+                        content,
+                        cc,
+                        e.x, e.y,
+||--                        x = e.x,
+||--                        y = e.y,
+                        title = "Daily Notes",
+                        tail-size = 9pt,
+                        max-width = 5in,
+                        corner-radius = 9pt,
+                        {on e:PointerMotion at bv:BalloonView do
+                            {dump e.x, e.y}
+                        },
+                        {splice args}
+                    }
+            }
+        }
+    {return cc}
+}
+
+|| Initialize the GuiTest framework and get a table for the test results
+{let results:Table = 
+    {GuiTest.setup "BalloonView Tests", script-url = {url ""}}
+}
+
+|| -----------------
+|| Define the tests
+|| -----------------
+
+{def value-changed = {ValueChanged}}
+{def value-finished = {ValueFinished}}
+{def action = {Action}}
+{def key-press = {KeyPress}}
+
+{def test-close =
+    {GuiTest {make-test close-button? = true}, "Test Close Button", results,
+        {UI.focus},
+        {UI.click 10mm, 5mm, amount = 100},
+        {UI.set-view {proc {}:#View {return balloon}}},
+        {UI.click 8mm, 28mm, amount = 100},
+        {UI.type "tested", view = balloon},
+        {UI.click 27mm, 10mm, amount = 100},
+        {UI.check
+            test-proc = {proc {t:Graphic, args:Array
+                              }:(expected:Array, actual:Array)
+                            def expected = {Array true}
+                            def actual = {Array balloon.destroyed?}
+                            {return (expected, actual)}
+                        }
+        }
+||--        {UI.click 34mm, 10mm, amount = 100},
+||--        {UI.click 38mm, 10mm, amount = 100},
+||--        {UI.click 40mm, 10mm, amount = 100}
+||--        {UI.check-events 
+||--            key-press, value-changed, 
+||--            key-press, value-changed,
+||--            value-changed, value-finished
+||--        },
+||--        {UI.set-value ""},
+||--        {UI.type "af"},
+||--        {UI.check-events 
+||--            key-press, value-changed, 
+||--            key-press, value-changed
+||--        }
+    }
+}
+
+{let dialog:Dialog =
+    {Dialog
+        {big {bold Test Dialog}}
+    }
+}
+
+
+{def test-no-close =
+    {GuiTest {make-test close-button? = false}, "Test no close button", results,
+        {UI.focus},
+        {UI.click 10mm, 5mm, amount = 100},
+        {UI.set-view {proc {}:#View {return balloon}}},
+        {UI.click 8mm, 28mm, amount = 100},
+        {UI.type "tested", view = balloon},
+        {UI.click 27mm, 10mm, amount = 100},
+        {UI.check
+            test-proc = {proc {t:Graphic, args:Array
+                              }:(expected:Array, actual:Array)
+                            def expected = {Array false}
+                            def actual = {Array balloon.destroyed?}
+                            {return (expected, actual)}
+                        }
+        },
+        {UI.do
+            {proc {t:GuiTest}:void
+                set dialog = {Dialog {big {bold Test Dialog!}}}
+                {dialog.show}
+            }
+        },
+        {UI.check
+            test-proc = {proc {t:Graphic, args:Array
+                              }:(expected:Array, actual:Array)
+                            def expected = {Array true}
+                            def actual = {Array balloon.destroyed?}
+                            {return (expected, actual)}
+                        }
+        },
+        {UI.do
+            {proc {t:GuiTest}:void
+                {dialog.close "closed"}
+            }
+        }
+||--        {UI.check-events 
+||--            key-press, value-changed, 
+||--            key-press, value-changed,
+||--            value-changed, value-finished
+||--        },
+||--        {UI.set-value ""},
+||--        {UI.type "af"},
+||--        {UI.check-events 
+||--            key-press, value-changed, 
+||--            key-press, value-changed
+||--        }
+    }
+}
+
+
+{define-proc public {run-tests}:void
+    {test-close.run}
+    {test-no-close.run}
+    {GuiTest.finish}
+}
+
+
+
+{value
+    {GuiTest.scrollbox.add
+        {VBox
+            {HBox
+                {Fill},
+                {CommandButton
+                    label = "Run All",
+                    takes-focus? = false,
+                    {on Action at cb:CommandButton do
+                        set cb.enabled? = false
+                        {run-tests}
+                        set cb.enabled? = true
+                    }
+                }
+            },
+            results
+        }
+    }
+    {Dialog GuiTest.scrollbox}
+}
