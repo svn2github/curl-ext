@@ -5,9 +5,9 @@
 ||| Licensed under the Apache License, Version 2.0 (the "License");
 ||| you may not use this file except in compliance with the License.
 ||| You may obtain a copy of the License at
-||| 
+|||
 |||     http://www.apache.org/licenses/LICENSE-2.0
-||| 
+|||
 ||| Unless required by applicable law or agreed to in writing, software
 ||| distributed under the License is distributed on an "AS IS" BASIS,
 ||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -33,7 +33,7 @@
     not-after   || schedule after date
 }
 
-{def public TaskConstraint-domain = 
+{def public TaskConstraint-domain =
     {new {EnumDomain-of TaskConstraint}}
 }
 
@@ -87,7 +87,7 @@ How to handle foreign key fields?
 ||FIXME: parameterize {ForeignFieldCell-for rs, id, name}
 {define-class public open ResourceCell
   {inherits StandardBaseEditableStringCell}
-  
+
   {doc-next
     {purpose
         Construct this object.
@@ -101,7 +101,7 @@ How to handle foreign key fields?
   {method package {create-list-value-array}:{Array-of ListValueItem}
     let constant lm:{Array-of ListValueItem} = {{Array-of ListValueItem}}
     let has-empty?:bool = false
-    {if-non-null 
+    {if-non-null
         rf = self.field,
         pm = self.project-model
      then
@@ -115,7 +115,7 @@ How to handle foreign key fields?
     }
     {return lm}
   }
-  
+
   {method protected open {create-editor}:DropdownList
     let lm:{Array-of ListValueItem} = {self.create-list-value-array}
     {return {SRGDropdownList {splice lm}}}
@@ -124,7 +124,7 @@ How to handle foreign key fields?
   {getter public open {current-editor}:#DropdownList
     {return super.current-editor asa #DropdownList}
   }
-  
+
   || Methods to implement RecordGridCell
   {method public open {refresh-data}:void
     {super.refresh-data}
@@ -133,7 +133,7 @@ How to handle foreign key fields?
         {if valid? then
             set editor.value = val
          else
-            set editor.prompt =  "" 
+            set editor.prompt =  ""
             {editor.unset-value}
         }
      else
@@ -143,7 +143,7 @@ How to handle foreign key fields?
             {if parts.size > 0 then
                 set str = parts[0]
             }
-        }        
+        }
         set self.display-graphic.contents = {if valid? then str else ""}
     }
   }
@@ -175,10 +175,10 @@ How to handle foreign key fields?
             {editor.handle-event {ValueFinished}}
             set editor.pending-value? = false
         }
-    } 
+    }
     {super.note-grid-focus-out}
   }
-  
+
   {local-option public halign:any
     {if-non-null editor = self.current-editor then
         {type-switch editor
@@ -187,7 +187,7 @@ How to handle foreign key fields?
         }
     }
   }
-   
+
   || When a KeyPress is delivered to this cell,
   || toss it directly to the editor's UI instead.
   {method public open {on-key-press ev:KeyPress}:void
@@ -202,7 +202,7 @@ How to handle foreign key fields?
         }
     }
   }
-  
+
   || Attempts to locate the index of a value among the list used for
   || this cell's control. Returns -1 on failure.
   || FIXME: only works when this cell is active and has an editor.
@@ -220,7 +220,7 @@ How to handle foreign key fields?
      case s:String do
         let main:#String = null
         {if {regexp-match? |"#(\d+)"|, s, main} then ||""
-            {try 
+            {try
                 set index = {main.to-int}
                 set tmp-idx = -1
                 {for item in list-items do
@@ -230,11 +230,11 @@ How to handle foreign key fields?
                         {break}
                     }
                 }
-                
+
                 {if index != tmp-idx then
                     {throw
                         {KeyNotFoundException
-                            {lmessage 
+                            {lmessage
                                 Key '{value index}' not found in
                                 '{value list-items}'.
                             }
@@ -243,7 +243,7 @@ How to handle foreign key fields?
                 }
              catch ce:CastException do
             }
-            
+
          else
             set tmp-idx = -1
             {for item in list-items do
@@ -270,11 +270,11 @@ How to handle foreign key fields?
         {return index, null}
     }
   }
-  
+
   {method public open {test-run action:String, args:FastArray}:any
     {switch action
      case "SetCellData" do ||""
-        let constant (index:int, new-value:any) = 
+        let constant (index:int, new-value:any) =
             {self.find-index-for-list-item args[0]}
         {if-non-null new-value then
             {self.attempt-update new-value}
@@ -302,7 +302,9 @@ How to handle foreign key fields?
 }
 
 
-|| For debugging
+{doc-next
+    {purpose Diaplay the dependencies for a task for debugging.}
+}
 {define-class public open DependencyCell {inherits StandardRecordGridCell}
   field protected content:Graphic
 
@@ -312,7 +314,7 @@ How to handle foreign key fields?
     {self.add-internal self.content}
     set self.opaque-to-events? = true
   }
-  
+
   {method public open {refresh-data}:void
     {if-non-null record = self.record then
         {if-non-null d = record["depnode"] then ||""
@@ -338,8 +340,14 @@ How to handle foreign key fields?
 }
 
 
+{doc-next 
+    {purpose Class used to create directed graph of task dependencies.}
+}
 {def public TaskDinode = {DigraphNode-of TaskRecord}}
 
+{doc-next
+    {purpose Shorthand for {ctext {Array-of TaskDinode}}}
+}
 {def public TaskDinodeArray = {Array-of TaskDinode}}
 
 {doc-next
@@ -376,7 +384,7 @@ How to handle foreign key fields?
     {parameter file-name,
         The name of the file where this table is stored.
     }
-    {parameter ..., Event handlers to be attached to 
+    {parameter ..., Event handlers to be attached to
         {docref ProjectDataTable.rs}.
     }
   }
@@ -388,7 +396,7 @@ How to handle foreign key fields?
 
     set self.project = project
 
-    set self.rs = 
+    set self.rs =
         {CsvRecordSetB
             {project.data-file-url file-name},
             self.fields,
@@ -510,13 +518,13 @@ How to handle foreign key fields?
     set self._schedule-date = schedule-date
     set self._time-unit = time-unit
 
-    set self.min-date = 
+    set self.min-date =
         {DateTime.date
             year = begin-date.info.year,
             month = begin-date.info.month - 1,
             day = 1
         }
-    set self.max-date = 
+    set self.max-date =
         {DateTime.date
             year = end-date.info.year,
             month = end-date.info.month + 2,
@@ -591,7 +599,7 @@ How to handle foreign key fields?
     {lm.append {ListValueItem 0, label = default-label}}
     {return lm}
   }
-  
+
 
   {method public open {add-dependency r:Record}:void
     def dr = {DependencyRecord r}
@@ -605,7 +613,7 @@ How to handle foreign key fields?
 
   || Is resource already assigned to a task on the given date?
   {method protected open {resource-available? owner:int, date:DateTime}:bool
-    {if owner == 0 
+    {if owner == 0
         or {self.resources.get-ResourceRecord owner}.max-load == 0
      then
         || All tasks with no owner are scheduled to run in parallel
@@ -618,7 +626,7 @@ How to handle foreign key fields?
         {if tr.status == TaskStatus.hold then
             {continue}
          elseif {self.scheduled.member? tr} then
-            {if-non-null 
+            {if-non-null
                 begin = tr.begin, end = tr.end
              then
                 {if date >= begin and date < end then
@@ -657,7 +665,7 @@ How to handle foreign key fields?
                 set tr.begin =
                     {self.find-nearest-date tr.owner, self.begin-date}
                 ||FIXME: Is this normal when status changes to "active"?
-                {output {hlformat 
+                {output {hlformat
                             "?? Task underway but no begin date given: %s (%s)",
                             tr.name, tr.id
                         }
@@ -682,7 +690,7 @@ How to handle foreign key fields?
         }
     }
 
-    def load = 
+    def load =
         {if tr.owner > 0 then
             def ml = {self.resources.get-ResourceRecord tr.owner}.max-load
             {if ml <= 0.0 then 1.0 else ml}
@@ -703,7 +711,7 @@ How to handle foreign key fields?
         }
         set tr.end = end
      else
-        {output {hlformat 
+        {output {hlformat
                     "Computing end but begin is null: %s (%s)",
                     tr.name, tr.id
                 }
@@ -731,7 +739,7 @@ How to handle foreign key fields?
         let begin:DateTime = end
         {while remaining > 0s do
             {dec begin, self._time-unit}
-            {if {self.events.available? tr.owner, begin} 
+            {if {self.events.available? tr.owner, begin}
                 and {self.resource-available? tr.owner, begin}
              then
                 {dec remaining, self._time-unit * load}
@@ -739,7 +747,7 @@ How to handle foreign key fields?
         }
         set tr.begin = begin
      else
-        {output {hlformat 
+        {output {hlformat
                     "Computing begin but end is null: %s (%s)",
                     tr.name, tr.id
                 }
@@ -759,7 +767,7 @@ How to handle foreign key fields?
                     set last-latest = end
                     set lnl = pred
                 }
-             else 
+             else
                 {if end > last then
                     set last = end
                     set ln = pred
@@ -801,7 +809,7 @@ How to handle foreign key fields?
     {if self.busy? then
         {return}
     }
-    {with 
+    {with
         self.busy? = true,
         self.tasks.rs.batch-events? = true
      do
@@ -835,7 +843,7 @@ How to handle foreign key fields?
         let n:int = 0
         {for r:Record key ri in task-records do
             ||FIXME: ord is not used if Gantt is based on BarLayer
-            || Order the records via the "ord" field, with a gap for each 
+            || Order the records via the "ord" field, with a gap for each
             || project. This is sort of a hack.
             {inc n}
             {if r["ord"] asa int == 0 then ||""
@@ -854,7 +862,7 @@ How to handle foreign key fields?
         || Aggregate times and dates up the project tree
         let ord:int = 0
         {self.tasks.compute
-            post = 
+            post =
                 {proc {p:Record, children:{Array-of Record}, v:any = null}:void
                     def ptr = {self.tasks.get-TaskRecord p["id"] asa int} ||""
                     {if children.size > 0 then
@@ -914,14 +922,14 @@ How to handle foreign key fields?
     def sorted-tasks:TaskDinodeArray = {tn.topological-sort-successors}
 ||--    {dump tn.data.id, sorted-tasks.size}
     {sorted-tasks.sort
-        comparison-proc = 
+        comparison-proc =
             {proc {a:TaskDinode, b:TaskDinode}:bool
                 {return a.data.ord < b.data.ord}
             }
     }
     {for dn in sorted-tasks do
         || Find the latest predecessor and use it to determine the begin date
-        {if not {self.scheduled.member? dn.data} 
+        {if not {self.scheduled.member? dn.data}
             and {self.preds-scheduled? dn}
          then
             let last:DateTime = self.begin-date - 3650d
@@ -1219,7 +1227,7 @@ INSERT INTO resource VALUES (1,Fred,Programmer,"FP","Dev","http://www.curl.com",
 ||--                          end-date:#DateTime = null
 ||--                      }:{Array-of Record}
 ||--    ||FIXME: better to return Array-of ResourceRecord?
-||--    def mr = {self.find-resource 
+||--    def mr = {self.find-resource
 ||--                 name = name, type = type, group = group
 ||--             }
 ||--    {if mr.size > 0 then
@@ -1237,9 +1245,9 @@ INSERT INTO resource VALUES (1,Fred,Programmer,"FP","Dev","http://www.curl.com",
 ||--                         {return false}
 ||--                     }
 ||--                 }
-||--        {if end-date == null then 
+||--        {if end-date == null then
 ||--            end-date = begin-date
-||--         elseif begin-date == null then 
+||--         elseif begin-date == null then
 ||--            begin-date = end-date
 ||--        }
 ||--        {if-non-null begin-date, end-date then
@@ -1472,7 +1480,7 @@ INSERT INTO resource VALUES (1,Fred,Programmer,"FP","Dev","http://www.curl.com",
         }
     }
   }
-  
+
   field protected _fields:#RecordFields = null
 
   || Data definition for tasks/milestones
@@ -1480,7 +1488,7 @@ INSERT INTO resource VALUES (1,Fred,Programmer,"FP","Dev","http://www.curl.com",
     {if-non-null fields = self._fields then
         {return fields}
      else
-        set self._fields = 
+        set self._fields =
             {RecordFields
                 {splice RecordSetTreeModel.tree-fields},
                 {RecordField "scenario",
@@ -1594,7 +1602,7 @@ INSERT INTO task VALUES (1,0,0,0,0,'Sample Task 1','JP','',1.0,0.0,0.0);
 
   field protected task-record-map:{HashTable-of int, TaskRecord} =
       {new {HashTable-of int, TaskRecord}}
-        
+
   field protected _base-date:DateTime = {DateTime.date}
   {setter public open {base-date v:DateTime}:void
     set self._base-date = v
@@ -1694,7 +1702,7 @@ INSERT INTO task VALUES (1,0,0,0,0,'Sample Task 1','JP','',1.0,0.0,0.0);
         let parents:{Array-of Record} =
             {if parent-id == 0 then
                 || Find all the roots (records with no parent)
-                {self.rs.select filter = 
+                {self.rs.select filter =
                     {proc {fr:Record}:bool {return fr[pf] == 0}}
                 }
              else
@@ -1702,7 +1710,7 @@ INSERT INTO task VALUES (1,0,0,0,0,'Sample Task 1','JP','',1.0,0.0,0.0);
                 def a = {new {Array-of Record}}
                 {if-non-null r =
                     {self.rs.select-one
-                        filter = 
+                        filter =
                             {proc {fr:Record}:bool
                                 {return fr["id"] == parent-id} ||""
                             }
@@ -1714,16 +1722,16 @@ INSERT INTO task VALUES (1,0,0,0,0,'Sample Task 1','JP','',1.0,0.0,0.0);
             }
 
         {for parent in parents do
-           def children = 
-                {self.rs.select filter = 
+           def children =
+                {self.rs.select filter =
                     {proc {fr:Record}:bool {return fr[pf] == parent["id"]}} ||""
                 }
             {if-non-null pre then
                 {pre parent, children, v = v}
             }
             {for cr:Record in children do
-                {self.compute 
-                    pre = pre, post = post, 
+                {self.compute
+                    pre = pre, post = post,
                     parent-id = cr["id"] asa int, v = v ||""
                 }
             }
@@ -1839,7 +1847,7 @@ INSERT INTO task VALUES (1,0,0,0,0,'Sample Task 1','JP','',1.0,0.0,0.0);
     {return self._fields}
   }
 
-  field protected _fields:RecordFields = 
+  field protected _fields:RecordFields =
       {RecordFields
         {RecordField "id", ||""
             caption = "id", ||""
@@ -2022,14 +2030,14 @@ INSERT INTO dependency VALUES (1,"","",requires,2,3,0);
         }
     }
   }
-  
+
   field protected _fields:#RecordFields = null
 
   {getter public open {fields}:RecordFields
     {if-non-null fields = self._fields then
         {return fields}
      else
-        set self._fields = 
+        set self._fields =
             {RecordFields
                 {RecordField "id", ||""
                     caption = "id", ||""

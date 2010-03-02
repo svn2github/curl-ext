@@ -2,7 +2,7 @@
 
 {define-class public open CommonTest
   let private test-list:{Array-of GuiTest} = {{Array-of GuiTest}}
-  
+
   {define-proc public {setup-common-mouse-test target:
                           {proc-type {value:String =
                               "123456789 223456789 323456789 ",
@@ -10,50 +10,50 @@
                                      }:Control
                           }
                       }:void
-    
+
     || Double Click Initial conditions: no selection
-    {let dclick-1:GuiTest =
+    {let double-click-1:GuiTest =
         {GuiTest
             {target},
-            "Double click at first word test", results,
+            "Double click at first word test",
             {UI.clear-selection},
-            {UI.dclick 7mm, 0mm},
+            {UI.double-click 7mm, 0mm},
             {UI.check-selection "123456789 ", platform = "win32 linux"},
             {UI.check-selection "123456789", platform = "mac"},
             {UI.check-value "123456789 223456789 323456789 "}
         }
     }
 
-    {let dclick-2:GuiTest =
+    {let double-click-2:GuiTest =
         {GuiTest
             {target},
-            "Double click at second word test", results,
+            "Double click at second word test",
             {UI.clear-selection},
-            {UI.dclick 12, 0mm},
+            {UI.double-click 12, 0mm},
             {UI.check-selection "223456789 ", platform = "win32 linux"},
             {UI.check-selection "223456789", platform = "mac"},
             {UI.check-value "123456789 223456789 323456789 "}
         }
     }
 
-    {let dclick-3:GuiTest =
+    {let double-click-3:GuiTest =
         {GuiTest
             {target},
-            "Double click at third word test", results,
+            "Double click at third word test",
             {UI.clear-selection},
-            {UI.dclick 22, 0},
+            {UI.double-click 22, 0},
             {UI.check-selection "323456789 ", platform = "win32 linux"},
             {UI.check-selection "323456789", platform = "mac"},
             {UI.check-value "123456789 223456789 323456789 "}
         }
     }
 
-    {let dclick-gap-1:GuiTest =
+    {let double-click-gap-1:GuiTest =
         {GuiTest
             {target value = "123456789 ABCDEFGHI 1234567890"},
-            "Double click at gap at 9.3 test", results,
+            "Double click at gap at 9.3 test",
             {UI.clear-selection},
-            {UI.dclick 9.3, 0},
+            {UI.double-click 9.3, 0},
             {UI.check-selection "123456789 ", platform = "win32 linux"},
             || New behavior according to the bug#30783
             {UI.check-selection "123456789 ABCDEFGHI", platform = "mac"},
@@ -61,12 +61,12 @@
         }
     }
 
-    {let dclick-far-left:GuiTest =
+    {let double-click-far-left:GuiTest =
         {GuiTest
             {target value = "123456789 ABCDEFGHI 1234567890"},
-            "Double click at far left test", results,
+            "Double click at far left test",
             {UI.clear-selection},
-            {UI.dclick 0.35, 0},
+            {UI.double-click 0.35, 0},
             {UI.check-selection "123456789 ", platform = "win32 linux"},
             {UI.check-selection "123456789", platform = "mac"},
             {UI.check-value "123456789 ABCDEFGHI 1234567890"}
@@ -74,10 +74,10 @@
     }
 
     || Double Click Initial conditions: first word selected
-    {let dclick-sel-1:GuiTest =
+    {let double-click-sel-1:GuiTest =
         {GuiTest
             {target},
-            "Double click on selected word test[first word selected]", results,
+            "Double click on selected word test[first word selected]",
             {UI.clear-selection},
             || Select the first word.
             {UI.focus},
@@ -88,17 +88,17 @@
             {UI.release 9.0, 0mm},
             {UI.check-selection "123456789"},
             || Now do the double click
-            {UI.dclick 7, 0mm},
+            {UI.double-click 7, 0mm},
             {UI.check-selection "123456789 ", platform = "win32 linux"},
             {UI.check-selection "123456789", platform = "mac"},
             {UI.check-value "123456789 223456789 323456789 "}
         }
     }
 
-    {let dclick-sel-gap-1:GuiTest =
+    {let double-click-sel-gap-1:GuiTest =
         {GuiTest
             {target},
-            "Double click at gap at 9.3 when first word is selected test", results,
+            "Double click at gap at 9.3 when first word is selected test",
             || Select the first word.
             {UI.focus},
             {UI.clear-selection},
@@ -108,7 +108,7 @@
             {UI.release 9.0, 0mm},
             {UI.check-selection "123456789"},
             || Now do the double clicks
-            {UI.dclick 9.3, 0mm},
+            {UI.double-click 9.3, 0mm},
             {UI.check-selection "123456789 ", platform = "win32 linux"},
             || New behavior according to the bug#30783
             {UI.check-selection "123456789 223456789", platform = "mac"},
@@ -116,11 +116,10 @@
         }
     }
 
-    {let dclick-sel-2:GuiTest =
+    {let double-click-sel-2:GuiTest =
         {GuiTest
             {target},
             "Double click on second word when first word is selected test",
-            results,
             || Select the first word
             {UI.focus},
             {UI.clear-selection},
@@ -130,18 +129,17 @@
             {UI.release 9.0, 0mm},
             {UI.check-selection "123456789"},
             || Now do the double clicks
-            {UI.dclick 14, 0mm},
+            {UI.double-click 14, 0mm},
             {UI.check-selection "223456789 ", platform = "win32 linux"},
             {UI.check-selection "223456789", platform = "mac"},
             {UI.check-value "123456789 223456789 323456789 "}
         }
     }
 
-    {let dclick-sel-far-left:GuiTest =
+    {let double-click-sel-far-left:GuiTest =
         {GuiTest
             {target},
             "Double click far left when first word is selected from 1.5 test",
-            results,
             || Select the first word.
             {UI.focus},
             {UI.clear-selection},
@@ -150,20 +148,20 @@
             {UI.move 9.0, 0},
             {UI.release 9.0, 0},
             || Now do the double click
-            {UI.delay 1000},
-            {UI.dclick .35, 0},
+            {UI.wait 1000ms},
+            {UI.double-click .35, 0},
             {UI.check-selection "123456789 ", platform = "win32 linux"},
             {UI.check-selection "123456789", platform = "mac"},
             {UI.check-value "123456789 223456789 323456789 "}
         }
     }
-    
+
     || End double click
     || Click Test
     || Click Initial conditions: no selection
     {let click-test-1:GuiTest =
         {GuiTest
-            {target}, "Click once within first word test", results,
+            {target}, "Click once within first word test",
             {UI.clear-selection},
             {UI.press 5, 0mm},
             {UI.release 5, 0mm},
@@ -175,7 +173,7 @@
     {let click-test-2:GuiTest =
         {GuiTest
             {target},
-            "Click once within second word test", results,
+            "Click once within second word test",
             {UI.clear-selection},
             {UI.press 15, 0mm},
             {UI.release 15, 0mm},
@@ -186,7 +184,7 @@
 
     {let click-test-gap:GuiTest =
         {GuiTest
-            {target}, "Click once within gap test", results,
+            {target}, "Click once within gap test",
             {UI.clear-selection},
             {UI.press 9.4, 0mm},
             {UI.release 9.4, 0mm},
@@ -198,7 +196,7 @@
     {let click-test-far-left:GuiTest =
         {GuiTest
             {target},
-            "Click once far left test", results,
+            "Click once far left test",
             {UI.clear-selection},
             {UI.press 0.0, 0mm},
             {UI.release 0.0, 0mm},
@@ -211,7 +209,7 @@
     {let click-sel-test-1:GuiTest =
         {GuiTest
             {target},
-            "Click on first word when first word is selected test", results,
+            "Click on first word when first word is selected test",
             || Select first word
             {UI.focus},
             {UI.clear-selection},
@@ -220,7 +218,7 @@
             {UI.move 9.0, 0mm},
             {UI.release 9.0, 0mm},
             {UI.check-selection "123456789"},
-            {UI.delay 500},
+            {UI.wait 500ms},
             {UI.press 5, 0mm},
             {UI.release 5, 0mm},
             {UI.check-selection ""},
@@ -231,7 +229,7 @@
     {let click-sel-test-2:GuiTest =
         {GuiTest
             {target},
-            "Click on second word when first word is selected test", results,
+            "Click on second word when first word is selected test",
             {UI.focus},
             {UI.clear-selection},
             {UI.press 0.35, 0mm},
@@ -249,7 +247,7 @@
     {let click-sel-gap:GuiTest =
         {GuiTest
             {target},
-            "Click at gap when first word is selected test", results,
+            "Click at gap when first word is selected test",
             {UI.focus},
             {UI.clear-selection},
             {UI.press 0.35, 0mm},
@@ -267,7 +265,7 @@
     {let click-sel-far-left:GuiTest =
         {GuiTest
             {target},
-            "Click on far left when first word is selected test", results,
+            "Click on far left when first word is selected test",
             || Select first word
             {UI.focus},
             {UI.clear-selection},
@@ -276,7 +274,7 @@
             {UI.move 9.0, 0mm},
             {UI.release 9.0, 0mm},
             {UI.check-selection "123456789"},
-            {UI.delay 500},
+            {UI.wait 500ms},
             {UI.click 1.0, 0mm},
             {UI.check-selection ""},
             {UI.check-value "123456789 223456789 323456789 "}
@@ -288,9 +286,9 @@
     {let tclick-1:GuiTest =
         {GuiTest
             {target},
-            "Triple click within first word test", results,
+            "Triple click within first word test",
             {UI.clear-selection},
-            {UI.dclick 5, 0mm},
+            {UI.double-click 5, 0mm},
             {UI.click 5, 0mm},
             {UI.check-selection "123456789 223456789 323456789 "},
             {UI.check-value "123456789 223456789 323456789 "}
@@ -300,9 +298,9 @@
     {let tclick-2:GuiTest =
         {GuiTest
             {target},
-            "Triple click within second word test", results,
+            "Triple click within second word test",
             {UI.clear-selection},
-            {UI.dclick 15, 0mm},
+            {UI.double-click 15, 0mm},
             {UI.click 15, 0mm},
             {UI.check-selection "123456789 223456789 323456789 "},
             {UI.check-value "123456789 223456789 323456789 "}
@@ -312,9 +310,9 @@
     {let tclick-gap:GuiTest =
         {GuiTest
             {target},
-            "Triple click at gap 9.4 test", results,
+            "Triple click at gap 9.4 test",
             {UI.clear-selection},
-            {UI.dclick 9.4, 0mm},
+            {UI.double-click 9.4, 0mm},
             {UI.click 9.4, 0mm},
             {UI.check-selection "123456789 223456789 323456789 "},
             {UI.check-value "123456789 223456789 323456789 "}
@@ -324,9 +322,9 @@
     {let tclick-far-left:GuiTest =
         {GuiTest
             {target},
-            "Triple click far left test", results,
+            "Triple click far left test",
             {UI.clear-selection},
-            {UI.dclick 0.35, 0mm},
+            {UI.double-click 0.35, 0mm},
             {UI.click 0.35, 0mm},
             {UI.check-selection "123456789 223456789 323456789 "},
             {UI.check-value "123456789 223456789 323456789 "}
@@ -338,7 +336,6 @@
         {GuiTest
             {target},
             "Triple click on first word [when first word is selected] test",
-            results,
             || Select the first word
             {UI.focus},
             {UI.clear-selection},
@@ -348,7 +345,7 @@
             {UI.release 9.0, 0mm},
             {UI.check-selection "123456789"},
             ||Triple click
-            {UI.dclick 5, 0mm},
+            {UI.double-click 5, 0mm},
             {UI.click 5, 0mm},
             {UI.check-selection "123456789 223456789 323456789 "},
             {UI.check-value "123456789 223456789 323456789 "}
@@ -359,7 +356,6 @@
         {GuiTest
             {target},
             "Triple click on second word [when first word is selected] test",
-            results,
             {UI.focus},
             {UI.clear-selection},
             {UI.press 0.35, 0mm},
@@ -367,7 +363,7 @@
             {UI.move 9.0, 0mm},
             {UI.release 9.0, 0mm},
             {UI.check-selection "123456789"},
-            {UI.dclick 15, 0mm},
+            {UI.double-click 15, 0mm},
             {UI.click 15, 0mm},
             {UI.check-selection "123456789 223456789 323456789 "},
             {UI.check-value "123456789 223456789 323456789 "}
@@ -377,7 +373,7 @@
     {let tclick-sel-gap:GuiTest =
         {GuiTest
             {target},
-            "Triple click at gap when first word is selected test", results,
+            "Triple click at gap when first word is selected test",
             {UI.focus},
             {UI.clear-selection},
             {UI.press 0.35, 0mm},
@@ -385,7 +381,7 @@
             {UI.move 9.0, 0mm},
             {UI.release 9.0, 0mm},
             {UI.check-selection "123456789"},
-            {UI.dclick 9.4, 0mm},
+            {UI.double-click 9.4, 0mm},
             {UI.click 9.4, 0mm},
             {UI.check-selection "123456789 223456789 323456789 "},
             {UI.check-value "123456789 223456789 323456789 "}
@@ -396,7 +392,6 @@
         {GuiTest
             {target},
             "Triple click on far left when first word is selected from 1.5 test",
-            results,
             || Select the first word
             {UI.focus},
             {UI.clear-selection},
@@ -405,8 +400,8 @@
             {UI.move 9.0, 0mm},
             {UI.release 9.0, 0mm},
             ||Triple click
-            {UI.delay 500},
-            {UI.dclick 0.35, 0mm},
+            {UI.wait 500ms},
+            {UI.double-click 0.35, 0mm},
             {UI.click  0.35, 0mm},
             {UI.check-selection "123456789 223456789 323456789 "},
             {UI.check-value "123456789 223456789 323456789 "}
@@ -416,53 +411,53 @@
 
     || Right Click Initial conditions: no selection
     || The behaviour of Right-click on Mac is according to the Bug id:26766
-    {let rclick-test-1:GuiTest =
+    {let right-click-test-1:GuiTest =
         {GuiTest {target},
-            "Right click within first word test", results,
+            "Right click within first word test",
             {UI.click button = right-button, 5, 0mm},
             {UI.check-selection "", platform = "win32 linux"},
             {UI.check-selection "123456789", platform = "mac"},
-            {UI.delay 500},
+            {UI.wait 500ms},
             || Close the context menu
             {UI.click 2, 0mm},
             {UI.check-value "123456789 223456789 323456789 "}
         }
     }
 
-    {let rclick-test-2:GuiTest =
+    {let right-click-test-2:GuiTest =
         {GuiTest {target},
-            "Right click within second word test", results,
+            "Right click within second word test",
             {UI.click button = right-button, 15, 0mm},
             {UI.check-selection "", platform = "win32 linux"},
             {UI.check-selection "223456789", platform = "mac"},
-            {UI.delay 500},
+            {UI.wait 500ms},
             ||Close the context menu
             {UI.click 5, 0mm},
             {UI.check-value "123456789 223456789 323456789 "}
         }
     }
 
-    {let rclick-gap:GuiTest =
+    {let right-click-gap:GuiTest =
         {GuiTest {target},
-            "Right click in gap at 9.4 test", results,
+            "Right click in gap at 9.4 test",
             {UI.click button = right-button, 9.4, 0mm},
             {UI.check-selection "", platform = "win32 linux"},
             ||On HTML in safari it selects the gap
             {UI.check-selection " ", platform = "mac"},
-            {UI.delay 500},
+            {UI.wait 500ms},
             ||Close the context menu
             {UI.click 5, 0mm},
             {UI.check-value "123456789 223456789 323456789 "}
         }
     }
 
-    {let rclick-test-far-left:GuiTest =
+    {let right-click-test-far-left:GuiTest =
         {GuiTest {target},
-            "Right click far left test", results,
+            "Right click far left test",
             {UI.click button = right-button, 0.35, 0mm},
             {UI.check-selection "", platform = "win32 linux"},
             {UI.check-selection "123456789", platform = "mac"},
-            {UI.delay 500},
+            {UI.wait 500ms},
             || Close the context menu
             {UI.click 30, 0mm},
             {UI.check-value "123456789 223456789 323456789 "}
@@ -471,11 +466,10 @@
 
 
     || Right Click Initial conditions: first word selected
-    {let rclick-sel-test-1:GuiTest =
+    {let right-click-sel-test-1:GuiTest =
         {GuiTest
             {target},
             "Right click on first word[when first word is selected] test",
-            results,
             {UI.focus},
             {UI.clear-selection},
             {UI.press 0.35, 0mm},
@@ -485,7 +479,7 @@
             {UI.check-selection "123456789"},
             {UI.click button = right-button, 7, 0mm},
             ||Close the context menu
-            {UI.delay 500},
+            {UI.wait 500ms},
             {UI.click 30, 0mm},
             {UI.check-selection "", platform = "win32 linux"},
             {UI.check-selection "123456789", platform = "mac"},
@@ -493,10 +487,10 @@
         }
     }
 
-    {let rclick-sel-test-2:GuiTest =
+    {let right-click-sel-test-2:GuiTest =
         {GuiTest
             {target},
-            "Right click on second word [when first word is selected] test", results,
+            "Right click on second word [when first word is selected] test",
             {UI.focus},
             {UI.clear-selection},
             {UI.press 0.35, 0mm},
@@ -505,7 +499,7 @@
             {UI.release 9.0, 0mm},
             {UI.check-selection "123456789"},
             {UI.click button = right-button, 15, 0mm},
-            {UI.delay 500},
+            {UI.wait 500ms},
             {UI.click 30, 0mm},
             {UI.check-selection "", platform = "win32 linux"},
             {UI.check-selection "223456789", platform = "mac"},
@@ -513,10 +507,10 @@
         }
     }
 
-    {let rclick-sel-gap:GuiTest =
+    {let right-click-sel-gap:GuiTest =
         {GuiTest
             {target},
-            "Right click at gap at 9.4 when first word is selected", results,
+            "Right click at gap at 9.4 when first word is selected",
             {UI.focus},
             {UI.clear-selection},
             {UI.press 0.35, 0mm},
@@ -526,7 +520,7 @@
             {UI.click button = right-button, 9.4, 0mm},
             {UI.check-selection "123456789"},
             ||Close the context menu
-            {UI.delay 500},
+            {UI.wait 500ms},
             {UI.click 30, 0mm},
             {UI.check-selection "", platform = "win32 linux"},
             {UI.check-selection " ", platform = "mac"},
@@ -534,10 +528,10 @@
         }
     }
 
-    {let rclick-sel-test-far-left:GuiTest =
+    {let right-click-sel-test-far-left:GuiTest =
         {GuiTest
             {target},
-            "Right click on far left when first word is selected test", results,
+            "Right click on far left when first word is selected test",
             {UI.focus},
             {UI.clear-selection},
             {UI.press 0.35, 0mm},
@@ -547,7 +541,7 @@
             {UI.check-selection "123456789"},
             {UI.click button = right-button, 0.35, 0mm},
             ||Close the context menu
-            {UI.delay 500},
+            {UI.wait 500ms},
             {UI.click 30, 0mm},
             {UI.check-selection "", platform = "win32 linux"},
             {UI.check-selection "123456789", platform = "mac"},
@@ -560,7 +554,7 @@
         {GuiTest
             {target value = "123456789 ABCDEFGHI 1234567890"},
             "Drag with left button on same word in right direction starting from
-             first character test", results,
+             first character test",
             {UI.focus},
             {UI.clear-selection},
             {UI.press 0.35, 0mm},
@@ -576,7 +570,6 @@
         {GuiTest
             {target value = "123456789 ABCDEFGHI 1234567890"},
             "Drag with left button on same word in right direction test",
-            results,
             {UI.focus},
             {UI.clear-selection},
             {UI.press 3.0, 0mm},
@@ -592,7 +585,7 @@
     {let drag-test-1:GuiTest =
         {GuiTest
             {target value = "123456789 ABCDEFGHI 1234567890"},
-            "Drag with left button on same word in left direction test", results,
+            "Drag with left button on same word in left direction test",
             {UI.focus},
             {UI.clear-selection},
             {UI.press 7.0, 0mm},
@@ -609,7 +602,7 @@
         {GuiTest
             {target value = "123456789 ABCDEFGHI 1234567890"},
             "Drag with left button on same word first in right direction and
-             then in left direction test", results,
+             then in left direction test",
             {UI.focus},
             {UI.clear-selection},
             {UI.press 7.0, 0mm},
@@ -625,7 +618,7 @@
         {GuiTest
             {target value = "123456789 ABCDEFGHI 1234567890"},
             "Drag with left button on same word first in right and then left and 
-            then again on right test", results,
+            then again on right test",
             {UI.focus},
             {UI.clear-selection},
             {UI.press 5.0, 0mm},
@@ -642,7 +635,7 @@
         {GuiTest
             {target value = "123456789 ABCDEFGHI 1234567890"},
             "Drag with left button on same word in left direction and then right
-            direction test", results,
+            direction test",
             {UI.focus},
             {UI.clear-selection},
             {UI.press 5.0, 0mm},
@@ -658,7 +651,7 @@
         {GuiTest
             {target value = "123456789 ABCDEFGHI 1234567890"},
             "Drag with left button on same word first in left and then on right
-            and then again on left test", results,
+            and then again on left test",
             {UI.focus},
             {UI.clear-selection},
             {UI.press 5.0, 0mm},
@@ -674,7 +667,7 @@
     {let drag-test-6:GuiTest =
         {GuiTest
             {target value = "123456789 ABCDEFGHI 1234567890"},
-            "Drag with right mouse button in right direction test", results,
+            "Drag with right mouse button in right direction test",
             {UI.focus},
             {UI.clear-selection},
             {UI.press 3.0, 0mm},
@@ -692,7 +685,7 @@
     {let drag-test-7:GuiTest =
         {GuiTest
             {target value = "123456789 ABCDEFGHI 1234567890"},
-            "Drag with right mouse button in left direction test", results,
+            "Drag with right mouse button in left direction test",
             {UI.focus},
             {UI.clear-selection},
             {UI.press 3.0, 0mm},
@@ -707,9 +700,9 @@
         }
     }
     || End of Right Click
-    {CommonTest.test-list.append dclick-1}
-    {CommonTest.test-list.append dclick-2}
-    {CommonTest.test-list.append dclick-3}
+    {CommonTest.test-list.append double-click-1}
+    {CommonTest.test-list.append double-click-2}
+    {CommonTest.test-list.append double-click-3}
     || FIXME:nilesh_khemkar: 08-09-2009
     || Change in behavior due to fix for Bug#30783(The caret jumps to the
     || next line after double clicking at the end of a line in TextArea and
@@ -721,18 +714,18 @@
     {platform-switch
      case "mac" do
      else
-        {CommonTest.test-list.append dclick-gap-1}
+        {CommonTest.test-list.append double-click-gap-1}
     }
-    {CommonTest.test-list.append dclick-far-left}
-    {CommonTest.test-list.append dclick-sel-1}
+    {CommonTest.test-list.append double-click-far-left}
+    {CommonTest.test-list.append double-click-sel-1}
     || FIXME: Bug#30783 (As described above)
     {platform-switch
      case "mac" do
      else
-        {CommonTest.test-list.append dclick-sel-gap-1}
+        {CommonTest.test-list.append double-click-sel-gap-1}
     }
-    {CommonTest.test-list.append dclick-sel-2}
-    {CommonTest.test-list.append dclick-sel-far-left}
+    {CommonTest.test-list.append double-click-sel-2}
+    {CommonTest.test-list.append double-click-sel-far-left}
     {CommonTest.test-list.append click-test-1}
     {CommonTest.test-list.append click-test-2}
     {CommonTest.test-list.append click-test-gap}
@@ -755,16 +748,16 @@
     {platform-switch
      case "mac" do
      else 
-        {CommonTest.test-list.append rclick-test-1}
-        {CommonTest.test-list.append rclick-test-2}
-        {CommonTest.test-list.append rclick-gap}
-        {CommonTest.test-list.append rclick-test-far-left}
-        {CommonTest.test-list.append rclick-sel-test-1}
-        {CommonTest.test-list.append rclick-sel-test-2}
-        {CommonTest.test-list.append rclick-sel-gap}
-        {CommonTest.test-list.append rclick-sel-test-far-left}
+        {CommonTest.test-list.append right-click-test-1}
+        {CommonTest.test-list.append right-click-test-2}
+        {CommonTest.test-list.append right-click-gap}
+        {CommonTest.test-list.append right-click-test-far-left}
+        {CommonTest.test-list.append right-click-sel-test-1}
+        {CommonTest.test-list.append right-click-sel-test-2}
+        {CommonTest.test-list.append right-click-sel-gap}
+        {CommonTest.test-list.append right-click-sel-test-far-left}
     }
-    
+
     {CommonTest.test-list.append drag-test-first-char}
     {CommonTest.test-list.append drag-test}
     {CommonTest.test-list.append drag-test-1}
@@ -789,28 +782,28 @@
                                      }:Control
                           }
                       }:void
-    
+
     def value-changed = {ValueChanged}
     def value-finished = {ValueFinished}
     def key-press = {KeyPress}
 
     {let cut-copy-paste-test:GuiTest =
         {GuiTest {target value = "123456789 123456789 123456789 "},
-            "Cut copy paste keyboard event test", results,
+            "Cut copy paste keyboard event test",
             {UI.focus},
-            
+
             || cut command(ctrl+x) 
             {UI.press 4.0, 0mm},
             {UI.move 5.0, 0mm},
             {UI.move 7.0, 0mm},
-            {UI.release 7.0, 0mm},           
+            {UI.release 7.0, 0mm},
             {UI.type "x", command? = true},
-            
+
             || paste command(ctrl+v)
             {UI.click 6.0, 0},
             {UI.type "v", command? = true},
             {UI.check-value "123489567 123456789 123456789 "},
-            
+
             || copy command(ctrl+c)
             {UI.press 4.0, 0mm},
             {UI.move 5.0, 0mm},
@@ -819,7 +812,7 @@
             {UI.type "c", command? = true},
 
             || paste command(ctrl+v)
-            {UI.click 9.0, 0},            
+            {UI.click 9.0, 0},
             {UI.type "v", command? = true},
             {UI.check-value "12348956789 123456789 123456789 "},
 
@@ -828,7 +821,7 @@
             {UI.press 4.0, 0mm},
             {UI.move 5.0, 0mm},
             {UI.move 6.0, 0mm},
-            {UI.release 6.0, 0mm},            
+            {UI.release 6.0, 0mm},
             {UI.type "x", command? = true},
             {UI.check-value "123456789 123456789 123456789 "}
         }
@@ -836,7 +829,7 @@
 
     {let select-all-test:GuiTest =
         {GuiTest {target value = "opqrst "},
-            "Select all keyboard event test", results,
+            "Select all keyboard event test",
             {UI.focus},
 
             || select all(ctrl+a)
@@ -849,9 +842,9 @@
 
     {let undo-redo-test:GuiTest =
         {GuiTest {target value = "ABCDEFG 123456789 ABCDEFG 123456789 "},
-            "Undo redo keyboard event test", results,
+            "Undo redo keyboard event test",
             {UI.focus},
-            
+
             || cut command(ctrl+x)
             {UI.press 20.0, 0mm},
             {UI.move 21.0, 0mm},
@@ -888,16 +881,16 @@
 
     {let shift-arrowkeys-selection-test:GuiTest =
         {GuiTest {target value = "ABCDEFG 123456789 ABCDEFG 123456789 "},
-            "Shift arrowkeys selection keyboard event test", results,
+            "Shift arrowkeys selection keyboard event test",
             {UI.focus},
             {UI.clear-selection},
-            
+
             || shift+left->
             {UI.click 11.0, 0mm},
             {UI.press-key "left", shift? = true},
             {UI.check-selection "3"},
             {UI.clear-selection},
-            
+
             || shift+right<-
             {UI.click 14.0, 0mm},
             {UI.press-key "right", shift? = true},
@@ -906,7 +899,7 @@
         }
     }
     || End of keyboard events
-    
+
     {CommonTest.test-list.append cut-copy-paste-test}
     {CommonTest.test-list.append select-all-test}
     {CommonTest.test-list.append undo-redo-test}
@@ -922,14 +915,14 @@
                                      }:Control
                           }
                       }:void
-    
+
     || Context menu
     {let cut-paste-undo-context-menu-test:GuiTest =
         {GuiTest {target value = "123456789 123456789 123456789 "},
-            "Check cut/paste/undo via context menu test", results,            
+            "Check cut/paste/undo via context menu test",
             {UI.focus},
             {UI.clear-selection},
-           
+
             || Select to unable the cut context menu
             {UI.press 4.0, 0mm},
             {UI.move 5.0, 0mm},
@@ -939,7 +932,7 @@
             {UI.click button = right-button, 5.4, 0mm},
             {UI.press-key "down"},
             {UI.press-key "down"},
-            {UI.delay 500},
+            {UI.wait 500ms},
             {UI.press-key "enter"},
             {UI.check-value "123489 123456789 123456789 "},
 
@@ -949,14 +942,14 @@
             {UI.press-key "down"},
             {UI.press-key "down"},
             {UI.press-key "down"},
-            {UI.delay 500},
+            {UI.wait 500ms},
             {UI.press-key "enter"},
             {UI.check-value "123456789 123456789 123456789 "},
-            
+
             || Undo via context menu
             {UI.click button = right-button, 5.4, 0mm},
             {UI.press-key "down"},
-            {UI.delay 500},
+            {UI.wait 500ms},
             {UI.press-key "enter"},
             {UI.check-value "123489 123456789 123456789 "},
 
@@ -965,7 +958,7 @@
             || including combobox, which expect int value instead of string.
             {UI.click button = right-button, 5.4, 0mm},
             {UI.press-key "down"},
-            {UI.delay 500},
+            {UI.wait 500ms},
             {UI.press-key "enter"},
             {UI.check-value "123456789 123456789 123456789 "}
         }
@@ -973,10 +966,10 @@
 
     {let copy-paste-delete-context-menu-test:GuiTest =
         {GuiTest {target value = "123456789 123456789 123456789 "},
-            "Check copy/paste/delete via context menu test", results,            
+            "Check copy/paste/delete via context menu test",
             {UI.focus},
             {UI.clear-selection},
-            
+
             || Select to unable the cut context menu
             {UI.press 4.0, 0mm},
             {UI.move 5.0, 0mm},
@@ -987,7 +980,7 @@
             {UI.press-key "down"},
             {UI.press-key "down"},
             {UI.press-key "down"},
-            {UI.delay 500},
+            {UI.wait 500ms},
             {UI.press-key "enter"},
             || After copy click at end of string
             {UI.clear-selection},
@@ -998,10 +991,10 @@
             {UI.press-key "down"},
             {UI.press-key "down"},
             {UI.press-key "down"},
-            {UI.delay 500},
+            {UI.wait 500ms},
             {UI.press-key "enter"},
             {UI.check-value "123456789567 123456789 123456789 "},
-            
+
             || Select to unable the delete context menu
             {UI.press 9.0, 0mm},
             {UI.move 10.0, 0mm},
@@ -1013,10 +1006,10 @@
             {UI.press-key "down"},
             {UI.press-key "down"},
             {UI.press-key "down"},
-            {UI.press-key "down"},            
-            {UI.delay 500},
+            {UI.press-key "down"},
+            {UI.wait 500ms},
             {UI.press-key "enter"},
-            {UI.check-value "123456789 123456789 123456789 "}            
+            {UI.check-value "123456789 123456789 123456789 "}
         }
     }
 
@@ -1025,7 +1018,6 @@
         {GuiTest
             {target value = "123456789 123456789 123456789 ", max-chars = 30},
             "Check when max-chars is set and typing more than max-chars test",
-            results,
             {UI.focus},
             || Type more than set max-chars
             {UI.click 29.0, 0mm},
@@ -1040,7 +1032,6 @@
         {GuiTest
             {target value = "123456789 123456789 123456789 ", editable? = false},
             "Check editable? test",
-            results,
             {UI.focus},
             || Type something and check for editable? property
             {UI.click 12.0, 0mm},

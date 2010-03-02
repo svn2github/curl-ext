@@ -5,9 +5,9 @@
 ||| Licensed under the Apache License, Version 2.0 (the "License");
 ||| you may not use this file except in compliance with the License.
 ||| You may obtain a copy of the License at
-||| 
+|||
 |||     http://www.apache.org/licenses/LICENSE-2.0
-||| 
+|||
 ||| Unless required by applicable law or agreed to in writing, software
 ||| distributed under the License is distributed on an "AS IS" BASIS,
 ||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -20,7 +20,7 @@
 
 {doc-next
     {purpose An enumeration to identify each side of a rectangular object.}
-} 
+}
 {define-enum public RectangleSide
     left,
     top,
@@ -410,7 +410,7 @@
 
   || Each process has a timer to close popups if the AppletView doesn't
   || appear to be active.
-  let package close-window-timer:Timer = 
+  let package close-window-timer:Timer =
       {Timer enabled? = false, frequency = 100Hz, {on e:TimerEvent do}}
 
   field private view-event-handler:#EventHandler
@@ -442,7 +442,7 @@
   field private internal-hidden?:bool
 
   {doc-next
-    {purpose Create and show a specialized "balloon" {docref View} with 
+    {purpose Create and show a specialized "balloon" {docref View} with
         rounded corners and a small pointed tail.
     }
     {parameter content,
@@ -465,7 +465,7 @@
     }
     {parameter takes-focus?, By default the balloon will take focus when
         it is displayed. Use {ctext takes-focus? = false} if you do not
-        want the balloon to take focus. 
+        want the balloon to take focus.
     }
     {parameter close-button?, By default the balloon will have a button
         to close the popup. Use {ctext close-button? = false} if you
@@ -554,7 +554,7 @@
     {if not takes-focus? then
         {self.set-topmost true}
     }
-    {install-style-sheet-on-Graphic self, {make-style-sheet style-sheet}}
+    {install-style-sheet-on-Graphic self, {balloon-style-sheet style-sheet}}
 
     set self.outer-frame = {LimitedWidthFrame
                                max-width = max-width
@@ -645,7 +645,7 @@
                     || For standalone views, including detached applets
                     {self.set-view-position}
                  case vre:ViewResizeEvent do
-                    {dump vre, v}
+||--                    {dump vre, v}
                     {if v != self then
                         {self.check-owner-visible-area}
                     }
@@ -672,13 +672,13 @@
         {if {type-of owner-view}.name == "AppletView" then ||""
             || We do not get 'ViewMoveEvent' in case of AppletView so only
             || in this case need to schedule an alarm.
-            {self.add-event-handler 
+            {self.add-event-handler
                 {on e:ViewVisibilityEvent do
                     {self.start-alarm}
                 }
             }
         }
-    
+
         {owner-view.add-event-handler {non-null self.view-event-handler}}
         {self.add-event-handler {non-null self.view-event-handler}}
 
@@ -1033,11 +1033,11 @@
             }
          else
             {if self.visibility == WindowVisibility.hidden and
-                self.internal-hidden? 
+                self.internal-hidden?
              then
                 {self.show}
-            }   
-            set self.internal-hidden? = false                
+            }
+            set self.internal-hidden? = false
         }
     }
   }
@@ -1089,7 +1089,7 @@
             center? = center?
         }
     }
-  }  
+  }
 
   {method public open {hide}:void
     {if not self.destroyed? then
@@ -1150,7 +1150,7 @@
 || -------------------------------------------------------------------------
 
 ||--{doc-next
-||--    {purpose Pop up a {docref View} with rounded corners 
+||--    {purpose Pop up a {docref View} with rounded corners
 ||--        and a small pointed tail.
 ||--    }
 ||--    {parameter content,
@@ -1221,7 +1221,16 @@
 
 || -------------------------------------------------------------------------
 
-{define-proc package {make-style-sheet ss:#StyleSheet}:StyleSheet
+{define-proc package {balloon-style-sheet ss:#StyleSheet}:StyleSheet
+    {return
+        {StyleSheet
+            {splice {get-BalloonView-style-rules}},
+            ss
+        }
+    }
+}
+
+{define-proc public {get-BalloonView-style-rules}:{Array-of StyleRule}
     def decorations-start-color = {FillPattern.from-color
                                       {Color.from-rgb-uint8 136, 188, 238}
                                   }
@@ -1249,14 +1258,14 @@
             opacity = 0.6
         }
 
-    def bss =
-    {StyleSheet
-        {StyleRule "BalloonView", ||""
-            background = "white", ||""
-            color = "black" ||""
-        },
-        {StyleRule "BalloonView/title-frame", ||""
-            text-breakable? = false,
+    {return
+        {new {Array-of StyleRule},
+            {StyleRule "BalloonView", ||""
+                background = "white", ||""
+                color = "black" ||""
+            },
+            {StyleRule "BalloonView/title-frame", ||""
+                text-breakable? = false,
 ||--            skin =
 ||--                {ShadedSkinSpec
 ||--                    "silver", ||""
@@ -1265,60 +1274,59 @@
 ||--                    border-color = "gray",
 ||--                    corner-radius = 3px
 ||--                },
-            border-width = 0pt,
-            border-spec =
-                {BorderSpec bottom-margin = 3pt}
-        },
-        {StyleRule "BalloonView/titlebar", ||""
-            color = "black", ||""
-            border-color = "gray",
-            border-spec = 
-                {BorderSpec
-                    bottom-border-width = 1px
-                },                            
-            font-size = {prefs}["caption-font-size"], ||""
-            font-weight = {prefs}["caption-font-weight"], ||""
-            font-style = {prefs}["caption-font-style"] ||""
-        },
-        {StyleRule "BalloonView/content", ||""
-            border-width = 0pt,
-            skin =
-                {ShadedSkinSpec
-                    "green", ||""
-                    "white", ||""
-                    draw-top-edge? = false,
-                    draw-right-edge? = false,
-                    draw-bottom-edge? = false,
-                    draw-left-edge? = false
-                }
-        },
-        {StyleRule "BalloonView/close-button", ||""
-            vorigin = 0.85,
-            height = 12pt,
-            width = 12pt,
-            color = "white", ||""
-            font-size = {prefs}["caption-font-size"], ||""
-            font-weight = {prefs}["caption-font-weight"], ||""
-            font-style = {prefs}["caption-font-style"], ||""
-            skin =
-                {ShadedSkinSpec
-                    decorations-start-color,
-                    decorations-end-color,
-                    rollover-start-color = decorations-end-color,
-                    rollover-end-color = decorations-start-color,
-                    border-color = button-border-color,
-                    rollover-border-color = button-border-color,
-                    pressed-overlay = button-rollover-color,
-                    highlight-alpha-1 = 0.3,
-                    highlight-boundary = 1percent,
-                    corner-radius = 3px,
-                    upper-left-rounded? = true,
-                    upper-right-rounded? = true,
-                    lower-left-rounded? = true,
-                    lower-right-rounded? = true
-                }
-        },
-        ss
+                border-width = 0pt,
+                border-spec =
+                    {BorderSpec bottom-margin = 3pt}
+            },
+            {StyleRule "BalloonView/titlebar", ||""
+                color = "black", ||""
+                border-color = "gray",
+                border-spec =
+                    {BorderSpec
+                        bottom-border-width = 1px
+                    },
+                font-size = {prefs}["caption-font-size"], ||""
+                font-weight = {prefs}["caption-font-weight"], ||""
+                font-style = {prefs}["caption-font-style"] ||""
+            },
+            {StyleRule "BalloonView/content", ||""
+                border-width = 0pt,
+                skin =
+                    {ShadedSkinSpec
+                        "green", ||""
+                        "white", ||""
+                        draw-top-edge? = false,
+                        draw-right-edge? = false,
+                        draw-bottom-edge? = false,
+                        draw-left-edge? = false
+                    }
+            },
+            {StyleRule "BalloonView/close-button", ||""
+                vorigin = 0.85,
+                height = 12pt,
+                width = 12pt,
+                color = "white", ||""
+                font-size = {prefs}["caption-font-size"], ||""
+                font-weight = {prefs}["caption-font-weight"], ||""
+                font-style = {prefs}["caption-font-style"], ||""
+                skin =
+                    {ShadedSkinSpec
+                        decorations-start-color,
+                        decorations-end-color,
+                        rollover-start-color = decorations-end-color,
+                        rollover-end-color = decorations-start-color,
+                        border-color = button-border-color,
+                        rollover-border-color = button-border-color,
+                        pressed-overlay = button-rollover-color,
+                        highlight-alpha-1 = 0.3,
+                        highlight-boundary = 1percent,
+                        corner-radius = 3px,
+                        upper-left-rounded? = true,
+                        upper-right-rounded? = true,
+                        lower-left-rounded? = true,
+                        lower-right-rounded? = true
+                    }
+            }
+        }
     }
-    {return bss}
 }

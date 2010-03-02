@@ -57,7 +57,7 @@
     location = "../tools"
 }
 
-{component package COM.CURL.EXT,
+{component package COM.CURL.EXT.STANDARD,
     location = "load.scurl"
 }
 

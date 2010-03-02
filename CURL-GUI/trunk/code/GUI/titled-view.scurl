@@ -15,55 +15,110 @@
 ||| limitations under the License.
 ||| ----------------------------------------------------------------------------
 
-|| Modify the width or height elastic to force the origin to the
-|| top left and allow the graphic to be compressed down to nothing.
-|| This makes it suitable for holding the content of a TitledView
-||--{define-proc package {make-compressible}:{proc-type
-||--                                             {Graphic, OriginElastic
-||--                                             }:OriginElastic
-||--                                         }
-||--    let sproc:{proc-type {Graphic, OriginElastic}:OriginElastic} =
-||--        {proc {g:Graphic, e:OriginElastic}:OriginElastic
-||--            let (min-size:Distance,
-||--                 pref:Distance,
-||--                 compress:double,
-||--                 orderc:int,
-||--                 stretch:double,
-||--                 orders:int) = 
-||--                {e.first.unpack-as-stretchy-elastic}
-||--            def new-first = 
-||--                {make-elastic
-||--                    minimum-size = 0m,
-||--                    preferred-size = pref,
-||--                    compressibility = compress,
-||--                    compress-order = rigid-stretch-order,
-||--                    stretchiness = stretch,
-||--                    stretch-order = rigid-stretch-order
-||--                }
-||--            set (min-size,
-||--                 pref,
-||--                 compress,
-||--                 orderc,
-||--                 stretch,
-||--                 orders) = 
-||--                {e.last.unpack-as-stretchy-elastic}
-||--            def new-last = 
-||--                {make-elastic
-||--                    minimum-size = 0m,
-||--                    preferred-size = pref,
-||--                    compressibility = compress,
-||--                    compress-order = orderc,
-||--                    stretchiness = stretch,
-||--                    stretch-order = compliant-stretch-order
-||--                }
-||--            {return {make-origin-elastic first = new-first, last = new-last}}
-||--        }
-||--    {return sproc}
-||--}
 
 {doc-next
     {purpose Represents a customized stylable Curl window on the screen,
         containing Curl graphical content.
+    }
+    {details
+        A standard {docref View} in Curl uses the platform title bar
+        and border. If you are building a highly customized user
+        interface, you might want to style the title bar to match the
+        rest of the applet. The {ctext TitledView} allows you to do
+        this because it obtains a borderless window from the host
+        operating system and constructs the title bar and borders using
+        Curl graphical components.
+
+        To customize the appearance, you can use the following
+        {docref-abbr Visual.style-element} values in your style rules.
+
+        {Table
+            columns = 3,
+            border-width = 1in/300,
+            border-color = "black",
+            horizontal-line-width = 1in/300,
+            vertical-line-width = 1in/300,
+            cell-border-width = 0pt,
+            cell-margin = 2pt,
+            {header-cell style-element},
+            {header-cell Type},
+            {header-cell Description},
+
+            {ctext TitledView}, {docref TitledView},
+            {text The {ctext TitledView} itself. You can use style rules
+                to set local and nonlocal options.
+            },
+
+            {ctext TitledView/content}, {docref ClipFrame},
+            {text The innermost component of the {ctext TitledView}.
+                When the {docref TitledView.add} method is called,
+                the {docref Graphic} you add is actually added to this
+                {ctext ClipFrame}. The default style rule simply gives
+                this Frame a border-width of 1 pixel.
+            },
+
+            {ctext TitledView/min-button}, {docref CommandButton},
+            {text This is the minimize button in the title bar. It can be
+                skinned as you would skin any other {ctext CommandButton}.
+            },
+
+            {ctext TitledView/max-button}, {docref CommandButton},
+            {text This is the maximize button in the title bar.
+            },
+
+            {ctext TitledView/close-button}, {docref CommandButton},
+            {text This is the close button in the title bar.
+            },
+
+            {ctext TitledView/resizer}, {docref SkinnableFill},
+            {text This is a {ctext SkinnableFill} that is stretched
+                across the entire window.  Normally just the four
+                edges of this {ctext Fill} are visible.
+||FIXME
+||--                , in an amount
+||--                specified by {docref TitledView.resizer-width.  
+                When
+                the mouse is over one of the four edges, it will show
+                a resize cursor.  You can use a {docref
+                ShadedSkinSpec} for a solid color or gradient, or you
+                can use an {docref ImageSkinSpec} for more complete
+                control of the appearance of the edges.
+            },
+
+            {ctext TitledView/titlebar}, {docref SkinnableFrame},
+            {text This is the {ctext SkinnableFrame} that contains
+                the elements of the title bar (the title and buttons).
+            }
+        }
+
+        Here is a small example of a {ctext TitledView}. Note that the
+        Close and OK buttons do not actually do anything. Use the
+        close box in the upper right corner to close the window that
+        is displayed when you click the button.
+        {example
+            title = {lmessage A TitledView},
+            {import * from COM.CURL.EXT.GUI}
+            {CommandButton
+                label = "Display a TitledView",
+                {on Action do
+                    def tv =
+                        {TitledView
+                            title = "Sample TitledView",
+                            margin = 6pt,
+                            font-size = 10pt,
+                            {Table columns = 2, valign = "top",
+                                {text Notes:},
+                                {TextArea width = 2in, height = 1in},
+                                {skip},
+                                {HBox spacing = 6pt, 
+                                    {Fill}, {ok-button}, {cancel-button}
+                                }
+                            }
+                        }
+                    {tv.show}
+                }
+            }
+        }
     }
 }
 {define-class public open TitledView {inherits View}
@@ -104,6 +159,7 @@
     }
   }
   field protected inactive-titlebar-skin:#SkinSpec
+
   {doc-next
     {purpose A {docref SkinSpec} for the border of {docref TitledView} when
         {docref TitledView} does not have a focus. Default value is set to the
@@ -111,6 +167,7 @@
     }
   }
   field protected inactive-border-skin:#SkinSpec
+
   {doc-next
     {purpose A {docref SkinSpec} for the {ctext Minimize} button of
         {docref TitledView} when {docref TitledView} does not have a focus.
@@ -119,6 +176,7 @@
     }
   }
   field protected inactive-min-skin:#SkinSpec
+
   {doc-next
     {purpose A {docref SkinSpec} for the {ctext Maximize} button of
         {docref TitledView} when {docref TitledView} does not have a focus.
@@ -127,6 +185,7 @@
     }
   }
   field protected inactive-max-skin:#SkinSpec
+
   {doc-next
     {purpose A {docref SkinSpec} for the {ctext Close} button of
         {docref TitledView} when {docref TitledView} does not have a focus.
@@ -136,6 +195,13 @@
   }
   field protected inactive-close-skin:#SkinSpec
 
+||FIXME: implement this
+||--  {doc-next
+||--    {purpose The width of the edges of the window used for resizing.}
+||--  }
+||--  {local-option public resizer-width:any = 4px
+||--  }
+
   {local-option public disabled-color:FillPattern = FillPattern.gray
     set self.inactive-titlebar-skin = null
     set self.inactive-border-skin = null
@@ -144,12 +210,14 @@
     set self.inactive-close-skin = null
   }
 
+||--  || width and height of various decorations
+||--  {doc-next
+||--    {purpose The width of border of {docref TitledView}.}
+||--  }
+||--  let public-get private-set border-size:PixelDistance = 4px
+        ||FIXME: would be nice if this were a local option
+        let package border-size:PixelDistance = 4px
 
-  || width and height of various decorations
-  {doc-next
-    {purpose The width of border of {docref TitledView}.}        
-  }
-  let public-get private-set border-size:PixelDistance = 4px
   {doc-next
     {purpose A length of corner borders of {docref TitledView}.}
     {notes Corner borders are used to resize the {docref TitledView}
@@ -158,15 +226,26 @@
   }
   let public-get private-set corner-size:PixelDistance = 12px
 
-  || Resizing constraints, derived class can have its own specified minimum
-  || values.
-  || Ideally for correct functionality these values should not be 0
+  || Resizing constraints, derived class can have its own specified
+  || minimum values.  Ideally for correct functionality these values
+  || should not be 0
+  {doc-next
+    {purpose Minimum width for the {docref TitledView}.}
+  }
   field protected minimum-width:Distance = 5cm
+
+  {doc-next
+    {purpose Minimum height for the {docref TitledView}.}
+  }
   field protected minimum-height:Distance = 2cm
 
   || For moving the View when dragged from title bar
   field private drag-started?:bool
   field private motion-alarm:Alarm
+
+  {doc-next
+    {purpose Used to remember if dragging was started with the left button.}
+  }
   field protected left-button?:bool
 
   || These are in display coordinates.  drag-start-view-* represent the
@@ -382,7 +461,7 @@
         }
     {return {display.get-usable-area}}
   }
-  
+
   || Create a Fill for resizing and attach it to the grid as
   || specified.
   {method private {make-resizer
@@ -430,7 +509,7 @@
             opaque-to-events? = true,
             {splice ...}
         }
-    
+
     {self.grid.add
         fill,
         left = left,
@@ -447,7 +526,7 @@
     {purpose Create a {ctext TitledView}.}
     {parameter owner,
         Specifies the owner {docref View} of the newly
-        created {ctext TitledView}.  
+        created {ctext TitledView}.
     }
     {parameter center?,
         Specifies whether this {ctext TitledView} should be positioned so that
@@ -467,16 +546,16 @@
         Command (see {docref StateMask}).
     }
     {parameter range-selection-ui-enabled?,
-        Provides the initial value for {docref 
+        Provides the initial value for {docref
         GuiRangeSelectionContext.range-selection-ui-enabled?}.
     }
     {parameter title,
         Title of the {docref TitledView}.
     }
     {parameter visibility,
-        The {docref WindowVisibility} of the {docref TitledView}.        
-    }    
-  }  
+        The {docref WindowVisibility} of the {docref TitledView}.
+    }
+  }
   {constructor public {default
                           owner:#View = null,
                           center?:bool = false,
@@ -494,7 +573,7 @@
                 {self.handle-motion-alarm}
             }
         }
-    
+
     let args:Arguments = {new Arguments}
     let graphic:#Graphic = null
     {for (a, k) in ... do
@@ -508,9 +587,9 @@
             {args.append keyword=k, a}
         }
     }
-    
+
     set self.content-frame =
-        {ClipFrame 
+        {ClipFrame
             valign = "top", halign = "left", ||""
             width = {make-compressible},
             height = {make-compressible},
@@ -530,9 +609,9 @@
             || If not passed we don't get correct initial-size
             "T", ||""
             selection-context = null
-        }    
+        }
 
-    
+
     || Decorate view
     {self.decorate-view}
 
@@ -540,7 +619,7 @@
     {if-non-null graphic then
         {self.content-frame.add graphic}
     }
-    
+
     {construct-super
         owner = owner,
         center? = center?,
@@ -563,9 +642,8 @@
             {self.outer-fill.unset-option-by-name "skin"} ||""
             {self.cmd-min.unset-option-by-name "skin"} ||""
             {self.cmd-max.unset-option-by-name "skin"} ||""
-            {self.cmd-close.unset-option-by-name "skin"} ||""         
+            {self.cmd-close.unset-option-by-name "skin"} ||""
         },
-
 
         {on e:ViewVisibilityEvent do
             def visibility = e.visibility
@@ -584,23 +662,20 @@
                     || visibility="normal"
                     || 3) We get incorrect window size even if self.width=0.05m
                     || and self.height=0.02m
-                    {if self.width asa Distance <= self.minimum-width or
-                        self.height asa Distance <= self.minimum-height
-                     then
-                        {self.set-window-size
-                            self.width asa Distance,
-                            self.height asa Distance
-                        }
+                    def w = {any-to-Distance self.width}
+                    def h = {any-to-Distance self.height}
+                    {if w <= self.minimum-width or h <= self.minimum-height then
+                        {self.set-window-size w, h}
                     }
                 }
             }
-            
+
             let border-size:any = TitledView.border-size
 
             {if visibility == WindowVisibility.maximized then
                 let display:DISPLAY.Display =
                     {DISPLAY.Display.get-primary}
-                def (sx, sy, sw, sh) = {display.get-usable-area}                
+                def (sx, sy, sw, sh) = {display.get-usable-area}
                 {self.set-window-position-and-size sx, sy, sw, sh}
 
                 || To hide borders when maximized
@@ -630,32 +705,27 @@
         self.grid,
         {splice args}
     }
-
     set self.title = title
-
     set self.initializing? = false
   }
 
   || Validate width and height updated by user, also reset them if needed
-  {doc-next
-    {unadvertised}
-  }
   {method public open {option-changed key:String, value:any}:void
     {super.option-changed key, value}
     {if not {unbound-option? key} then
         {switch key
          case "width" do ||""
-            {if value asa Distance < self.minimum-width then
+            {if {any-to-Distance value} < self.minimum-width then
                 set self.width = self.minimum-width
-            }        
+            }
          case "height" do ||""
-            {if value asa Distance < self.minimum-height then
+            {if {any-to-Distance value} < self.minimum-height then
                 set self.height = self.minimum-height
             }
         }
     }
   }
-  
+
   {doc-next
     {purpose Validate width and height for {docref TitledView}.}
     {details Width and height of {docref TitledView} cannot be less than
@@ -665,7 +735,7 @@
   {method private {validate-width-and-height
                       width:Distance, height:Distance
                   }:(width:Distance, height:Distance)
-    
+
     {if width < self.minimum-width then
         set width = self.minimum-width
     }
@@ -724,7 +794,7 @@
             border-width = 1px,
             border-color = grid-border-color
         }
-    
+
     set self.title-hbox =
         {HBox
             valign = "top" ||""
@@ -737,7 +807,7 @@
         }
 
     set self.icon-frame = {Frame}
-    
+
     set self.cmd-min =
         {CommandButton
             label =
@@ -753,26 +823,26 @@
                 },
             takes-focus? = false,
             _style-element = "TitledView/min-button", ||""
-            
+
             {on Action do
-                set self.visibility = WindowVisibility.minimized                
+                set self.visibility = WindowVisibility.minimized
             }
         }
-    
+
     set self.cmd-max =
         {CommandButton
-            label = 
+            label =
                 {Label
-                    {Frame 
+                    {Frame
                         width = 13px, height = 11px,
                         vstretch? = true, hstretch? = true,
                         border-color = grid-border-color, border-width = 1px,
                         background = "transparent", ||""
-                        {Frame 
+                        {Frame
                             vstretch? = true, hstretch? = true,
                             border-color = "white", border-width = 2px, ||""
                             background = "transparent", ||""
-                            {Frame 
+                            {Frame
                                 vstretch? = true, hstretch? = true,
                                 border-color = grid-border-color,
                                 border-width = 1px,
@@ -798,14 +868,14 @@
                 },
             takes-focus? = false,
             _style-element = "TitledView/close-button", ||""
-            
+
             {on Action do
                 {self.close}
             }
         }
-    
+
     || Add all required objects to Grid for TitleBar
-    
+
     || Cannot add icon-frame when required as it has to be at the first place
     || so need to have icon-frame always
     {self.title-hbox.add self.icon-frame}
@@ -837,11 +907,11 @@
     || Put a SkinnableFill at the very back, to show the borders
     set self.outer-fill =
         {SkinnableFill
-            _style-element = "TitledView/border", ||""
+            _style-element = "TitledView/resizer", ||""
             border-width = 0pt,
             opaque-to-events? = true
         }
-    
+
     {self.grid.add
         top = {self.grid.top},
         right = {self.grid.right},
@@ -872,12 +942,12 @@
         }
 
     set self.top-fill =
-        {self.make-resizer 
+        {self.make-resizer
             {self.grid.top}, vfe, hfa, vfb,
             cursor-size-top,
             height = border-height
         }
-    
+
     set self.top-left-hfill =
         {self.make-resizer
             {self.grid.top}, vfb, hfb, vfa,
@@ -912,7 +982,7 @@
                     self.visibility != WindowVisibility.maximized and
                     self.drag-started?
                  then
-                    {self.handle-drag-continue g, e}                    
+                    {self.handle-drag-continue g, e}
                     {e.consume}
                 }
             },
@@ -973,7 +1043,7 @@
             {self.grid.left},
             cursor-size-left,
             width = border-width
-        }    
+        }
 
     set self.bottom-left-vfill =
         {self.make-resizer
@@ -1034,7 +1104,7 @@
             cursor-size-top-right,
             height = TitledView.corner-size
         }
-    
+
     {self.grid.add
         self.buttons-hbox,
         top = {self.grid.top}, right = vfe
@@ -1047,8 +1117,11 @@
     }
   }
 
+  {doc-next
+    {purpose Switch to the skins appropriate for an inactive window.}
+  }
   {method protected open {apply-inactive-skin}:void
-    
+
     def titlebar-start-color = self.disabled-color
     def titlebar-end-color = {get-highlight-for self.disabled-color}
     def buttons-border-color = {get-shadow-for self.disabled-color}
@@ -1126,10 +1199,10 @@
                 draw-top-edge? = false
             }
     }
-    
+
     {self.title-bar-frame.set-option-by-name
         "skin", self.inactive-titlebar-skin ||""
-    }    
+    }
     {self.outer-fill.set-option-by-name
         "skin", self.inactive-border-skin ||""
     }
@@ -1143,7 +1216,7 @@
         "skin", self.inactive-close-skin ||""
     }
   }
-  
+
   {doc-next
     {purpose Add a graphical child to {docref TitledView}.}
     {details
@@ -1159,16 +1232,18 @@
         }
     }
   }
+
   {doc-next
     {purpose Clear the contents of a {docref TitledView}.}
   }
   {method public open {clear}:void
     {self.content-frame.clear}
   }
+
   {method public open {remove-child}:void
     {self.content-frame.remove-child}
   }
-  
+
   {doc-next
     {purpose Set a title to {docref TitledView}.}
   }
@@ -1195,17 +1270,17 @@
                           small-icon-if-used:#Pixmap
                       }:void
     {self.icon-frame.add large-icon, replace? = true}
-    {super.set-icon large-icon, small-icon-if-used}    
+    {super.set-icon large-icon, small-icon-if-used}
   }
 
   {doc-next
-    {purpose 
+    {purpose
         Resize the {docref TitledView}.
     }
-    {parameter width, 
+    {parameter width,
         The new width.
     }
-    {parameter height, 
+    {parameter height,
         The new height.
     }
     {details
@@ -1237,20 +1312,20 @@
         Set the width, height and the position of the {docref TitledView}.
     }
     {notes
-        Use this when both the position and size are to be set. 
-        This may be faster than calling {docref View.set-window-position} 
+        Use this when both the position and size are to be set.
+        This may be faster than calling {docref View.set-window-position}
         and {docref TitledView.set-window-size} methods.
 
         If new width is less than {ctext TitledView.minimum-width} then it will
         be ignored and {ctext TitledView.minimum-width} will be set as new
-        width of {docref TitledView}.        
+        width of {docref TitledView}.
 
         If new height is less than {ctext TitledView.minimum-height} then it
         will be ignored and {ctext TitledView.minimum-height} will be set as
         new height of {ctext TitledView}.
     }
   }
-  {method public open {set-window-position-and-size 
+  {method public open {set-window-position-and-size
                           x:Distance, y:Distance,
                           width:Distance, height:Distance
                       }:void
@@ -1278,12 +1353,15 @@
     }
   }
 
+  {doc-next
+    {purpose Implements the maximize action. }
+  }
   {method protected open {handle-maximize-button}:void
     {if self.visibility == WindowVisibility.normal then
         set self.visibility = WindowVisibility.maximized
         || Should not allow resizing when window is maximized
         {self.show-resizing-cursors show-cursor? = false}
-        
+
      elseif self.visibility == WindowVisibility.maximized then
         set super.visibility = WindowVisibility.normal
         {self.show-resizing-cursors}
@@ -1296,7 +1374,7 @@
         set self.right-fill.cursor = cursor-size-right
         set self.bottom-fill.cursor = cursor-size-bottom
         set self.left-fill.cursor = cursor-size-left
-        
+
         set self.top-right-vfill.cursor = cursor-size-top-right
         set self.bottom-right-vfill.cursor = cursor-size-bottom-right
         set self.bottom-right-hfill.cursor = cursor-size-bottom-right
@@ -1307,9 +1385,9 @@
      else
         set self.top-fill.cursor = null
         set self.right-fill.cursor = null
-        set self.bottom-fill.cursor = null        
+        set self.bottom-fill.cursor = null
         set self.left-fill.cursor = null
-        
+
         set self.top-right-vfill.cursor = null
         set self.bottom-right-vfill.cursor = null
         set self.bottom-right-hfill.cursor = null
@@ -1320,10 +1398,10 @@
     }
   }
 
-  
+
 }
 
-{do
+{define-proc package {get-titled-view-rules}:{Array-of StyleRule}
     def decorations-start-color =
         {FillPattern.from-color
             {Color.from-rgb-uint8 109, 176, 255}
@@ -1332,7 +1410,6 @@
         {FillPattern.from-color
             {Color.from-rgb-uint8 79, 146, 228}
         }
-
     def button-rollover-color =
         {FillPattern.from-color
             {Color.from-rgb-uint8 166, 208, 258}
@@ -1340,7 +1417,7 @@
     def close-button-rollover-color =
         {FillPattern.from-color
             {Color.from-rgb-uint8 220, 80, 80}
-        }    
+        }
     def button-border-color = {Color.from-rgb-uint8 49, 116, 198}
 
     def button-text-color = "#fffff0" ||""
@@ -1362,113 +1439,119 @@
             255, 255, 255,
             opacity = 0.6
         }
-    
-    {StyleManager.append-base-style-rule
-        {StyleRule "TitledView/titlebar", ||""
-            color = button-text-color,
-            font-size = {prefs}["caption-font-size"], ||""
-            font-weight = {prefs}["caption-font-weight"], ||""
-            font-style = {prefs}["caption-font-style"], ||""
-            skin =
-                {ShadedSkinSpec
-                    decorations-start-color,
-                    decorations-end-color,
-                    draw-top-edge? = false,
-                    draw-right-edge? = false,
-                    draw-bottom-edge? = false,
-                    draw-left-edge? = false
-                }
-        },
-        {StyleRule "TitledView/border", ||""
-            skin =
-                {ShadedSkinSpec
-                    decorations-start-color,
-                    decorations-end-color,
-                    draw-top-edge? = false,
-                    draw-right-edge? = false,
-                    draw-bottom-edge? = false,
-                    draw-left-edge? = false
-                }
-        },
-        {StyleRule "TitledView/content", ||""
-            border-width = 1px
-        },
-        {StyleRule "TitledView/min-button", ||""
-            width = 7mm,
-            height = 4.5mm,
-            color = button-text-color,
-            shadow-spec = button-shadow-spec,
-            shadow-color = button-shadow-color,
-            skin =
-                {ShadedSkinSpec
-                    decorations-start-color,
-                    decorations-end-color,
-                    rollover-start-color = button-rollover-color,
-                    rollover-end-color = button-rollover-color,
-                    border-color = button-border-color,
-                    rollover-border-color = button-border-color,
-                    pressed-overlay = button-rollover-color,
-                    highlight-alpha-1 = 0.5,
-                    highlight-boundary = 1percent,
-                    corner-radius = 3px,
-                    upper-left-rounded? = false,
-                    upper-right-rounded? = false,
-                    lower-left-rounded? = true,
-                    lower-right-rounded? = false,
-                    draw-top-edge? = false,
-                    draw-right-edge? = false
-                }
-        },
-        {StyleRule "TitledView/max-button", ||""
-            width = 7mm,
-            height = 4.5mm,
-            color = button-text-color,
-            shadow-spec = button-shadow-spec,
-            shadow-color = button-shadow-color,
-            skin =
-                {ShadedSkinSpec
-                    decorations-start-color,
-                    decorations-end-color,
-                    rollover-start-color = button-rollover-color,
-                    rollover-end-color = button-rollover-color,
-                    border-color = button-border-color,
-                    rollover-border-color = button-border-color,
-                    pressed-overlay = button-rollover-color,
-                    highlight-alpha-1 = 0.5,
-                    highlight-boundary = 1percent,
-                    corner-radius = 3px,
-                    upper-left-rounded? = false,
-                    upper-right-rounded? = false,
-                    lower-left-rounded? = false,
-                    lower-right-rounded? = false,
-                    draw-top-edge? = false,
-                    draw-right-edge? = false
-                }
-        },            
-        {StyleRule "TitledView/close-button", ||""
-            width = 11mm,
-            height = 4.5mm,
-            color = button-text-color,
-            shadow-spec = button-shadow-spec,
-            shadow-color = button-shadow-color,
-            skin =
-                {ShadedSkinSpec
-                    decorations-start-color,
-                    decorations-end-color,
-                    rollover-start-color = close-button-rollover-color,
-                    rollover-end-color = close-button-rollover-color,
-                    border-color = button-border-color,
-                    rollover-border-color = button-border-color,
-                    pressed-overlay = close-button-rollover-color,
-                    highlight-alpha-1 = 0.5,
-                    highlight-boundary = 1percent,
-                    corner-radius = 3px,
-                    upper-left-rounded? = false,
-                    upper-right-rounded? = false,
-                    lower-left-rounded? = false,
-                    lower-right-rounded? = true,
-                    draw-top-edge? = false
-                }    
-        }            
+
+    {return
+        {new {Array-of StyleRule},
+            {StyleRule "TitledView/titlebar", ||""
+                color = button-text-color,
+                font-size = {prefs}["caption-font-size"], ||""
+                font-weight = {prefs}["caption-font-weight"], ||""
+                font-style = {prefs}["caption-font-style"], ||""
+                skin =
+                    {ShadedSkinSpec
+                        decorations-start-color,
+                        decorations-end-color,
+                        draw-top-edge? = false,
+                        draw-right-edge? = false,
+                        draw-bottom-edge? = false,
+                        draw-left-edge? = false
+                    }
+            },
+            {StyleRule "TitledView/resizer", ||""
+                skin =
+                    {ShadedSkinSpec
+                        decorations-start-color,
+                        decorations-end-color,
+                        draw-top-edge? = false,
+                        draw-right-edge? = false,
+                        draw-bottom-edge? = false,
+                        draw-left-edge? = false
+                    }
+            },
+            {StyleRule "TitledView/content", ||""
+                border-width = 1px
+            },
+            {StyleRule "TitledView/min-button", ||""
+                width = 7mm,
+                height = 4.5mm,
+                color = button-text-color,
+                shadow-spec = button-shadow-spec,
+                shadow-color = button-shadow-color,
+                skin =
+                    {ShadedSkinSpec
+                        decorations-start-color,
+                        decorations-end-color,
+                        rollover-start-color = button-rollover-color,
+                        rollover-end-color = button-rollover-color,
+                        border-color = button-border-color,
+                        rollover-border-color = button-border-color,
+                        pressed-overlay = button-rollover-color,
+                        highlight-alpha-1 = 0.5,
+                        highlight-boundary = 1percent,
+                        corner-radius = 3px,
+                        upper-left-rounded? = false,
+                        upper-right-rounded? = false,
+                        lower-left-rounded? = true,
+                        lower-right-rounded? = false,
+                        draw-top-edge? = false,
+                        draw-right-edge? = false
+                    }
+            },
+            {StyleRule "TitledView/max-button", ||""
+                width = 7mm,
+                height = 4.5mm,
+                color = button-text-color,
+                shadow-spec = button-shadow-spec,
+                shadow-color = button-shadow-color,
+                skin =
+                    {ShadedSkinSpec
+                        decorations-start-color,
+                        decorations-end-color,
+                        rollover-start-color = button-rollover-color,
+                        rollover-end-color = button-rollover-color,
+                        border-color = button-border-color,
+                        rollover-border-color = button-border-color,
+                        pressed-overlay = button-rollover-color,
+                        highlight-alpha-1 = 0.5,
+                        highlight-boundary = 1percent,
+                        corner-radius = 3px,
+                        upper-left-rounded? = false,
+                        upper-right-rounded? = false,
+                        lower-left-rounded? = false,
+                        lower-right-rounded? = false,
+                        draw-top-edge? = false,
+                        draw-right-edge? = false
+                    }
+            },
+            {StyleRule "TitledView/close-button", ||""
+                width = 11mm,
+                height = 4.5mm,
+                color = button-text-color,
+                shadow-spec = button-shadow-spec,
+                shadow-color = button-shadow-color,
+                skin =
+                    {ShadedSkinSpec
+                        decorations-start-color,
+                        decorations-end-color,
+                        rollover-start-color = close-button-rollover-color,
+                        rollover-end-color = close-button-rollover-color,
+                        border-color = button-border-color,
+                        rollover-border-color = button-border-color,
+                        pressed-overlay = close-button-rollover-color,
+                        highlight-alpha-1 = 0.5,
+                        highlight-boundary = 1percent,
+                        corner-radius = 3px,
+                        upper-left-rounded? = false,
+                        upper-right-rounded? = false,
+                        lower-left-rounded? = false,
+                        lower-right-rounded? = true,
+                        draw-top-edge? = false
+                    }
+            }
+        }
     }
+}
+
+{do
+    {StyleManager.append-base-style-rule {splice {get-titled-view-rules}}}
 }

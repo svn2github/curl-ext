@@ -137,6 +137,30 @@ navigate to the {ctext manifest.mcurl} file in the library.
     {url "../../samples/sample-titled-view.curl"}, TitledView
     sample applet } to see what it looks like.
 }
+{example
+    title = {lmessage A TitledView},
+    {import * from COM.CURL.EXT.GUI}
+    {CommandButton
+        label = "Display a TitledView",
+        {on Action do
+            def tv =
+                {TitledView
+                    title = "Sample TitledView",
+                    margin = 6pt,
+                    font-size = 10pt,
+                    {Table columns = 2, valign = "top",
+                        {text Notes:},
+                        {TextArea width = 2in, height = 1in},
+                        {skip},
+                        {HBox spacing = 6pt, 
+                            {Fill}, {ok-button}, {cancel-button}
+                        }
+                    }
+                }
+            {tv.show}
+        }
+    }
+}
 
 {destination name = "popup-balloon",
 {heading level = 3,

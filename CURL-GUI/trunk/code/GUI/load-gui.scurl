@@ -40,6 +40,7 @@
 
 {import * from CURL.ENGINE.APPLET}
 {import * from CURL.IO.JSON}
+{import * from CURL.LANGUAGE.EXCEPTIONS}
 
 ||--{include "mg-DateTimeAxis.scurl"} ||""
 ||--{include "simple-DateTimeAxis.scurl"} ||""

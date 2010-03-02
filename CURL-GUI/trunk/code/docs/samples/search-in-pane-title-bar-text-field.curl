@@ -2,7 +2,7 @@
 
 {applet manifest = "manifest.mcurl"}
 
-{import * from COM.CURL.EXT}
+{import * from COM.CURL.EXT.STANDARD}
 
 {document-style PlainDocument}
 

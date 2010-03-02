@@ -2,7 +2,7 @@
 {package COM.CURL.EXT.TEST-SUPPORT,
     {compiler-directives careful? = true}
 }
-{import * from COM.CURL.EXT}
+{import * from COM.CURL.EXT.STANDARD}
 {import * from CURL.GUI.STANDARD}
 {import * from COM.CURL.CDU.CURL-UNIT}
 

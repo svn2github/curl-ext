@@ -20,7 +20,7 @@
 }
 {import * from COM.CURL.CDU.CURL-UNIT}
 {import * from COM.CURL.CDU.CURL-UNIT-UI}
-{import * from COM.CURL.EXT}
+{import * from COM.CURL.EXT.STANDARD}
 {import * from COM.CURL.EXT.TEST-SUPPORT}
 
 

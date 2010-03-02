@@ -73,11 +73,6 @@
     }
 }
 
-|| Prepare to run the tests
-{let results:Table = 
-    {GuiTest.setup "AutocompleteTextField Tests", script-url = {url ""}}
-}
-
 || -----------------
 || Define the tests
 || -----------------
@@ -117,7 +112,9 @@
         width = view-width,
         margin = 4pt,
         center? = true,
-        {Dialog GuiTest.scrollbox},
+        {Dialog 
+            {GuiTest.setup "AutocompleteTextField Tests"}
+        },
         {on WindowClose do
             {exit}
         }
@@ -135,23 +132,7 @@
 
     {if {script-args.find "--manual"} >= 0 then
         set v.visibility = WindowVisibility.normal
-
-        {GuiTest.scrollbox.add
-            {VBox
-                {HBox
-                    {Fill},
-                    {CommandButton
-                        label = "Run All",
-                        {on Action do
-                            {run-tests}
-                        }
-                    }
-                },
-                results
-            }
-        }
      else
-        {GuiTest.scrollbox.add results}
         {after 1s do
             {run-tests}
         }

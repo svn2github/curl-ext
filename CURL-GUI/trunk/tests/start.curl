@@ -2,8 +2,8 @@
 {applet manifest = "manifest.mcurl",
     {compiler-directives careful? = true}
 }
-{import * from COM.CURL.GUI}
-{import * from COM.CURL.GUI.TEST-SUPPORT}
+{import * from COM.CURL.EXT.STANDARD}
+{import * from COM.CURL.EXT.TEST-SUPPORT}
 
 || ==============================
 {document-style PlainDocument}

@@ -541,7 +541,8 @@
   {method public open {exit}:bool
     {if {self.confirm-close} then
         {exit}
-        {return true}
+ ||       {unreachable}
+ ||       {return true}
     }
     {return false}
   }

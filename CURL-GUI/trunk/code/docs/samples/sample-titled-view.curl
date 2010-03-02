@@ -13,6 +13,8 @@
 {import * from COM.CURL.EXT.GUI}
 {import * from CURL.GRAPHICS.WINDOW}
 
+{title Sample Titled Views}
+
 {let current-titled-view:#TitledView = null}
 {let current-view:#View = null}
 
@@ -130,11 +132,11 @@
 }
 
 || Return some content for a test
-{define-proc {make-test-content width:Distance, height:Distance}:Graphic
+{define-proc {make-test-content width:any, height:any}:Graphic
     let box-size:Distance = 1cm
-    let rows:int = {ceiling height/box-size} asa int
-    let cols:int = {ceiling width/box-size} asa int
-    let t:Graphic = {Table 
+    let rows:int = {ceiling {any-to-Distance height}/box-size} asa int
+    let cols:int = {ceiling {any-to-Distance width}/box-size} asa int
+    let t:Graphic = {Table
                         vorigin = "top", horigin = "left",
                         columns = cols,
                         cell-margin = 0pt, cell-border-width = 0pt,
@@ -212,7 +214,7 @@
                                             {ImageSkinSpec
                                                 {SlicedImage
                                                     {Pixmap.from-url
-                                                        {url "../code/resources/titledview-borders.png"}
+                                                        {url "../../resources/titledview-borders.png"}
                                                     },
                                                     4
                                                 }
@@ -247,7 +249,7 @@
                                                 draw-left-edge? = false
                                             },
                                         content-background = "lime"
-                                        
+
                                     }
                                 }
                             }
@@ -289,7 +291,7 @@
                  ...
              }:Graphic
     def args = {Arguments {splice ...}}
-    {return 
+    {return
         {CommandButton
             label = name,
             {on Action at cb:CommandButton do
@@ -297,14 +299,13 @@
                     def view =
                         {TitledView
                             title = name,
-                            disabled-color = "brown",
                             {make-test-content 4in, 3in},
                             {splice args},
                             {on WindowClose do
                                 set current-titled-view = null
                             }
                         }
-                    {view.set-icon 
+                    {view.set-icon
                         {Pixmap.from-url
                             {url "../../resources/sliconx16.gif"}}, null
                     }
@@ -322,7 +323,7 @@
                                 set current-view = null
                             }
                         }
-                    {view.set-icon 
+                    {view.set-icon
                         {Pixmap.from-url
                             {url "../../resources/sliconx16.gif"}}, null}
                     {show-view view}
@@ -350,9 +351,7 @@ size.
 {make-test-case "TitledView 6in x 6in", width = 6in, height = 6in}
 {make-test-case "View 6in x 6in", titled? = false, width = 6in, height = 6in}
 
-{bold Known Issues}
-{itemize
-    {item Review the API}
-    {item Write complete doc strings}
-    {item Test and Fix}
-}
+{make-test-case
+    "TitledView 500px x 600px", width = 500px, height = 600px}
+{make-test-case
+    "View 500px x 600px", titled? = false, width = 500px, height = 600px}

@@ -61,11 +61,6 @@
     {return cc}
 }
 
-|| Initialize the GuiTest framework and get a table for the test results
-{let results:Table = 
-    {GuiTest.setup "BalloonView Tests", script-url = {url ""}}
-}
-
 || -----------------
 || Define the tests
 || -----------------
@@ -76,35 +71,23 @@
 {def key-press = {KeyPress}}
 
 {def test-close =
-    {GuiTest {make-test close-button? = true}, "Test Close Button", results,
+    {GuiTest {make-test close-button? = true}, "Test Close Button",
         {UI.focus},
-        {UI.click 10mm, 5mm, amount = 100},
+        {UI.click 10mm, 5mm, delay = 100ms},
         {UI.set-view {proc {}:#View {return balloon}}},
-        {UI.click 8mm, 28mm, amount = 100},
+        {UI.click 8mm, 28mm, delay = 100ms},
         {UI.type "tested", view = balloon},
-        {UI.click 27mm, 10mm, amount = 100},
+        {UI.click 27mm, 10mm, delay = 100ms},
+        {UI.wait 2s},
         {UI.check
-            test-proc = {proc {t:Graphic, args:Array
-                              }:(expected:Array, actual:Array)
-                            def expected = {Array true}
-                            def actual = {Array balloon.destroyed?}
-                            {return (expected, actual)}
-                        }
+            check-proc =
+                {proc {t:Graphic, args:Array
+                      }:(expected:Array, actual:Array)
+                    def expected = {Array true}
+                    def actual = {Array balloon.destroyed?}
+                    {return (expected, actual)}
+                }
         }
-||--        {UI.click 34mm, 10mm, amount = 100},
-||--        {UI.click 38mm, 10mm, amount = 100},
-||--        {UI.click 40mm, 10mm, amount = 100}
-||--        {UI.check-events 
-||--            key-press, value-changed, 
-||--            key-press, value-changed,
-||--            value-changed, value-finished
-||--        },
-||--        {UI.set-value ""},
-||--        {UI.type "af"},
-||--        {UI.check-events 
-||--            key-press, value-changed, 
-||--            key-press, value-changed
-||--        }
     }
 }
 
@@ -116,80 +99,50 @@
 
 
 {def test-no-close =
-    {GuiTest {make-test close-button? = false}, "Test no close button", results,
+    {GuiTest {make-test close-button? = false}, "Test no close button",
         {UI.focus},
-        {UI.click 10mm, 5mm, amount = 100},
+        {UI.click 10mm, 5mm, delay = 100ms},
         {UI.set-view {proc {}:#View {return balloon}}},
-        {UI.click 8mm, 28mm, amount = 100},
+        {UI.click 8mm, 28mm, delay = 100ms},
         {UI.type "tested", view = balloon},
-        {UI.click 27mm, 10mm, amount = 100},
+        {UI.click 27mm, 10mm, delay = 100ms},
         {UI.check
-            test-proc = {proc {t:Graphic, args:Array
-                              }:(expected:Array, actual:Array)
-                            def expected = {Array false}
-                            def actual = {Array balloon.destroyed?}
-                            {return (expected, actual)}
-                        }
-        },
+            check-proc = {proc {t:Graphic, args:Array
+                               }:(expected:Array, actual:Array)
+                             def expected = {Array false}
+                             def actual = {Array balloon.destroyed?}
+                             {return (expected, actual)}
+                         }
+        }
+        ,
         {UI.do
             {proc {t:GuiTest}:void
                 set dialog = {Dialog {big {bold Test Dialog!}}}
-                {dialog.show}
-            }
-        },
-        {UI.check
-            test-proc = {proc {t:Graphic, args:Array
-                              }:(expected:Array, actual:Array)
-                            def expected = {Array true}
-                            def actual = {Array balloon.destroyed?}
-                            {return (expected, actual)}
-                        }
+                {dialog.show modal? = false}
+            },
+            delay = .1s
+        }
+,        {UI.check
+            check-proc = {proc {t:Graphic, args:Array
+                               }:(expected:Array, actual:Array)
+                             def expected = {Array true}
+                             def actual = {Array balloon.destroyed?}
+                             {return (expected, actual)}
+                         }
         },
         {UI.do
             {proc {t:GuiTest}:void
                 {dialog.close "closed"}
             }
         }
-||--        {UI.check-events 
-||--            key-press, value-changed, 
-||--            key-press, value-changed,
-||--            value-changed, value-finished
-||--        },
-||--        {UI.set-value ""},
-||--        {UI.type "af"},
-||--        {UI.check-events 
-||--            key-press, value-changed, 
-||--            key-press, value-changed
-||--        }
     }
 }
 
 
-{define-proc public {run-tests}:void
-    {test-close.run}
-    {test-no-close.run}
-    {GuiTest.finish}
-}
-
-
-
-{value
-    {GuiTest.scrollbox.add
-        {VBox
-            {HBox
-                {Fill},
-                {CommandButton
-                    label = "Run All",
-                    takes-focus? = false,
-                    {on Action at cb:CommandButton do
-                        set cb.enabled? = false
-                        {run-tests}
-                        set cb.enabled? = true
-                    }
-                }
-            },
-            results
-        }
-    }
-    {Dialog GuiTest.scrollbox}
+|| Initialize the GuiTest framework and get a table for the test results
+{GuiTest.setup "BalloonView Tests"
+||--        ,run-all-proc =
+||--            {proc {}:void
+||--                {test-no-close.run}
+||--            }
 }
