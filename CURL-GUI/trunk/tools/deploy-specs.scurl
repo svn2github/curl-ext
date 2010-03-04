@@ -83,6 +83,32 @@
             }
         },
 
+        || -- project files
+        {DeployAction
+            caption = {lmessage copy project files},
+            {proc {self:DeployAction,
+                   source-root:Url,
+                   target-root:Url}:void
+                def target = {target-root.concat "src/code"}
+                {create-Directory target, error-if-exists? = false}
+                def files =
+                    {StringArray
+                        "project.cprj",
+                        "classic-project.cprj",
+                        ".project",
+                        ".settings"
+                    }
+                {for file in files do
+                    {copy 
+                        {source-root.concat "code/" & file},
+                        {target.concat file},
+                        recurse? = true,
+                        error-if-exists? = false
+                    }
+                }
+            }
+        },
+
         || ---------------------
         || LIBRARY distribution
         || ---------------------

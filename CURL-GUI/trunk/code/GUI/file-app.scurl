@@ -104,8 +104,15 @@
   }
   field public constant app-name:String
   
+  {doc-next
+    {purpose File dialog filters. Used when choosing a file to open or
+        save. See {docref choose-file} for more information.
+    }
+  }
+  field public-get protected-set filters:{Array-of FileDialogFilter}
+
   field private _untitled-url:Url = 
-      {url "http://www.curl.com/~applet-temp-file.csv"} ||""
+      {url "http://www.example.com/Untitled"} ||""
 
   {doc-next
     {purpose A url used to temporarily save an untitled file.}
@@ -118,7 +125,9 @@
     {purpose Return true if the current file has not been named by the user.}
   }
   {getter public open  {untitled?}:bool
-    {return self.file-location == null}
+    {return self.file-location == null
+        or self.file-location == self.untitled-file-url
+    }
   }
 
 
@@ -147,12 +156,18 @@
   {doc-next
     {purpose Initialize the application object.}
     {parameter app-name, The applet name to be shown in the title bar.}
+    {parameter filters, Provides the initial value for
+        {docref FileApp.filters}.
+    }
   }
   {constructor public {default
-                          app-name:String
+                          app-name:String,
+                          filters:FileDialogFilterArray =
+                              FileDialogFilter.all-files-filter-array
                       }
     {construct-super.CommandContext}
     {construct-super.Observer}
+    set self.filters = filters
 
     set self.app-name = app-name
     {platform-switch
@@ -180,18 +195,20 @@
   }
   {getter protected open {file-title}:String
     let name:String = {hlmessage Untitled}
-    {if-non-null loc = self.file-location then
-        {if-non-null s = loc.leaf then
-            set name = s
+    {if not self.untitled? then
+        {if-non-null loc = self.file-location then
+            {if-non-null s = loc.leaf then
+                set name = s
+            }
         }
-    }        
+    }
     {return name}
   }
 
   {doc-next
     {purpose Return the title to be shown in the window title bar.}
   }
-  {getter protected open {full-title}:String
+  {getter public open {full-title}:String
     {return self.app-name & " - " & self.file-title} ||""
   }
 
@@ -207,7 +224,9 @@
     {details Call this after a file is opened or created (not when saved).}
   }
   {method protected open {update-file-info file-location:#Url, new?:bool}:void
-    set self.file-location = file-location
+    {if-non-null file-location then
+        set self.file-location = file-location
+    }
     {if new? then
         set self.edit-count = 0
     }
@@ -242,7 +261,6 @@
   }
   {method public open {note-file-saved}:void
     set self.last-save-edit-count = self.edit-count
-    {self.update-file-info self.file-location, false}
   }
 
   {doc-next 
@@ -456,15 +474,7 @@
         let location:#Url = 
             {choose-file
                 title = {hlmessage Choose File},
-                filters =
-                    {FileDialogFilterArray
-                        {FileDialogFilter
-                            {hlmessage CSV Files},
-                            {FileDialogTypeFilterArray
-                                {FileDialogTypeFilter "csv"} ||""
-                            }
-                        }
-                    }
+                filters = self.filters
             }
 
         {if-non-null file-url = location then
@@ -513,22 +523,15 @@
   }
   {method public open {file-save-as}:void
 
-    let location:#Url = 
+    let location:#Url =
         {choose-file
             style = FileDialogStyle.save-as,
             title = {hlmessage Save As...},
-                filters =
-                    {FileDialogFilterArray
-                        {FileDialogFilter
-                            {hlmessage CSV Files},
-                            {FileDialogTypeFilterArray
-                                {FileDialogTypeFilter "csv"} ||""
-                            }
-                        }
-                    }
-            }
+            filters = self.filters
+        }
     {if-non-null file-url = location then
         {self.do-file-save-as file-url}
+        {self.update-file-info file-url, false}
         {self.note-file-saved}
     }
   }
@@ -631,38 +634,50 @@
         persistent storage, along with recent choices.
     }
     {details
-        To use this API, be sure to call {docref persistent-data} to
-        identify a persistent data repository and make it available to
-        the current applet.
+        To use this API, be sure to call {docref persistent-data} at
+        the top level of your applet to identify a persistent data
+        repository and make it available to the current applet.
+        {curl-code
+            {curl 7.0 applet}
+            {persistent-data "my-applet-location", duration = 180days}
+        }
+
+        This class is a subclass of {docref GuiEventTarget}. Any time
+        the location changes, an {docref Action} event is fired at
+        it. You can handle this event to change the window title if
+        desired. You can call {docref PersistedLocation.saved-url} to
+        get the current location.
     }
 }
-{define-class public open PersistedLocation
+{define-class public open PersistedLocation {inherits GuiEventTarget}
+
+  field private action:Action = {Action}
 
   {doc-next
     {purpose A string to identify the saved state. Usually corresponds
         to the applet that created the file.
     }
   }
-  field protected url-key:String
+  field public-get protected-set url-key:String
 
   {doc-next
     {purpose Title for the file dialogs.
     }
   }
-  field protected title:#String
+  field public-get protected-set title:#String
 
   {doc-next
     {purpose Indicates that the persisted url is for a directory.
     }
   }
-  field protected directory?:bool
+  field public-get protected-set directory?:bool
 
   {doc-next
     {purpose File dialog filters. See {docref choose-file} for more
         information.
     }
   }
-  field protected filters:{Array-of FileDialogFilter}
+  field public-get protected-set filters:{Array-of FileDialogFilter}
 
   {doc-next
     {purpose Cached value of the persisted url.
@@ -670,8 +685,8 @@
   }
   field protected _url:#Url
 
-  field protected recent-locations:Array = {Array}
-  field protected max-saved-locations:int = 10
+  field public-get protected-set recent-locations:Array = {Array}
+  field public-get protected-set max-saved-locations:int = 10
 
   || Get the url associated with url-key. 
   || Prompt the user if the key is not found.
@@ -691,7 +706,7 @@
         {docref PersistedLocation.directory?}
     }
     {parameter filters, Provides the initial value for
-        {docref PersistedLocation.filters}
+        {docref PersistedLocation.filters}.
     }
   }
   {constructor public {default 
@@ -699,13 +714,18 @@
                           title:#String = null,
                           directory?:bool = false,
                           filters:FileDialogFilterArray = 
-                              FileDialogFilter.all-files-filter-array
+                              FileDialogFilter.all-files-filter-array,
+                          ...:EventHandler
                       }
+    {construct-super ...}
     set self.url-key = url-key
     set self.title = title
     set self.directory? = directory?
     set self.filters = filters
     set self._url = null
+    {after 0s do
+        {self.handle-event self.action}
+    }
   }
 
   {doc-next
@@ -847,6 +867,7 @@
         }
         {commit-persistent-data}
     }
+    {self.handle-event self.action}
     {return new-url}
   }
 

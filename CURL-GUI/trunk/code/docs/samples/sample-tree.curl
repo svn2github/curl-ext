@@ -15,10 +15,25 @@
 {import * from COM.CURL.EXT.GUI}
 {import * from COM.CURL.EXT.DATA-ACCESS}
 
-{persistent-data "gantt/sample-tree", duration=180days}
+{persistent-data "gantt/sample-tree", duration = 180days}
 {def file-locator = {PersistedLocation 
-                        "tree-model",
-                        title = "File to Open"
+                        "sample-tree",
+                        title = "Outline File (CSV)",
+                        filters =
+                            {FileDialogFilterArray
+                                {FileDialogFilter
+                                    {hlmessage CSV Files},
+                                    {FileDialogTypeFilterArray
+                                        {FileDialogTypeFilter "csv"} ||""
+                                    }
+                                },
+                                {FileDialogFilter
+                                    {hlmessage All Files},
+                                    {FileDialogTypeFilterArray
+                                        {FileDialogTypeFilter "*"} ||""
+                                    }
+                                }
+                            }
                     }
 }
 
@@ -37,46 +52,16 @@
   field protected grid:TreeGrid
 
   {constructor public {default ...}
-    {construct-super.FileApp "Simple Tree"}
+    {construct-super.FileApp "Simple Tree", filters = file-locator.filters}
     {construct-super.Frame
         hstretch? = true, vstretch? = true,
         {splice ...}
     }
 
     let location:Url = self.untitled-file-url
-    {if file-locator.saved-url == null then
-        {if Dialog.yes ==
-            {popup-question
-                title = {hlmessage Create new File?},
-                {Frame
-                    width = 4in,
-                    {text
-                        {hlmessage
-                            This applet uses a TreeGrid to keep track of a
-                            list of things to do. The first time you run it,
-                            you must choose a file where the list can be
-                            saved.
-                        }
-                        
-                        {hlmessage Do you wish to continue?}
-                    }
-                }
-            }
-         then
-            {if-non-null new-loc = {file-locator.choose-new-file} then
-                set location = new-loc
-             else
-                {exit 0}
-            }
-         else
-            {exit 0}
-        }
-    }
     {if location == self.untitled-file-url then
         {if-non-null loc = {file-locator.get-url} then
             set location = loc
-         else
-            {exit 0}
         }
     }
 
@@ -92,7 +77,7 @@
             automatic-columns? = false,
             {RecordGridColumn
                 "title", ||""
-                width = 2in, valign = "top", ||""
+                width = 4in, valign = "top", ||""
                 cell-spec = ExpanderCell
             },
             {RecordGridColumn
@@ -192,6 +177,13 @@
             self.grid
         }
     }
+
+||--    {file-locator.add-event-handler
+||--        {on Action do
+||--            def loc = file-locator.saved-url
+||--            {title heading? = false, {value self.full-title}}
+||--        }
+||--    }
   }
 
   {method public open {read-model location:Url}:RecordSetTreeModel

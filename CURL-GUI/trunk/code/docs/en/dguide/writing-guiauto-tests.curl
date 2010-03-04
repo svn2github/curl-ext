@@ -154,13 +154,12 @@
 {paragraph
     When you write {ctext {UI.press 4mm, 0mm}} you are specifying a
     mouse click at a position 4mm to the right and 0mm down from the
-    origin of the target object. You can also specify a double value
-    for {param x} or {param y}. This is interpreted as a font-relative
-    value.
+    origin of the target object.
 }
 {paragraph
+    You can also specify a double value for {param x} or {param y}.
     In a text control, a double value for {param x} or {param y} is
-    actually interpreted as a number of characters.  If you
+    interpreted as a number of characters. If you
     write {ctext {UI.press 4.5, 0mm}} and the target of the gesture is
     a text control, it means the x coordinate is exactly halfway from
     the fourth character to the fifth. The exact distance will depend
@@ -213,7 +212,7 @@
     work correctly on every platform.
 }
 {paragraph
-    Each gesture has a corresponding constrctor on the {docref  UI}
+    Each gesture has a corresponding constructor on the {docref  UI}
     class. Refer to the API reference for details.
 }
 

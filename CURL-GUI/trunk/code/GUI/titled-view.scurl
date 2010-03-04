@@ -276,8 +276,7 @@
   {local-option public resizable?:bool = true
     {self.on-resizable-change}
   }
-  || FIXME: Does not allow to change the background of content-frame through
-  || its skin
+
   {local-option public background:Background
     set self.content-frame.background = self.background
   }
