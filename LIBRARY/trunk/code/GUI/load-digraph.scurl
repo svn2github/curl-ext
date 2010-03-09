@@ -1,0 +1,732 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 6.0, 7.0 package}
+{curl-file-attributes character-encoding = "utf8"}
+
+{package COM.CURL.EXT.DIGRAPH}
+
+{doc-next
+    {purpose
+        An exception that occurs in a graph model.
+    }
+}
+{define-class public abstract open GraphException {inherits Exception}
+
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter message,
+        A human readable message.
+    }
+  }  
+  {constructor public {default message:String}
+    {construct-super message}
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        An exception thrown when an acyclic directed graph model
+        operation encounters a cycle.
+    }
+}
+{define-class public open GraphCycleException {inherits GraphException}
+
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+  }  
+  {constructor public {default}
+    {construct-super
+        {hlmessage "Graph is not acyclic (has a circular dependency)."}
+    }
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        An exception thrown when a directed graph model node is told to
+        add or remove an invalid edge.
+    }
+}
+{define-class public open GraphInvalidEdgeException {inherits GraphException}
+
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter message,
+        A human readable message.
+    }
+  }  
+  {constructor public {default message:String}
+    {construct-super message}
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        A single node in a directed, unweighted graph.
+    }
+}
+{define-class public open {DigraphNode-of t:Type}
+
+  {doc-next
+    {purpose
+        Return all successor nodes to one or more nodes, ordered such
+        that no node is listed before any of its predecessors.
+    }
+    {parameter from-nodes,
+        A set of nodes from which to check successors.
+    }
+    {parameter out,
+        If supplied, this array will be filled with the results and returned.
+        It will not be cleared beforehand.
+    }
+    {parameter include-from?,
+        If {ctext true}, the {param from-nodes} will be included in the
+        returned list.
+    }
+    {details
+        This function performs a {italic topological sort} on the
+        directed graph(s) defined by the nodes passed in. As such, it will
+        only be able to complete successfully if the node set defines
+        a directed acyclic graph; i.e. there cannot be a cycle among
+        the base nodes or their successors.
+
+        Nodes passed in can have predecessors outside of their
+        successor set; these nodes are ignored for the purposes of
+        this sorting operation.
+    }
+    {return-vals
+        An array containing all the matching nodes in the given order.
+    }
+    {throws
+        {exception GraphCycleException,
+            if the successors form a cycle.
+        }
+    }
+  }
+  {define-proc public {topological-sort-subgraph
+                          from-nodes:{Set-of {DigraphNode-of t}},
+                          out:#{Array-of {DigraphNode-of t}} = null,
+                          include-from?:bool = true
+                      }:{Array-of {DigraphNode-of t}}
+
+    || http://doi.acm.org/10.1145/366707.367589
+    || (Kahn, 1962) algorithm to iteratively pull out relative source nodes,
+    || though we track nodes' indegree to avoid heavy cycling on long
+    || dependency chains.
+    
+    def ordered-list =
+        {if-non-null out then
+            out
+         else
+            {new {Array-of {DigraphNode-of t}}}
+        }
+
+    || Create a set of all nodes that will be updated.
+    def working-set = {new {Set-of {DigraphNode-of t}}}
+
+    || First, get all successor nodes unordered.
+    {for node in from-nodes do
+        {if not {working-set.member? node} then
+            {node.get-all-successors out = working-set}
+            {if include-from? then
+                {working-set.insert node}
+            }
+        }
+    }
+
+    {if working-set.empty? then {return ordered-list}}
+
+    || The "internal indegree" of each node - indegree of set-internal edges.
+    def indegree-table = {new {HashTable-of {DigraphNode-of t}, int}}
+    || All nodes that are internal indegree 0 to start with.
+    def starter-source-set = {new {Set-of {DigraphNode-of t}}}
+
+    || Count the internal indegree of each node.
+    {for node in working-set do
+        let c:int = 0
+        {for pnode in node.predecessors do
+            {if {working-set.member? pnode} then {inc c}}
+        }
+        {indegree-table.set node, c}
+        {if c == 0 then
+            {starter-source-set.insert node}
+        }
+    }
+
+    || Recurse into the internal source nodes to build the sort.
+    {for node in starter-source-set do
+        {ordered-list.append node}
+        {{DigraphNode-of t}.follow-and-snap-edges
+            node,
+            indegree-table,
+            ordered-list
+        }
+    }
+
+    || If we didn't push every node, there was a cycle.
+    {if ordered-list.size != working-set.size then
+        {throw {GraphCycleException}}
+    }
+    
+    {return ordered-list}
+  }
+
+  || Helper for topological-sort-subgraph.
+  || Follow all successor edges from a node and decrement the successor's
+  || effective indegree by one. Recurse if that makes successor a "source".
+  {define-proc package {follow-and-snap-edges
+                          node:{DigraphNode-of t},
+                          indegrees:{HashTable-of {DigraphNode-of t}, int},
+                          ordered-list:{Array-of {DigraphNode-of t}}
+                      }:void
+    {for successor in node.successors do
+        def (ideg, valid?) = {indegrees.get-if-exists successor}
+        {if valid? then
+            set indegrees[successor] = ideg - 1
+            {if ideg == 1 then
+                {ordered-list.append successor}
+                {{DigraphNode-of t}.follow-and-snap-edges
+                    successor,
+                    indegrees,
+                    ordered-list
+                }
+            }
+        }
+    }
+  }
+  
+  || ======== FIELDS ========================
+
+  {doc-next
+    {purpose
+        All nodes that have edges leading to this node;
+        i.e. all {italic direct predecessors} to this node.
+    }
+    {notes
+        The contents of this container should not be directly manipulated.
+    }
+  }
+  field public constant predecessors:{Array-of {DigraphNode-of t}}
+
+  {doc-next
+    {purpose
+        All nodes that have edges leading from this node;
+        i.e. all {italic direct successors} to this node.
+    }
+    {notes
+        The contents of this container should not be directly manipulated.
+    }
+  }
+  field public constant successors:{Array-of {DigraphNode-of t}}
+
+  field private _data:t
+  
+  || ======== CONSTRUCTORS ========================
+
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter data,
+        The data associated with this node.
+    }
+  }
+  {constructor public {default data:t}
+    set self._data = data
+    set self.predecessors = {new {Array-of {DigraphNode-of t}}}
+    set self.successors = {new {Array-of {DigraphNode-of t}}}
+  }
+
+  || ======== payload/data access ========================
+
+  {doc-next
+    {purpose
+        The data associated with this node.
+    }
+  }
+  {getter public open {data}:t
+    {return self._data}
+  }
+  {setter public open {data new-data:t}:void
+    set self._data = new-data
+  }
+
+  || ======== edge queries  ========================
+
+  {doc-next
+    {purpose
+        Whether there are any edges leading to or from this node.
+    }
+  }
+  {getter public open {connected?}:bool
+    {return self.has-predecessors? or self.has-successors?}
+  }
+
+  {doc-next
+    {purpose
+        The outdegree of this node;
+        i.e. the number of edges leading from this node.
+    }
+  }
+  {getter public open {outdegree}:int
+    {return self.successors.size}
+  }  
+
+  {doc-next
+    {purpose
+        Whether this node is a sink; i.e. has {ctext outdegree 0}.
+    }
+  }
+  {getter public open {sink?}:bool
+    {return self.successors.empty?}
+  }  
+
+  {doc-next
+    {purpose
+        Whether there are any edges leading from this node.
+    }
+  }
+  {getter public open {has-successors?}:bool
+    {return not self.successors.empty?}
+  }
+
+  {doc-next
+    {purpose
+        The indegree of this node;
+        i.e. the number of edges leading to this node.
+    }
+  }
+  {getter public open {indegree}:int
+    {return self.predecessors.size}
+  }  
+
+  {doc-next
+    {purpose
+        Whether this node is a source; i.e. has {ctext indegree 0}.
+    }
+  }
+  {getter public open {source?}:bool
+    {return self.predecessors.empty?}
+  }  
+
+  {doc-next
+    {purpose
+        Whether there are any edges leading to this node.
+    }
+  }
+  {getter public open {has-predecessors?}:bool
+    {return not self.predecessors.empty?}
+  }
+
+  {doc-next
+    {purpose
+        Return all successor nodes to this node.
+    }
+    {parameter out,
+        If supplied, this set will be filled with the results and returned.
+        It will not be cleared beforehand.
+    }
+    {parameter edge-filter,
+        An optional proc that takes two nodes and returns a bool.
+        It will be called for each edge, with arguments of the two endpoints,
+        and if it returns {ctext false}, that edge will not be followed.
+    }
+    {return-vals
+        A set containing all the matching nodes.
+    }
+  }  
+  {method public open {get-all-successors
+                          out:#{Set-of {DigraphNode-of t}} = null,
+                          edge-filter:#{proc-type
+                                           {{DigraphNode-of t},
+                                            {DigraphNode-of t}}:bool
+                                       } = null
+                      }:{Set-of {DigraphNode-of t}}
+    def working-set =
+        {if-non-null out then
+            out
+         else
+            {new {Set-of {DigraphNode-of t}}}
+        }
+    {for snode in self.successors do
+        {if not {working-set.member? snode} then
+            {if-non-null edge-filter then
+                {if not {edge-filter self, snode} then
+                    {continue}
+                }
+            }
+            {working-set.insert snode}
+            {snode.get-all-successors
+                out = working-set,
+                edge-filter = edge-filter
+            }
+        }
+    }
+    {return working-set}
+  }
+  
+  {doc-next
+    {purpose
+        Return this node and all successor nodes in an array, ordered such
+        that no node is listed before any of its predecessors.
+    }
+    {parameter out,
+        If supplied, this array will be filled with the results and returned.
+        It will not be cleared beforehand.
+    }
+    {return-vals
+        An array containing all the matching nodes in the given order.
+    }
+    {details
+        This method performs a {italic topological sort} on the subgraph
+        defined by this node and its successors.
+    }
+    {throws
+        {exception GraphCycleException,
+            if this node's successors have a cycle.
+        }
+    }
+  }  
+  {method public open {topological-sort-successors
+                          out:#{Array-of {DigraphNode-of t}} = null
+                      }:{Array-of {DigraphNode-of t}}
+    def ordered-list =
+        {if-non-null out then
+            out
+         else
+            {new {Array-of {DigraphNode-of t}}}
+        }
+    {return
+        {{DigraphNode-of t}.topological-sort-subgraph
+            {new {Set-of {DigraphNode-of t}}, self},
+            out = ordered-list,
+            include-from? = false
+        }
+    }
+  }
+
+  {doc-next
+    {purpose
+        Return all predecessor nodes to this node.
+    }
+    {parameter out,
+        If supplied, this set will be filled with the results and returned.
+        It will not be cleared beforehand.
+    }
+    {parameter edge-filter,
+        An optional proc that takes two nodes and returns a bool.
+        It will be called for each edge, with arguments of the two endpoints,
+        and if it returns {ctext false}, that edge will not be followed.
+    }
+    {return-vals
+        A set containing all the matching nodes.
+    }
+  }  
+  {method public open {get-all-predecessors
+                          out:#{Set-of {DigraphNode-of t}} = null,
+                          edge-filter:#{proc-type
+                                           {{DigraphNode-of t},
+                                            {DigraphNode-of t}}:bool
+                                       } = null
+                      }:{Set-of {DigraphNode-of t}}
+    def working-set =
+        {if-non-null out then
+            out
+         else
+            {new {Set-of {DigraphNode-of t}}}
+        }
+    {for snode in self.predecessors do
+        {if not {working-set.member? snode} then
+            {if-non-null edge-filter then
+                {if not {edge-filter self, snode} then
+                    {continue}
+                }
+            }
+            {working-set.insert snode}
+            {snode.get-all-predecessors out = working-set}
+        }
+    }
+    {return working-set}
+  }
+
+  || ======== edge modification ========
+  
+  {doc-next
+    {purpose
+        Add an edge leading from this node.
+    }
+    {parameter node,
+        The node to which to add an edge.
+    }
+    {parameter error-if-present?,
+        Whether to throw an error if the listed node already
+        has an edge leading to it from this node.
+    }
+  }
+  {method public open {add-successor
+                          node:{DigraphNode-of t},
+                          error-if-present?:bool = true
+                      }:void
+    {self.add-successor-internal
+        node,
+        error-if-present? = error-if-present?,
+        reverse-link? = true
+    }
+  }
+
+  {method package {add-successor-internal
+                      node:{DigraphNode-of t},
+                      error-if-present?:bool = true,
+                      reverse-link?:bool = true
+                  }:void
+    {if node == self then
+        {throw
+            {GraphInvalidEdgeException
+                {hlmessage "%s cannot be its own successor.", node}
+            }
+        }
+    }
+    {if {self.successors.find node} == -1 then
+        {self.successors.append node}
+     else
+        {if error-if-present? then
+            {throw
+                {GraphInvalidEdgeException
+                    {hlmessage "%s already a successor of %s.", node, self}
+                }
+            }
+         else
+            {return}
+        }
+    }
+    {if reverse-link? then
+        {node.add-predecessor-internal self, reverse-link? = false}
+    }
+  }
+
+  {doc-next
+    {purpose
+        Removes one edge leading from this node.
+    }
+    {parameter node,
+        The node to remove.
+    }
+    {parameter error-if-missing?,
+        If {ctext true}, an error will be thrown if the listed node is
+        not among the successors of this node.
+    }
+  }
+  {method public open {remove-successor
+                          node:{DigraphNode-of t},
+                          error-if-missing?:bool = false
+                      }:void
+    {self.remove-successor-internal
+        node,
+        error-if-missing? = error-if-missing?,
+        reverse-delink? = true
+    }
+  }
+
+  {method package {remove-successor-internal
+                      node:{DigraphNode-of t},
+                      error-if-missing?:bool = false,
+                      reverse-delink?:bool = true
+                  }:void
+    let removed?:bool = false
+    def index = {self.successors.find node}
+    {if index != -1 then
+        {self.successors.remove index}
+        set removed? = true
+    }
+    {if not removed? and error-if-missing? then
+        {throw
+            {GraphInvalidEdgeException
+                {hlmessage
+                    "Tried to remove %s from %s; not a direct successor.",
+                    node, self
+                }
+            }
+        }
+    }
+    {if reverse-delink? then
+        {node.remove-predecessor-internal
+            self,
+            error-if-missing? = error-if-missing?,
+            reverse-delink? = false
+        }
+    }
+  }
+
+  {doc-next
+    {purpose
+        Clears all edges leading from this node.
+    }
+  }
+  {method public open {clear-successors}:void
+    {while not self.successors.empty? do
+        {self.remove-successor-internal
+            self.successors[0],
+            reverse-delink? = true
+        }
+    }
+  }
+
+  {doc-next
+    {purpose
+        Add an edge leading to this node.
+    }
+    {parameter predecessor-node,
+        The node from which to add an edge.
+    }
+    {parameter error-if-present?,
+        Whether to throw an error if the listed node already
+        has an edge leading from it to this node.
+    }
+  }
+  {method public open {add-predecessor
+                          predecessor-node:{DigraphNode-of t},
+                          error-if-present?:bool = true
+                      }:void
+    {self.add-predecessor-internal
+        predecessor-node,
+        error-if-present? = error-if-present?,
+        reverse-link? = true
+    }
+  }
+
+  {method package {add-predecessor-internal
+                      node:{DigraphNode-of t},
+                      error-if-present?:bool = true,
+                      reverse-link?:bool = true
+                  }:void
+    {if node == self then
+        {throw
+            {GraphInvalidEdgeException
+                {hlmessage "%s cannot be its own predecessor.", node}
+            }
+        }
+    }
+    {if {self.predecessors.find node} == -1 then
+        {self.predecessors.append node}
+     else
+        {if error-if-present? then
+            {throw
+                {GraphInvalidEdgeException
+                    {hlmessage "%s already a predecessor of %s.", node, self}
+                }
+            }
+         else
+            {return}
+        }
+    }
+    {if reverse-link? then
+        {node.add-successor-internal self, reverse-link? = false}
+    }
+  }
+
+  {doc-next
+    {purpose
+        Removes one edge leading to this node.
+    }
+    {parameter node,
+        The node to remove.
+    }
+    {parameter error-if-missing?,
+        If {ctext true}, an error will be thrown if the listed node is
+        not among the predecessors of this node.
+    }
+  }
+  {method public open {remove-predecessor
+                          node:{DigraphNode-of t},
+                          error-if-missing?:bool = false
+                      }:void
+    {self.remove-predecessor-internal
+        node,
+        error-if-missing? = error-if-missing?,
+        reverse-delink? = true
+    }
+  }
+
+  {method package {remove-predecessor-internal
+                      node:{DigraphNode-of t},
+                      error-if-missing?:bool = false,
+                      reverse-delink?:bool = true
+                  }:void
+    let removed?:bool = false
+    def index = {self.predecessors.find node}
+    {if index != -1 then
+        {self.predecessors.remove index}
+        set removed? = true
+    }
+    {if not removed? and error-if-missing? then
+        {throw
+            {GraphInvalidEdgeException
+                {hlmessage
+                    "Tried to remove %s from %s; not a direct predecessor.",
+                    node, self
+                }
+            }
+        }
+    }
+    {if reverse-delink? then
+        {node.remove-successor-internal
+            self,
+            error-if-missing? = error-if-missing?,
+            reverse-delink? = false
+        }
+    }
+  }
+
+  {doc-next
+    {purpose
+        Clears all edges leading from this node, leaving no predecessors.
+    }
+  }
+  {method public open {clear-predecessors}:void
+    {while not self.predecessors.empty? do
+        {self.remove-predecessor-internal
+            {self.predecessors.top-of-stack},
+            reverse-delink? = true
+        }
+    }
+  }
+
+  {doc-next
+    {purpose
+        Clears all edges leading to or from this node.
+    }
+  }
+  {method public open {disconnect}:void
+    {self.clear-predecessors}
+    {self.clear-successors}
+  }
+    
+}
+

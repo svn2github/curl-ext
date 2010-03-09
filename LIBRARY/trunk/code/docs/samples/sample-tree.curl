@@ -1,0 +1,233 @@
+||| Maintained by: mgordon
+{curl 7.0 applet}
+{applet manifest = "manifest.mcurl",
+    {compiler-directives careful? = true}
+}
+{document-style PlainDocument}
+
+{set-document-properties
+    background = "#f0f0f0",
+    font-size = 10pt
+}
+{title heading? = false, Sample Tree}
+
+
+{import * from COM.CURL.EXT.GUI}
+{import * from COM.CURL.EXT.DATA-ACCESS}
+
+{persistent-data "gantt/sample-tree", duration = 180days}
+{def file-locator = {PersistedLocation 
+                        "sample-tree",
+                        title = "Outline File (CSV)",
+                        filters =
+                            {FileDialogFilterArray
+                                {FileDialogFilter
+                                    {hlmessage CSV Files},
+                                    {FileDialogTypeFilterArray
+                                        {FileDialogTypeFilter "csv"} ||""
+                                    }
+                                },
+                                {FileDialogFilter
+                                    {hlmessage All Files},
+                                    {FileDialogTypeFilterArray
+                                        {FileDialogTypeFilter "*"} ||""
+                                    }
+                                }
+                            }
+                    }
+}
+
+|| -------------------------------------------------------------------------
+
+{define-enum Status
+    ToDo,
+    Ongoing,
+    Later,
+    Done,
+    Dropped
+}
+
+{define-class public open SimpleTreeApp {inherits FileApp, Frame}
+
+  field protected grid:TreeGrid
+
+  {constructor public {default ...}
+    {construct-super.FileApp "Simple Tree", filters = file-locator.filters}
+    {construct-super.Frame
+        hstretch? = true, vstretch? = true,
+        {splice ...}
+    }
+
+    let location:Url = self.untitled-file-url
+    {if location == self.untitled-file-url then
+        {if-non-null loc = {file-locator.get-url} then
+            set location = loc
+        }
+    }
+
+    set self.grid =
+        {TreeGrid
+            {self.read-model location},
+            name = "tree-grid", ||""
+            width = {add-stretch},
+            height = {add-stretch},
+            font-size = 12pt,
+            background = "#eeeeee", ||""
+            alternate-row-background="#f0f0f0", ||""
+            automatic-columns? = false,
+            {RecordGridColumn
+                "title", ||""
+                width = 4in, valign = "top", ||""
+                cell-spec = ExpanderCell
+            },
+            {RecordGridColumn
+                "notes", ||""
+                width = {make-elastic preferred-size = 3in},
+                cell-spec = MultilineStringCell
+            },
+            {RecordGridColumn
+                "status", ||""
+                width=60pt
+            }
+        }
+
+    {self.add-internal
+        {VBox
+            halign = "left", ||""
+            hstretch? = true,
+            {HBox
+                spacing = 6pt,
+                {MenuBar
+                    {self.get-file-menu},
+                    {SubMenu
+                        label = "&Tree", ||""
+                        {splice {get-treegrid-menu-items self.grid}}
+||--                        ,
+||--                        {menu-separator},
+||--                        {MenuAction
+||--                            key-accel-string = "ctrl-s", ||""
+||--                            label = {lmessage Save},
+||--                            bound-command = {self.grid.get-command "Tree.save"} ||""
+||--                        },
+||--                        {MenuAction
+||--                            key-accel-string = "ctrl-r", ||""
+||--                            label = {lmessage Revert},
+||--                            bound-command = {self.grid.get-command "revert"} ||""
+||--                        }
+                    }
+                },
+                {Fill},
+
+                {CommandButton
+                    takes-focus? = false,
+                    width = standard-button-width,
+                    label = {lmessage Add Node},
+                    bound-command = {self.grid.get-command "Tree.add-node"} ||""
+                },
+                {CommandButton
+                    takes-focus? = false,
+                    width = standard-button-width,
+                    label = {lmessage Add Child},
+                    bound-command =
+                        {self.grid.get-command "Tree.add-child-node"} ||""
+                },
+                {CommandButton
+                    takes-focus? = false,
+                    width = standard-button-width,
+                    label = {lmessage Move Up},
+                    bound-command =
+                        {self.grid.get-command "Tree.move-node-up"} ||""
+                },
+                {CommandButton
+                    takes-focus? = false,
+                    width = standard-button-width,
+                    label = {lmessage Move Down},
+                    bound-command =
+                        {self.grid.get-command "Tree.move-node-down"} ||""
+                },
+                {CommandButton
+                    takes-focus? = false,
+                    width = standard-button-width,
+                    label = {lmessage Delete},
+                    bound-command =
+                        {self.grid.get-command "Tree.delete-node"} ||""
+                },
+                {CommandButton
+                    takes-focus? = false,
+                    width = standard-button-width,
+                    label = {lmessage Indent},
+                    bound-command =
+                        {self.grid.get-command "Tree.indent-node"} ||""
+                },
+                {CommandButton
+                    takes-focus? = false,
+                    width = standard-button-width,
+                    label = {lmessage Unindent},
+                    bound-command =
+                        {self.grid.get-command "Tree.unindent-node"} ||""
+                },
+                {CommandButton
+                    takes-focus? = false,
+                    width = standard-button-width,
+                    label = {lmessage Save},
+                    bound-command = {self.grid.get-command "commit"} ||""
+                },
+                {Fill}
+            },
+            self.grid
+        }
+    }
+
+||--    {file-locator.add-event-handler
+||--        {on Action do
+||--            def loc = file-locator.saved-url
+||--            {title heading? = false, {value self.full-title}}
+||--        }
+||--    }
+  }
+
+  {method public open {read-model location:Url}:RecordSetTreeModel
+    def model =
+        {RecordSetTreeModel.from-Url
+            location,
+            {RecordFields
+                {splice RecordSetTreeModel.tree-fields},
+                {RecordField "title", domain = String}, ||""
+                {RecordField "notes", domain = String}, ||""
+                {RecordField "status", domain = Status} ||""
+            },
+            {on e:RecordsChanged at rs:RecordSet do
+                {self.note-edited}
+            }
+        }
+    {self.update-file-info location, true}
+    {return model}
+  }
+
+  {method public open {do-file-new}:void
+    {if-non-null new-loc = {file-locator.choose-new-file} then
+        set self.grid.model = {self.read-model new-loc}
+    }
+  }
+
+  {method public open {do-file-open file-url:Url}:void
+    {file-locator.persist-url file-url}
+    set self.grid.model = {self.read-model file-url}
+  }
+
+  {method public open {do-file-save}:void
+    {if-non-null cmd = {self.grid.get-command "Tree.save"} then
+        {if cmd.impl.enabled? then
+            {cmd.impl.do-command}
+        }
+    }
+  }
+
+  {method public open {do-file-save-as file-url:Url}:void
+    {file-locator.persist-url file-url}
+    {self.grid.model.save-as file-url}
+  }
+}
+
+{SimpleTreeApp}
+

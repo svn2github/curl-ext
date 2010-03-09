@@ -1,0 +1,8 @@
+Created 2009-08-03 13:30:34.039000 -0700
+id,name,type,initials,group,link,max-load
+1,joedev,dev,JD,R&D,,1
+2,slowdev,dev,SD,R&D,,0.5
+3,ellendev,dev,ED,R&D,,1
+4,jackqe,qe,JQE,R&D,,1
+5,#FredManager,manager,FM,R&D,,1
+6,Mark,dev,MM,R&D,,1

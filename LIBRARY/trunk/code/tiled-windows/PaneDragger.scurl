@@ -1,0 +1,275 @@
+{define-class package abstract PaneDragger
+  field package constant single-pane:SinglePane
+  field private drag-view:#View
+  field private drag-view-x:Distance
+  field private drag-view-y:Distance
+  field private drag-x:Distance
+  field private drag-y:Distance
+  field private drag-width:Distance
+  field private drag-height:Distance
+  field private dock?:bool
+  field private can-start-drag?:bool
+
+  {constructor package {default single-pane:SinglePane}
+    set self.single-pane = single-pane
+    {add-context-popup self asa Visual, 
+        menu-pane-proc = 
+            {proc {v:Visual}:MenuPane
+                {return {self.make-context-menu}}
+            }
+    }
+  }
+
+  {method private {check-current state:PaneState}:#Graphic
+    {if self.single-pane.state == state then
+        {return {bullet}}
+     else
+        {return null}
+    }
+  }
+
+  {method private {make-context-menu}:MenuPane
+    let mp:MenuPane = {MenuPane}
+    {mp.add
+        {MenuAction 
+            label = {hlmessage &Dockable},
+            icon =
+                {if self.single-pane.state == PaneState.docked or
+                    self.single-pane.state == PaneState.dockable 
+                 then
+                    {bullet}
+                 else
+                    null
+                },
+            {on Action do
+                {if self.single-pane.state == PaneState.docked then
+                    {self.float-pane self.single-pane, true}
+                 else
+                    set self.single-pane.state = PaneState.dockable
+                }
+            }
+        }
+    }
+    {mp.add
+        {MenuAction 
+            label = {hlmessage &Hide},
+            {on Action do
+                {self.single-pane.hide}
+            }
+        }
+    }
+    {mp.add
+        {MenuAction 
+            label = {hlmessage &Floating},
+            icon =
+                {if self.single-pane.state == PaneState.floating then
+                    {bullet}
+                 else
+                    null
+                },
+            {on Action do
+                {if self.single-pane.state == PaneState.docked then
+                    {self.float-pane self.single-pane, false}
+                 else
+                    set self.single-pane.state = PaneState.floating
+                }
+            }
+        }
+    }
+    {return mp}
+  }
+
+  {method private {can-drag? e:GuiInputEvent}:bool
+    {return e.state-mask.button-1? and not e.alt?}
+  }
+
+  {method package {handle-drag-started e:DragStarted, drag-obj:Graphic}:void
+    {if {self.can-drag? e} then
+        {e.continue-implicit-pointer-grab drag-obj}
+        set self.can-start-drag? = true
+        {e.consume}
+    }
+  }
+
+  {method private {dockable? e:GuiInputEvent}:bool
+    {return ((self.single-pane.state == PaneState.dockable or
+             self.single-pane.state == PaneState.docked) and
+             not e.accel?)
+    }
+  }
+
+  {method package {handle-pointer-motion e:PointerMotion, drag-obj:Graphic}:void
+    {if {self.can-drag? e} then
+        {e.consume}
+
+        set self.dock? = {self.dockable? e}
+        
+        {if self.can-start-drag? and self.drag-view == null then
+            {if self.single-pane.state != PaneState.docked or
+                {self.allow-dragging? e} 
+             then
+                set self.can-start-drag? = false
+                {self.start-drag e, drag-obj}
+                {return}
+            }
+        }
+
+        {if-non-null v = self.drag-view then
+            {self.continue-drag v, e, drag-obj}
+        }
+    }
+  }
+
+  {method protected open {allow-dragging? e:PointerMotion}:bool
+    {return true}
+  }
+
+  {method package {handle-pointer-release
+                      e:PointerRelease,
+                      drag-obj:Graphic
+                  }:void
+    {if e.button == left-button then
+        set self.can-start-drag? = false
+        {e.consume}
+        set self.dock? = {self.dockable? e}
+        {if-non-null v = self.drag-view then
+            {self.end-drag v, e.x, e.y, drag-obj}
+        }
+    }
+  }
+
+  {method package {handle-grab-release}:void
+    {self.cancel-drag}
+  }
+
+  {method package {handle-key-press e:KeyPress}:void
+    {if e.value == KeyPressValue.esc then
+        {{get-gui-manager}.release-implicit-pointer-grab}
+        {self.cancel-drag}
+    }
+  }
+
+  {method private {start-drag e:PointerMotion, drag-obj:Graphic}:void
+    let pane:SinglePane = self.single-pane
+    {if pane.state != PaneState.docked then
+        let view:View = {non-null {pane.get-view}}
+        set (pane.floating-width, pane.floating-height) = {view.get-size}
+        set (pane.floating-x, pane.floating-y) = {view.get-position}
+    }
+    set (self.drag-x, self.drag-y) = 
+        {drag-obj.transform-to-display-coordinates e.x, e.y}
+    let drag-view:View =
+        {self.single-pane.create-drag-view self.drag-x, self.drag-y}
+    set (self.drag-view-x, self.drag-view-y) = {drag-view.get-position}
+    set self.drag-view = drag-view
+    set (self.drag-width, self.drag-height) = {drag-view.get-size}
+  }
+
+  {method private {continue-drag
+                      drag-view:View,
+                      e:PointerMotion,
+                      drag-obj:Graphic
+                  }:void
+    let (x:Distance, y:Distance) = 
+        {drag-obj.transform-to-display-coordinates e.x, e.y}
+    {if self.dock? then
+        let main:#PaneContainer = self.single-pane.root-container
+        {if main == null then
+            {return}
+        }
+        {if-non-null tp = {main.get-single-pane-at x, y} then
+            {if ({self.can-drop-on-self?} or self.single-pane != tp)
+                and 
+                {tp.show-drop-zone x, y, drag-view} 
+             then
+                {return}
+            }
+         elseif {main.show-drop-zone x, y, drag-view} then
+            {return}
+        }
+    }   
+    let dx:Distance = x - self.drag-x
+    let dy:Distance = y - self.drag-y
+    {drag-view.set-window-position-and-size 
+        self.drag-view-x + dx, self.drag-view-y + dy,
+        self.drag-width, self.drag-height
+    }
+  }
+
+  {method private {end-drag
+                      drag-view:View,
+                      x:Distance,
+                      y:Distance,
+                      drag-obj:Graphic
+                  }:void
+    set (x, y) = {drag-obj.transform-to-display-coordinates x, y}
+    let state:DockingAction = DockingAction.none
+    let target-pane:#SinglePane
+    {if self.dock? then
+        let main:#PaneContainer = self.single-pane.root-container
+        {if main == null then
+            {return}
+        }
+        {if-non-null tp = {main.get-single-pane-at x, y} then
+            {if {self.can-drop-on-self?} or self.single-pane != tp
+             then
+                set target-pane = tp
+                set state = {tp.compute-dock-state x, y} 
+
+                {if state == DockingAction.swap then
+                    let pane:SinglePane = self.single-pane
+                    def parent = {get-parent-pane-group pane}
+                    {parent.swap-panes pane, tp}
+                    {self.cancel-drag}
+                    {return}
+                }
+            }
+         else
+            set state = {main.compute-dock-state x, y}
+        }
+    }
+    let pane:SinglePane = self.single-pane
+    {if state == DockingAction.none then
+        let drag-view:View = {non-null self.drag-view}
+        set (pane.floating-x, pane.floating-y) = {drag-view.get-position}
+        set (pane.floating-width, pane.floating-height) = 
+            {drag-view.get-size}
+        {if pane.state == PaneState.docked then
+            {self.float-pane pane, true}
+         else
+            let view:View = {non-null {pane.get-view}}
+            set view.width = pane.floating-width
+            set view.height = pane.floating-height
+            {view.set-window-position pane.floating-x, pane.floating-y}
+        }
+     else
+        {self.dock-pane pane, state, target-pane}
+    }
+    {self.cancel-drag}
+  }
+
+  {method private {cancel-drag}:void
+    {if-non-null rc = self.single-pane.root-container then
+        {rc.set-status-text ""}
+    }
+    {if-non-null view = self.drag-view then
+        {view.destroy}
+        set self.drag-view = null
+    }
+  }
+
+  {method package abstract {can-drop-on-self?}:bool}
+
+  {method package abstract {float-pane 
+                                 pane:SinglePane, 
+                                 dockable?:bool
+                             }:void
+  }
+
+  {method package abstract {dock-pane 
+                                 pane:SinglePane,
+                                 state:DockingAction,
+                                 target-pane:#SinglePane
+                             }:void
+  }
+}

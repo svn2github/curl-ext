@@ -1,0 +1,12 @@
+{curl 7.0 package}
+
+{package COM.CURL.EXT.STANDARD,
+    {compiler-directives careful? = true}
+}
+{import public * from COM.CURL.EXT.AUTO-TEST}
+{import public * from COM.CURL.EXT.DATA-ACCESS}
+{import public * from COM.CURL.EXT.DIGRAPH}
+{import public * from COM.CURL.EXT.GANTT}
+{import public * from COM.CURL.EXT.GUI}
+{import public * from COM.CURL.EXT.TILED-WINDOWS}
+

@@ -1,0 +1,292 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0 applet}
+
+{applet manifest = "manifest.mcurl", locale = "en"}
+
+{include "../utils/guide-header.scurl"}
+{include "../utils/support.scurl"}
+
+{chapter
+    index= {HeadingIndex primary-key="Curl Extensions Overview"},
+    Curl Extensions Overview
+}
+{summary
+    {paragraph
+        The Curl Extensions library provides components that are
+        useful for building many kinds of applets.
+    }
+}
+
+Note that this page contains links to the class documentation included
+with the library. You must install the library for these links to
+work. You can install the library by choosing the {bold Install
+Library...} item from the Help menu in the documentation viewer.  Then
+navigate to the {ctext manifest.mcurl} file in the library.
+
+{heading level=2,
+    What's New in the February 2010 Release of Curl Extensions
+}
+{itemize
+    {item Fix known bugs and issues in the popup balloon API, and also
+        several unreported issues. Also, an automated test was added
+        to the tests directory.
+
+        The {ctext popup-balloon} procedure was dropped. It is just
+        as easy to instantiate a {docref BalloonView} directly.
+    }
+
+    {item Add and revise documentation, add examples}
+
+    {item Improve the autotest framework so it could be used to write
+        a test for the BalloonView.
+    }
+}
+
+{heading level=2,
+    What's Included in the Curl Extensions Library
+}
+{itemize
+    {item
+        {link href = {url "#TitledView"},
+            Titled View
+        }
+
+        The {ctext TitledView} is a standalone View with a
+        skinnable title bar. 
+    }
+
+    {item
+        {link href = {url "#popup-balloon"},
+            BalloonView
+        }
+
+        The {ctext BalloonView} API is used to create a small popup
+        window with rounded corners and a pointer to some Graphic in
+        your applet. 
+    }
+
+    {item
+        {link href = {url "#autocomplete"},
+            Autocompleting Text Fields
+        }
+
+        Autocompletion while typing into a {docref TextField} or 
+        {docref RecordGridCell}.
+    }
+
+    {item
+        {link href = {url "#tree-grid"},
+            TreeGrid
+        }
+
+        A {docref RecordGrid} with a tree in the first column.
+    }
+
+    {item
+        {link href = {url "#gantt"},
+            Gantt Chart
+        }
+
+        The Curl Extensions library includes a number of classes that
+        can be used to create a Gantt chart. The demo applet shows how
+        a Gantt chart can be built using a {ctext TreeGrid} and
+        a {docref GanttCell}.
+    }
+
+    {item {link href = {url "#file-app"}, FileApp}
+
+        This is a class that does as much as possible to implement an
+        application with a file menu.
+    }
+
+    {item {link href = {url "#autotest"}, Automated Test Framework}
+
+        This is a basic automated test framework that can be used to
+        write test scripts to verify the operation of any GUI control.
+    }
+}
+
+{destination name = "TitledView",
+{heading level = 3,
+    TitledView
+}}
+{paragraph
+    The {docref TitledView} is intended for use by a detached applet
+    where it is desirable to customize the appearance of the applet's
+    views using a style sheet. (An ordinary {docref View} will use the
+    platform native look.)  It can also be used to create a custom
+    look for any standalone View, such as a modeless tool palette.
+
+    Try out the {link href =
+    {url "../../samples/sample-titled-view.curl"}, TitledView
+    sample applet } to see what it looks like.
+}
+{example
+    title = {lmessage A TitledView},
+    {import * from COM.CURL.EXT.GUI}
+    {CommandButton
+        label = "Display a TitledView",
+        {on Action do
+            def tv =
+                {TitledView
+                    title = "Sample TitledView",
+                    margin = 6pt,
+                    font-size = 10pt,
+                    {Table columns = 2, valign = "top",
+                        {text Notes:},
+                        {TextArea width = 2in, height = 1in},
+                        {skip},
+                        {HBox spacing = 6pt, 
+                            {Fill}, {ok-button}, {cancel-button}
+                        }
+                    }
+                }
+            {tv.show}
+        }
+    }
+}
+
+{destination name = "popup-balloon",
+{heading level = 3,
+    BalloonView
+}}
+
+{paragraph
+    The {docref BalloonView} is a small window with rounded corners
+    and a pointer to some Graphic in your applet.  It is usually used
+    to provide some additional information about the thing it is
+    pointing at. You can view the
+    {link href = {url "../../samples/sample-popup-balloon.curl"},
+    BalloonView sample applet} to see how it works and try various
+    features of the API.
+}
+{paragraph
+    Here is a simple example. When you click in the {docref
+    CalendarControl}, a balloon will pop up with an area where you can
+    enter some notes for the date that you clicked on.
+
+    {example
+        title = {lmessage Example of BalloonView},
+        {import * from COM.CURL.EXT.GUI}
+
+        {CalendarControl
+            value = {DateTime.date},
+            {on e:PointerRelease at cc:CalendarControl do
+                let content:Dialog =
+                    {Dialog background = "white",
+                        {spaced-vbox
+                            {spaced-hbox "Date:", cc.value.info.iso-date},
+                            {bold Add Notes},
+                            {TextArea
+                                width = 1in,
+                                height = 1in
+                            }
+                        }
+                    }
+                {BalloonView
+                    content, cc,
+                    title = "Daily Notes:",
+                    e.x, e.y
+                }
+            }
+        }
+    }
+}
+
+{destination name = "autocomplete",
+{heading level = 3,
+    Autocompleting Text Fields }}
+
+The Curl Extensions library includes a set of classes that provide
+text fields with the ability to privide suggested completions as the
+user types into the field.
+
+Complete information and examples is given in the chapter
+{link href = {url "autocomplete-fields.curl"},
+Autocompleting Text Fields}.
+
+{destination name = "tree-grid",
+{heading level = 3,
+TreeGrid
+}}
+
+The {ctext TreeGrid} uses a custom RecordGridCell to display the tree
+structure from data stored in a RecordSet. It requires a small number
+of dedicated columns to keep track of the tree nodes, but any number
+of additional columns can be added and displayed in the
+RecordGrid. You can use drag and drop to rearrange the items in the
+tree.
+
+A {link href = {url "../../samples/sample-tree.curl"},
+sample TreeGrid applet} shows how to build an outliner application
+using a {docref TreeGrid}.
+
+
+{destination name = "gantt",
+{heading level = 3,
+    Gantt Chart Demo }}
+
+The Curl Extensions library includes a number of classes designed for
+reating a Gantt chart. The {link href = {url
+"../../samples/gantt-demo.curl"}, Gantt Chart Demo } applet shows how
+a Gantt chart can be built using a {ctext TreeGrid} and a {docref
+GanttCell}. It also includes a simple {docref ProjectModel} class.
+
+
+{destination name = "file-app",
+{heading level = 3,
+    FileApp Application Base Class
+}}
+
+This is a class that does as much as possible to implement an
+application with a file menu. To build an application you create a
+subclass and implement the abstract methods to load a file, save a
+file, create a new file and so on. You also define and implement any
+additonal menus required by your applet. The {docref FileApp} class
+takes care of basic logic, such as promting the user to save before
+quitting.
+
+This class is the basis for the Gantt Chart demo and the TreeGrid
+applet mentioned earlier.
+
+{destination name = "autotest",
+{heading level = 3,
+    Automated Test Framework for Controls
+}}
+
+The automated testing API is provided in the package
+{docref COM.CURL.EXT.AUTO-TEST}
+
+This is a basic automated test framework that can be used to write
+test scripts to verify the operation of any GUI control.  The biggest
+limitation is that it can only test within one
+{docref View}. In particular menus and dialogs are not accessible
+to this framework if they pop up into a new {ctext View}.  The
+framework is most useful for testing one control at a time.
+
+This example is an
+{link href = {url "../../samples/t-actf.curl"},
+automated test for the {ctext AutocompleteTextField}
+}
+written using the test framework. Click the Run All button to run all
+of the tests. You can click any Test button to run a single test.
+
+
+
+{curl-copyright}

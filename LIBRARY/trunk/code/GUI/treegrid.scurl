@@ -1,0 +1,1144 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+|#-------------------------------------------------------------------------
+
+  To Do
+
+  o Pluggable de/serialize. For example to/from HTML, OPML, TreeNode, etc.
+  o Proper tree sorting (sort siblings at every level)
+
+FIXME: sorting
+ - Every parent can be identified by a ln..rn range
+ - Since ln and rn columns are unique, ln alone identifies a parent
+ - Sort bottom-up
+ - For every ln..rn that represents a parent, sort it's children
+
+#|||-----------------------------------------------------------------------
+
+
+||FIXME: Notify observers, or don't inherit from Observable
+{define-class public open RecordSetTreeModel {inherits Observable}
+
+  {doc-next
+    {purpose The fields required to support tree nodes stored in
+        a {docref RecordSet}.
+    }
+  }
+  def public tree-fields =
+      {new {Array-of RecordField},
+        {RecordField "id", ||""
+            caption = {lmessage id},
+            domain = int,
+            index-type = RecordFieldIndexType.unique
+        },
+        {RecordField "pid", ||""
+            caption = "pid", ||""
+            domain = int,
+            index-type = RecordFieldIndexType.none
+        },
+        {RecordField "ord", ||""
+            caption = "ord", ||""
+            domain = int,
+            index-type = RecordFieldIndexType.none
+        },
+        {RecordField "expand?", ||""
+            caption = "ex", ||""
+            domain = bool
+        },
+        {RecordField "depth", ||""
+            caption = {lmessage depth},
+            domain = int,
+            index-type = RecordFieldIndexType.none
+        },
+        {RecordField "ln", ||""
+            caption = "ln", ||""
+            domain = int,
+            index-type = RecordFieldIndexType.none
+        },
+        {RecordField "rn", ||""
+            caption = "rn", ||""
+            domain = int,
+            index-type = RecordFieldIndexType.none
+        },
+        {RecordField "hide",  ||""
+            caption = "hide",  ||""
+            domain = bool,
+            index-type = RecordFieldIndexType.none
+        }
+      }
+
+  {doc-next
+    {purpose The {docref RecordSet} used to store the tree nodes.}
+  }
+  field protected source:EventManagingRecordSet
+
+  {doc-next
+    {purpose Set of ids of nodes (records) that should be hidden because the
+        parent node is collapsed.
+    }
+  }
+  field protected hidden-nodes:{Set-of int} = {new {Set-of int}}
+
+  {doc-next
+    {purpose The unfiltered tree records in canonical order, used
+        for implementing commands that rearrange the tree nodes.
+    }
+  }
+  field public-get protected-set ordered-records:RecordView =
+      {uninitialized-value-for-type RecordView}
+
+  {doc-next
+    {purpose The tree records with hidden nodes filtered out. These
+        are the records visible in the {docref TreeGrid} used to
+        display the tree.
+    }
+  }
+  field public-get protected-set  display-records:RecordView =
+      {uninitialized-value-for-type RecordView}
+
+  {doc-next
+    {purpose
+        Indicates that a refresh should be performed once the applet
+        returns to the event loop.
+    }
+  }
+  field protected _refresh-requested?:bool = false
+
+  {constructor public {default
+                          source:EventManagingRecordSet
+                      }
+    {construct-super}
+    set self.source = source
+    {self.source.add-event-handler
+        {on e:RecordsChanged at rs:RecordSet do
+            {self.schedule-refresh}
+        }
+    }
+    {self.init-views}
+  }
+
+  {constructor public {from-Url
+                          url:Url,
+                          fields:RecordFields,
+                          modifiable?:bool = true,
+                          character-encoding:CharEncoding = "utf8", ||""
+                          backup?:bool = false,
+                          ...:EventHandler
+                      }
+    def id-field:String = "id" ||""
+    {construct-super}
+    set self.source =
+        {CsvRecordSetB
+            url, fields,
+            id-field = id-field,
+            modifiable? = modifiable?,
+            character-encoding = character-encoding,
+            backup? = backup?,
+            {splice ...}
+        }
+    {self.init-views}
+  }
+
+  {method public open {save-as location:Url}:void
+    {(self.source asa CsvRecordSetB).save-as location}
+  }
+
+  {method private {check-required-field field:String}:void
+    def i = {self.source.fields.get-index field}
+  }
+
+  {method public open {get-depth r:Record}:int
+    {return r["depth"] asa int} ||""
+  }
+
+  {method private {init-views}:void
+    {for rf:RecordField in RecordSetTreeModel.tree-fields do
+        {self.check-required-field rf.name}
+    }
+
+    {self.source.add-event-handler
+        {on e:RecordsChanged at rs:RecordSet do
+            {self.schedule-refresh}
+        }
+    }
+    {self.source.add-event-handler
+        {on e:RecordSetLoadStateChanged at rs:RecordSet do
+            {if rs.load-state == RecordSetLoadState.complete then
+                {self.schedule-refresh}
+            }
+        }
+    }
+
+    set self.ordered-records = {RecordView self.source, sort = "ord"} ||""
+
+    set self.display-records = 
+        {RecordView self.source,
+            sort = "ord", ||""
+            filter = 
+                {proc {r:Record}:bool
+||--                    {return not {self.hidden-nodes.member? r["id"] asa int}} ||""
+                    {return not (r["hide"] asa bool)} ||""
+                }
+        }
+
+    {self.refresh}
+||--    {self.schedule-refresh}
+  }
+
+  {doc-next
+    {purpose Request a refresh, which will recompute the data columns
+        used to represent the tree structure.
+    }
+    {details 
+        The calculations run after the current event has been handled,
+        with {docref RecordSet.batch-events?} = true so that only one
+        {docref RecordSetEvent} is generated after all of the calculations
+        are complete.
+    }
+  }
+  {method public open {schedule-refresh}:void
+    {if not self._refresh-requested? then
+        set self._refresh-requested? = true
+        {after 0.0s do
+            {with self.source.batch-events? = true do
+                {self.refresh}
+            }
+            set self._refresh-requested? = false
+        }
+    }
+  }
+
+  {doc-next
+    {purpose Given a node, return the number of records that encompass
+        all of its subsidiary nodes.
+    }
+  }
+  {method public open {count-subordinates r:Record}:int
+    def count = (r["rn"] asa int - r["ln"] asa int + 1) div 2 ||""
+    {return count - 1}
+  }
+
+  {doc-next
+    {purpose Recalculate the columns that are derived from the hierarchy
+        defined by the parent relation.
+    }
+  }
+  {method public open {refresh}:void
+    || Use the parent relation to Comput depth, ln, rn for the tree
+    let n:int = 0
+    let nord:int = 1
+    let rstm:RecordSetTreeModel = self
+
+    || Compute the attribute that are derived from the parent/child relation
+    {walk-record-tree self.source,
+        pre =
+            {proc {parent:Record, children:{Array-of Record}}:void
+                {inc n}
+                set parent["ln"] = n ||""
+                {if parent["pid"] == 0 then set parent["depth"] = 0} ||""
+                {for c:Record in children do
+                    set c["depth"] = parent["depth"] asa int + 1 ||""
+                }
+||--                set parent["ord"] = nord ||""
+||--                {inc nord, 1 + {rstm.count-subordinates parent}}
+            },
+        post = 
+            {proc {parent:Record, children:{Array-of Record}}:void
+                {inc n}
+                set parent["rn"] = n ||""
+            }
+    }
+
+    || Determine which nodes should be hidden, and hide them
+    {self.hidden-nodes.clear}
+    {walk-record-tree 
+        self.source,
+        pre =
+            {proc {parent:Record, children:{Array-of Record}}:void
+                def p-expand? = parent["expand?"] asa bool ||""
+                {for c:Record in children do
+                    {if not p-expand?
+                        or {self.hidden-nodes.member? parent["id"] asa int} ||""
+                     then
+                        {self.hidden-nodes.insert c["id"] asa int} ||""
+                    }
+                }
+            }
+    }
+    {for r:Record in {self.source.select} do
+        set r["hide"] = {self.hidden-nodes.member? r["id"] asa int} ||""
+    }
+
+    set self._refresh-requested? = false
+  }
+
+  {doc-next
+    {purpose Given a record {param r} that represents a tree node,
+        return the records that are beneath it in the heirarchy.
+    }
+  }
+  {method public open {node-and-children r:Record}:{Array-of Record}
+    def ln = r["ln"] asa int ||""
+    def rn = r["rn"] asa int ||""
+    {return {self.ordered-records.select
+                filter =
+                    {proc {r:Record}:bool
+                        {return r["ln"] asa int >= ln ||""
+                            and r["ln"] asa int <= rn ||""
+                        }
+                    }
+            }
+    }
+  }
+
+  || Sorting
+  || Want to compare such that
+  || 1. Parent before children
+  || 2. Keep children in current order
+  || top down:
+  ||FIXME: I think this is bogus
+  {method public open {reorder}:void
+    || Use the parent relation to compute depth, ln, rn for the tree
+    let n:int = 1
+    let rstm:RecordSetTreeModel = self
+    {walk-record-tree self.source,
+        pre =
+            {proc {parent:Record, children:{Array-of Record}}:void
+                set parent["ord"] = n ||""
+                {inc n, 1 + {rstm.count-subordinates parent}}
+            }
+    }
+  }
+  
+}
+
+
+|| ------------------
+|| TreeGrid Commands
+|| ------------------
+
+{define-class abstract public open TreeGridCommand
+  {inherits RecordSetDisplayCommand}
+
+  field public-get protected-set grid:TreeGrid
+
+  {getter public open {model}:RecordSetTreeModel
+    {return self.grid.model}
+  }
+
+  {constructor public {default
+                          name:String,
+                          grid:TreeGrid
+                      }
+    set self.grid = grid
+    {construct-super name, grid}
+  }
+
+  field public constant pos-field:String = "ord" ||""
+
+  field protected current-point:int
+  field protected current-anchor:int
+  field protected current-row-index:int
+  field protected current-column-index:int
+
+  || Remember the current cell location and selection and commit pending changes
+  {method public open {commit-current-cell}:void
+    set self.current-point = -1
+    set self.current-row-index = -1
+    {if-non-null cc = (self.record-display asa RecordGrid).ui.grid-focus then
+        {type-switch cc
+         case sc:StandardBaseEditableStringCell do
+            {type-switch sc.current-editor
+             case tf:BaseTextField do
+                set self.current-point = tf.selected-range.point
+                set self.current-anchor = tf.selected-range.anchor
+            }
+        }
+        set self.current-row-index = cc.record-index
+        set self.current-column-index =
+            {cc.grid.columns.find {non-null cc.column}}
+        {cc.grid.ui.set-grid-focus null}
+    }
+  }
+
+  {method public open {refocus-current-cell crid:int}:void
+    || If the cell to focus on is new, don't try to restore selection
+    {if-non-null cr = self.current-record then
+        {if crid != cr["id"] asa int then ||""
+            set self.current-point = -1
+        }
+     else
+        set self.current-point = -1
+    }
+
+    || Do this after the RecordGrid has a chance to create new cells, etc.
+    {after 0s do
+        {if crid > 0 then
+            {for r:Record key ri in self.record-display.records do
+                {if r["id"] asa int == crid then ||""
+                    set self.current-row-index = ri
+                    {break}
+                }
+            }
+        }
+        {if self.current-row-index >= 0 then
+            def grid = self.record-display asa RecordGrid
+            let target-cell:#RecordGridCell = null
+            {try
+                ||FIXME: why is this exception thrown sometimes?
+                set target-cell = 
+                    {grid.ui.get-cell-at
+                        grid.records[self.current-row-index],
+                        grid.columns[self.current-column-index]
+                    }
+             catch ignore:Exception do
+            }
+            {if-non-null target-cell then
+                {grid.ui.set-grid-focus target-cell}
+            }
+            {if self.current-point >= 0 then
+                {type-switch target-cell
+                 case sc:StandardBaseEditableStringCell do
+                    {type-switch sc.current-editor
+                     case tf:BaseTextField do
+                        def range = tf.selected-range
+                        set range.anchor =
+                            {min tf.data-model.size, self.current-anchor}
+                        set range.point =
+                            {min tf.data-model.size, self.current-point}
+                    }
+                }
+            }
+        }
+    }
+  }
+
+  {method public open {focus-record id:int}:void
+
+    {after 0s do
+        {for r:Record key ri in self.record-display.records do
+            {if r["id"] asa int == id then ||""
+                {self.record-display.request-current-record-change ri}
+                {break}
+            }
+        }
+    }
+  }
+
+  {getter public open {current-record}:#Record
+    {return self.record-display.current-record}
+  }
+
+  {method public open {map-ori-to-cri ori:int}:int
+    def id = self.ordered-records[ori]["id"] asa int ||""
+    {for r:Record key ri in self.record-display.records do
+        {if r["id"] == id then ||""
+            {return ri}
+        }
+    }
+    {return -1}
+  }
+
+  {method public open {map-cri-to-ori cri:int}:int
+    def id = self.record-display.records[cri]["id"] asa int ||""
+    {for r:Record key ri in self.model.ordered-records do
+        {if r["id"] == id then ||""
+            {return ri}
+        }
+    }
+    {return -1}
+  }
+
+||--  {getter public open {current-index}:int
+||--    {return self.map-cri-to-
+||--    def cid = self.current-record["id"] asa int ||""
+||--    {for r:Record key ri in self.model.ordered-records do
+||--        {if r["id"] == cid then ||""
+||--            {return ri}
+||--        }
+||--    }
+||--    {return -1}
+||--||--    {return self.record-display.current-index}
+||--  }
+
+||--  {getter public open {tree-records}:RecordSet
+||--    def trv = self.record-display.record-source asa RecordView
+||--    {return (trv.source asa RecordSetTreeModel).source}
+||--  }
+
+  {getter public open {ordered-records}:RecordView
+    {return self.model.ordered-records}
+  }
+
+  || Count the number of records that represent the node at ni and its children
+  {method public open {count-node-and-children ni:int}:int
+    def orecs = self.ordered-records
+    def count = 
+        (orecs[ni]["rn"] asa int - orecs[ni]["ln"] asa int + 1) div 2 ||""
+    {return count}
+  }
+
+  || Find the parent of the specified dept of the node at node-index
+  {method public open {find-parent-node ni:int, level:int}:int
+    def orecs = self.ordered-records
+    {if ni < orecs.size and ni >= 0 then
+        def nd = orecs[ni]["depth"] asa int ||""
+        {if nd < level then 
+            {return -1}
+        }
+        {for i = ni downto 0 do
+            def d = orecs[i]["depth"] asa int ||""
+            {if d == level then
+||--                {dump ni, i}
+                {return i}
+            }
+        }
+    }
+    {return -1}
+  }
+
+}
+
+|| Indent: Make the parent of the current node the node above
+{define-class public open IndentNodeCommand {inherits TreeGridCommand}
+
+  {doc-next
+    {purpose Construct an {ctext IndentNodeCommand}}
+  }
+  {constructor public {default grid:TreeGrid}
+    {construct-super "Tree.indent-node", grid} ||""
+  }
+  
+  {getter public open {enabled?}:bool
+    || You can indent as long as there is a sibling above you
+    {if-non-null cr = self.current-record then
+        def pri = self.record-display.current-index - 1
+        {if pri >= 0 then
+            def pr = self.record-display.records[pri]
+            {return pr["pid"] == cr["pid"] ||""
+                or pr["depth"] == cr["depth"] asa int + 1 ||""
+            }
+        }
+    }
+    {return false}
+  }
+
+  {method protected open {execute}:void
+    {if-non-null cr = self.record-display.current-record then
+        def cri = self.record-display.current-index
+        def crid = cr["id"] asa int ||""
+        {self.commit-current-cell}
+        {if cri > 0 then
+            {with self.model.source.batch-events? = true do
+                def pri = cri - 1
+                def pr = self.record-display.records[pri]
+                set pr["expand?"] = true ||""
+                {if pr["depth"] == cr["depth"] asa int + 1 then ||""
+                    set cr["pid"] = pr["pid"] ||""
+                 else
+                    set cr["pid"] = pr["id"] ||""
+                }
+            }
+        }
+        {self.refocus-current-cell crid}
+||--        {if-non-null cell = current-cell then
+||--            {self.focus-record crid}
+||--            {after 0s do
+||--                {cell.grid.ui.set-grid-focus cell}
+||--            }
+||--        }
+    }
+  }
+}
+
+|| Undent: Make the parent of the current node the same as the grandparent
+{define-class public open UndentNodeCommand {inherits TreeGridCommand}
+
+  {doc-next
+    {purpose Construct an {ctext UndentNodeCommand}}
+  }
+  {constructor public {default grid:TreeGrid}
+    {construct-super "Tree.unindent-node", grid} ||""
+  }
+  
+  {getter public open {enabled?}:bool
+    || You can unindent as long as you have a parent
+    {if-non-null cr = self.record-display.current-record then
+        {return cr["depth"] != 0} ||""
+    }
+    {return false}
+  }
+
+  {method protected open {execute}:void
+    {if-non-null cr = self.record-display.current-record then
+        def ocri = {self.map-cri-to-ori self.record-display.current-index}
+        def orecs = self.ordered-records
+        def crid = cr["id"] asa int ||""
+        def pi = {self.find-parent-node ocri, cr["depth"] asa int - 1} ||""
+        def np = {self.count-node-and-children pi}   || parent and sibs
+        def nc = {self.count-node-and-children ocri} || children to be moved
+        def ns = np - nc || number staying put
+        {with self.model.source.batch-events? = true do
+            {self.commit-current-cell}
+            def pr = orecs[pi]
+            set cr["pid"] = pr["pid"] || make it a sibling of it's parent ||""
+            || Move other siblings up
+            {for i = ocri + nc below pi + np do
+                set orecs[i]["ord"] = orecs[i]["ord"] asa int - nc ||""
+            }
+            || Move current and children below parent and children
+            def nb = (pi + np) - (ocri + nc)
+            {for i = ocri below ocri + nc do
+                set orecs[i]["ord"] = orecs[i]["ord"] asa int + nb ||""
+            }
+        }
+        {self.refocus-current-cell crid}
+    }
+  }
+}
+
+|| Delete the current node, including children
+{define-class public open DeleteNodeCommand {inherits TreeGridCommand}
+
+  field public warn?:bool = false
+
+  {doc-next
+    {purpose Construct an {ctext DeleteNodeCommand}}
+  }
+  {constructor public {default grid:TreeGrid}
+    {construct-super "Tree.delete-node", grid} ||""
+  }
+  
+  {getter public open {enabled?}:bool
+    || You can indent as long there is a current node.
+    {if-non-null cr = self.record-display.current-record then
+        {return true}
+    }
+    {return false}
+  }
+
+  {method protected open {execute}:void
+    {if-non-null cr = self.current-record then
+        def cri = self.record-display.current-index
+        def ocri = {self.map-cri-to-ori cri}
+        def orecs = self.ordered-records
+        def nd = {self.count-node-and-children ocri}
+        {if nd > 1 and self.warn? then
+            {if {popup-question
+                    title = {hlmessage Delete Items},
+                    {hlmessage 
+                        Delete this item and its children?
+                    }
+                } != Dialog.yes
+             then
+                {return}
+            }
+        }
+        {with self.model.source.batch-events? = true do
+            || No need to commit pending change, since it will be deleted
+            {for i = ocri + nd below orecs.size do
+                set orecs[i]["ord"] = (orecs[i]["ord"] asa int) - nd ||""
+            }
+            {for i = 0 below nd do
+                {orecs[ocri + i].delete}
+            }
+            || Focus on the same index as before, never mind the id
+            {after 0s do
+                def tri = {min cri, self.record-display.records.size - 1}
+                {self.focus-record
+                    self.record-display.records[tri]["id"] asa int ||""
+                }
+            }
+        }
+    }
+  }
+}
+
+
+|| Create a new node as a sibling to the current node.
+{define-class public open AddNodeCommand {inherits TreeGridCommand}
+
+  {doc-next
+    {purpose Construct an {ctext AddNodeCommand}}
+  }
+  {constructor public {default
+                          grid:TreeGrid,
+                          name:String = "Tree.add-node" ||""
+                      }
+    {construct-super name, grid}
+  }
+  
+  {getter public open {enabled?}:bool
+    || You can indent as long as you have a parent
+    {if-non-null cr = self.record-display.current-record then
+        {return true}
+    }
+    {return true}
+  }
+
+  {method protected open {execute}:void
+    {if self.model.ordered-records.size == 0 then
+        || First node
+        {with self.model.source.batch-events? = true do
+            def nr = {self.model.source.new-record}
+            set nr["pid"] = 0
+            set nr["ord"] = 1
+            {self.model.source.append nr}
+            {self.refocus-current-cell nr["id"] asa int} ||""
+        }
+        {return}
+    }
+    {if-non-null cr = self.record-display.current-record then
+        let crid:int = cr["id"] asa int ||""
+        def ocri = {self.map-cri-to-ori self.record-display.current-index}
+        def orecs = self.ordered-records
+        def nc = {self.count-node-and-children ocri}
+        {with self.model.source.batch-events? = true do
+            {self.commit-current-cell}
+            {for i = ocri + nc below orecs.size do
+                set orecs[i]["ord"] = (orecs[i]["ord"] asa int) + 1 ||""
+            }
+            def nr = {self.model.source.new-record}
+            set nr["pid"] = cr["pid"] ||""
+            set nr["ord"] = cr["ord"] asa int + nc ||""
+            {self.model.source.append nr}
+            {self.refocus-current-cell nr["id"] asa int} ||""
+        }
+    }
+  }
+}
+
+|| Create a new node with current node as it's parent
+{define-class public open AddChildNodeCommand {inherits TreeGridCommand}
+
+  {doc-next
+    {purpose Construct an {ctext AddChildNodeCommand}}
+  }
+  {constructor public {default 
+                          grid:TreeGrid,
+                          name:String = "Tree.add-child-node" ||""
+                      }
+    {construct-super name, grid}
+  }
+  
+  {getter public open {enabled?}:bool
+    || You can do this as long as there is a current node.
+    {if-non-null cr = self.record-display.current-record then
+        {return true}
+    }
+    {return false}
+  }
+
+  {method protected open {execute}:void
+    {if-non-null cr = self.record-display.current-record then
+        def ocri = {self.map-cri-to-ori self.record-display.current-index}
+        def orecs = self.ordered-records
+        let crid:int = cr["id"] asa int ||""
+        {with self.model.source.batch-events? = true do
+            {self.commit-current-cell}
+            {for i = ocri + 1 below orecs.size do
+                set orecs[i]["ord"] = (orecs[i]["ord"] asa int) + 1 ||""
+            }
+            def nr = {self.model.source.new-record}
+            set nr["pid"] = cr["id"] ||""
+            set nr["ord"] = cr["ord"] asa int + 1 ||""
+            set cr["expand?"] = true ||""
+            {self.model.source.append nr}
+            {self.refocus-current-cell nr["id"] asa int} ||""
+        }
+    }
+  }
+}
+
+|| MoveUp: Move the current node up
+{define-class public open MoveNodeUpCommand {inherits TreeGridCommand}
+
+  {doc-next
+    {purpose Construct a {ctext MoveNodeUpCommand}}
+    {details The name of this command is "Tree.move-node-up"} ||""
+  }
+  {constructor public {default grid:TreeGrid}
+    {construct-super "Tree.move-node-up", grid} ||""
+  }
+  
+  {getter public open {enabled?}:bool
+    || You can move up as long as there is a sibling above
+    {if-non-null cr = self.current-record then
+        def ocri = {self.map-cri-to-ori self.record-display.current-index}
+        {if ocri > 0 then
+            def orecs = self.ordered-records
+            def nai = {self.find-parent-node ocri - 1, cr["depth"] asa int} ||""
+            {return nai >= 0}
+        }
+    }
+    {return false}
+  }
+ 
+  {method protected open {execute}:void
+    {if-non-null cr = self.current-record then
+        def ocri = {self.map-cri-to-ori self.record-display.current-index}
+        def orecs = self.ordered-records
+        def crid = cr["id"] asa int ||""
+        def nu = {self.count-node-and-children ocri}
+        def nai = {self.find-parent-node ocri - 1, cr["depth"] asa int} ||""
+        {if nai >= 0 then
+            let nd:int = {self.count-node-and-children nai}
+            {with self.model.source.batch-events? = true do
+                {self.commit-current-cell}
+                || Move current node and children up
+                {for i = 0 below nu do
+                    def ni = ocri + i
+                    set orecs[ni]["ord"] = orecs[ni]["ord"] asa int - nd ||""
+                }
+                || Move previous node and children down
+                {for i = 0 below nd do
+                    def ni = nai + i
+                    set orecs[ni]["ord"] = orecs[ni]["ord"] asa int + nu ||""
+                }
+                {self.refocus-current-cell crid}
+            }
+        }
+    }
+  }
+}
+
+|| MoveDown: Move the current node down
+{define-class public open MoveNodeDownCommand {inherits TreeGridCommand}
+
+  {doc-next
+    {purpose Construct a {ctext MoveNodeDownCommand}}
+    {details The name of this command is "Tree.move-node-down"} ||""
+  }
+  {constructor public {default grid:TreeGrid}
+    {construct-super "Tree.move-node-down", grid} ||""
+  }
+  
+  {getter public open {enabled?}:bool
+    || You can move down as long as there is a sibling below
+    {if-non-null cr = self.current-record then
+        def ocri = {self.map-cri-to-ori self.record-display.current-index}
+        def orecs = self.ordered-records
+        def nd = {self.count-node-and-children ocri}
+        {if ocri + nd < orecs.size then
+            {return orecs[ocri]["pid"] == orecs[ocri + nd]["pid"]} ||""
+        }
+    }
+    {return false}
+  }
+ 
+  {method protected open {execute}:void
+    {if-non-null cr = self.current-record then
+        def ocri = {self.map-cri-to-ori self.record-display.current-index}
+        def orecs = self.ordered-records
+        def crid = cr["id"] asa int ||""
+        def nd = {self.count-node-and-children ocri}
+        {with self.model.source.batch-events? = true do
+            {self.commit-current-cell}
+            || Move sibling & child nodes up
+            let nu:int = {self.count-node-and-children ocri + nd}
+            {for i = 0 below nu do
+                def ni = ocri + nd + i
+                set orecs[ni]["ord"] = orecs[ni]["ord"] asa int - nd ||""
+            }
+            {for i = 0 below nd do
+                set orecs[ocri + i]["ord"] =  ||""
+                    orecs[ocri + i]["ord"] asa int + nu ||""
+            }
+            {self.refocus-current-cell crid}
+        }
+    }
+  }
+}
+
+|| Command for moving via drag and drop
+{define-class public open MoveNodeCommand 
+  {inherits TreeGridCommand, MoveRecordParams}
+
+  {doc-next
+    {purpose Construct a {ctext MoveNodeDownCommand}}
+    {details The name of this command is "dragdrop"} ||""
+  }
+  {constructor public {default grid:TreeGrid}
+    {construct-super.TreeGridCommand "dragdrop", grid} ||""
+  }
+  
+  {getter public open {enabled?}:bool
+    {return self.from-rec != null and self.to-rec != null}
+  }
+ 
+  {method private {show-recs name:String, recs:{Array-of Record}}:void
+    def ords:StringBuf = {StringBuf}
+    {for r key ri in recs do
+        {if ri > 0 then {ords.concat ", "}} ||""
+        {ords.concat {format "%d", r["ord"]}} ||""
+    }
+    {dump name, ords}
+  }
+
+  {method protected open {execute}:void
+
+    || Find the primary RecordSet to suppress events
+    let rs:#RecordSet = null
+    {if-non-null r = self.to-rec then
+        set rs = r.record-set
+        {while rs isa RecordView do
+            set rs = (rs asa RecordView).source
+        }
+    }
+
+    {if-non-null 
+        rs, to-rec = self.to-rec, from-rec = self.from-rec,
+        cr = self.current-record
+     then
+        def crid = cr["id"] asa int ||""
+        def orecs = self.ordered-records
+        {with rs.batch-events? = true do
+            {self.commit-current-cell}
+
+            || Select the records to be moved
+            let target:#Record = to-rec
+            let tid:int = to-rec["id"] asa int ||""
+            let pid:int = target["pid"] asa int ||""
+||--            {dump tid, pid, self.before?}
+            {if not self.before? then
+                {if to-rec["expand?"] == false then ||""
+                    def targets = {self.model.node-and-children to-rec}
+                    set target = targets[targets.size - 1]
+||--                    {self.show-recs "targets", targets} ||""
+                }
+                {for r:Record key ri in orecs do
+                    {if r["id"] == target["id"] then ||""
+                        {if ri < orecs.size - 1 then
+                            set target = orecs[ri + 1]
+                            set tid = target["id"] asa int ||""
+                            set pid = target["pid"] asa int ||""
+                            || When dropped after last sibling, use sib's pid
+                            {if ri >= 0
+                                and orecs[ri]["depth"] asa int ||""
+                                > target["depth"] asa int ||""
+                             then
+                                set pid = orecs[ri]["pid"] asa int ||""
+                            }
+                         else
+                            set target = null
+                            set tid = 0
+                            set pid = orecs[orecs.size - 1]["pid"] asa int ||""
+                        }
+                        {break}
+                    }
+                }
+            }
+
+            def moving = {self.model.node-and-children from-rec}
+            def from-ln = from-rec["ln"] asa int ||""
+            def from-rn = from-rec["rn"] asa int ||""
+            def fixed =
+                {if target != null and target["id"] == from-rec["id"] then ||""
+                    {new {Array-of Record}}
+                 else
+                    {orecs.select
+                        filter =
+                            {proc {r:Record}:bool
+                                {return r["ln"] asa int < from-ln ||""
+                                    or r["ln"] asa int > from-rn  ||""
+                                }
+                            }
+                    }
+                }
+||--            {self.show-recs "fixed", fixed} ||""
+
+            let nord:int = 1
+            let fri:int = 0
+            {while fri < fixed.size do
+                {if fixed[fri]["id"] == tid then ||""
+                    {break}
+                }
+                set fixed[fri][self.pos-field] = nord
+                {inc nord}
+                {inc fri}
+            }
+            {for r:Record key ri in moving do
+                {if ri == 0 then
+                    set r["pid"] = pid ||""
+                }
+                {if fixed.size > 0 then
+                    set r[self.pos-field] = nord
+                    {inc nord}
+                }
+            }
+            {while fri < fixed.size do
+                set fixed[fri][self.pos-field] = nord
+                {inc nord}
+                {inc fri}
+            }
+
+||--            {after 0s do
+||--                {self.cell.grid.ui.set-grid-focus self.cell}
+||--            }
+            {self.refocus-current-cell crid}
+        } || with batch-events? = true
+    }
+  }
+
+}
+
+|| Save the data
+{define-class public open TreeSaveCommand {inherits TreeGridCommand}
+
+  {doc-next
+    {purpose Construct a {ctext TreeSaveCommand}}
+    {details The name of this command is "Tree.save"} ||""
+  }
+  {constructor public {default grid:TreeGrid}
+    {construct-super "Tree.save", grid} ||""
+  }
+  
+  {getter public open {enabled?}:bool
+    {return
+        super.enabled? and
+        self.record-display.records.pending-update?
+    }
+  }
+ 
+  {method protected open {execute}:void
+    {if-non-null cr = self.current-record then
+        def crid = cr["id"] asa int ||""
+        {self.commit-current-cell}
+        {self.record-display.records.commit}
+        {self.refocus-current-cell crid}
+    }
+  }
+}
+
+{define-proc  public {add-tree-commands context:TreeGrid}:void
+    {context.add-command {IndentNodeCommand context}}
+    {context.add-command {UndentNodeCommand context}}
+    {context.add-command {MoveNodeDownCommand context}}
+    {context.add-command {MoveNodeUpCommand context}}
+    {context.add-command {AddNodeCommand context}}
+    {context.add-command {AddChildNodeCommand context}}
+    {context.add-command {DeleteNodeCommand context}}
+    {context.add-command {MoveNodeCommand context}}
+    {context.add-command {TreeSaveCommand context}}
+}
+
+{define-proc public {get-treegrid-menu-items tree-grid:TreeGrid}:{Array-of any}
+    {return 
+        {new {Array-of any},
+            {MenuAction
+                key-accel-string = "ctrl-n", ||""
+                label = {lmessage Add &Item},
+                bound-command = {tree-grid.get-command "Tree.add-node"} ||""
+            },
+            {MenuAction
+                key-accel-string = "ctrl-j", ||""
+                label = {lmessage Add &Child},
+                bound-command = 
+                    {tree-grid.get-command "Tree.add-child-node"} ||""
+            },
+            {MenuAction
+                key-accel-string = "delete", ||""
+                label = {lmessage &Delete},
+                bound-command = {tree-grid.get-command "Tree.delete-node"} ||""
+            },
+            {menu-separator},
+            {MenuAction
+                key-accel-string = "ctrl-up", ||""
+                label = {lmessage Move &Up},
+                bound-command = {tree-grid.get-command "Tree.move-node-up"} ||""
+            },
+            {MenuAction
+                key-accel-string = "ctrl-down", ||""
+                label = {lmessage Move &Down},
+                bound-command = 
+                    {tree-grid.get-command "Tree.move-node-down"} ||""
+            },
+            {MenuAction
+                key-accel-string = "ctrl-right", ||""
+                label = {lmessage &Indent},
+                bound-command = {tree-grid.get-command "Tree.indent-node"} ||""
+            },
+            {MenuAction
+                key-accel-string = "ctrl-left", ||""
+                label = {lmessage &Unindent},
+                bound-command = {tree-grid.get-command "Tree.unindent-node"} ||""
+            }
+        }
+    }
+}
+
+
+{define-class public open TreeGrid {inherits RecordGrid}
+
+  ||FIXME: The sort-spec should sort records grouped by parent node.
+  || You can set the column.sort-spec = null to disable sorting, or
+  || set it to a specialized proc to do a tree-sensitive sort
+  
+  field protected _model:RecordSetTreeModel
+
+  {setter public open {model v:RecordSetTreeModel}:void
+    set self._model = v
+    set self.record-source = v.display-records
+  }
+
+  {getter public open {model}:RecordSetTreeModel
+    {return self._model}
+  }
+
+  field protected icon-proc:#{proc-type 
+                               {cell:RecordGridCell,
+                                state:DisclosureState
+                               }:Pixmap
+                             }
+  field protected item-proc:#{proc-type
+                               {cell:RecordGridCell}:Graphic
+                             }
+
+  {constructor public {default
+                          model:RecordSetTreeModel,
+                          filter:#RecordFilter = null,
+                          header-options:RecordGridRowOptions =
+                              {RecordGridRowOptions},
+                          ui-object:#RecordGridUI = null,
+                          icon-proc:#{proc-type 
+                                         {cell:RecordGridCell,
+                                          state:DisclosureState
+                                         }:Pixmap
+                                     } = null,
+                          item-proc:#{proc-type
+                                         {cell:RecordGridCell}:Graphic
+                                     } = null,
+                          ...
+                      }
+    set self._model = model
+    set self.icon-proc = icon-proc
+    set self.item-proc = item-proc
+    {construct-super
+        record-source = model.display-records,
+        sort = "ord", ||""
+        key-spec = "ord", ||""
+        filter = filter,
+        header-options = header-options,
+        ui-object = ui-object,
+        display-navigation-panel? = false,
+        display-filler-column? = true,
+        {splice ...}
+    }
+    {add-tree-commands self}
+  }
+}

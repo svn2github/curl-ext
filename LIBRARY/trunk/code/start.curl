@@ -1,0 +1,6 @@
+{curl 7.0 applet}
+{curl-file-attributes character-encoding = "windows-latin-1"}
+{applet manifest = "manifest.mcurl",
+    {compiler-directives careful? = true}
+}
+

@@ -1,0 +1,291 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0 applet}
+{curl-file-attributes character-encoding = "windows-latin-1"}
+{applet
+    manifest = "manifest.mcurl",
+    {compiler-directives careful? = true}
+}
+||--{import * from COM.CURL.OPEN.GUI.CONTROLS, override? = true}
+{set-document-properties
+    font-size = 10pt
+}
+
+{import * from COM.CURL.EXT.GUI}
+{import * from CURL.GUI.SHAPES}
+
+{title Sample AutocompleteTextFields}
+
+|| Generate randome choices for a lottery number by completing the current
+|| entry to 6 digits.
+{define-class public open RandomCompletionProvider
+  {inherits AutocompleteProvider}
+
+  field public rng:LinearRandom
+  field public digits:int
+
+  {constructor public {default
+                          max-results:int = 10,
+                          digits:int = 6
+                      }
+
+    {construct-super max-results}
+    set self.digits = digits
+    set self.rng =
+        {LinearRandom seed = ({DateTime}.info.fraction * 10000) asa int}
+  }
+
+  || Populate the dropdown by generating some random completions
+  {method public open {refresh acf:AutocompleteMixin}:void
+    def tf = acf.text-field
+    def s = tf.value
+    let items:StringArray = {StringArray}
+    def result-count = {max 10, self.max-results}
+    {if s.size < self.digits then
+        def n = self.digits - s.size
+        let a:int = 1
+        let b:int = {pow 10.0, n} asa int
+        let f:String = {format "%%s%%0%dd", n}
+        {for i = 0 below result-count do
+            {items.append {format f, s, {self.rng.next-in-range a, b - 1}}}
+        }
+    }
+    {acf.populate-from-strings items}
+  }
+}
+
+
+{let vframe:Frame =
+    {Frame border-width = 1px, border-color = "gray", margin = 1px,
+        width = 1in, height = 15pt, vorigin = 0.8
+    }
+}
+
+{def host = 
+    {if {{get-base-url}.name.find-string "wwwin"} > -1 then
+        "http://wwwin.curl.com/~mgordon"
+        else
+        "http://192.168.2.23/curltest"
+    }
+}
+
+The first example uses asynchronous HTTP to get completions from a web
+server. The server has a dictionary of the 2000 most commonly used
+words in the English language.
+
+{AutocompleteTextField
+    {AsyncCompletionProvider host & "/words-prefix.php?value=%s&max=%s"},
+    dropdown-width = 2in, 
+    dropdown-height = 1in,
+    {on ValueFinished at acf:TextField do
+        {vframe.add replace? = true, acf.value}
+    }
+} Completions from server {value host}/words-prefix.php
+
+Value: {value vframe} (at ValueFinished)
+
+{CommandButton} Another control to tab to
+
+
+Here is another example. In this case the text entry needs to be
+6 digits. Imagine it is a lottery number. As you type, the applet
+computes 10 random choices where the first digits match what you
+have typed so far. When you've typed a few lucky digits, you can
+pick one of the random choices to fill out the field.
+
+This example also uses a validator to make sure you enter
+exactly 6 digits.
+
+{AutocompleteTextField
+    {RandomCompletionProvider},
+    {on ValueFinished at acf:TextField do
+        {vframe.add replace? = true, acf.value}
+    },
+    {on FocusIn at acf:AutocompleteTextField do
+        {acf.provider.refresh acf}
+    },
+    {validate-with 
+        {StringValidator min-chars = 6, max-chars = 6}
+||--        {NumericValidator min-allowable = 0, max-allowable = 999999}
+    }
+} Choose your 6 digit lottery number!
+
+{define-proc {custom-item-proc s:String, acf:AutocompleteMixin}:Graphic
+    {return
+        {HBox
+            spacing = 4pt,
+            valign = "center",
+            width = {add-stretch stretch-order = 50},
+            background =
+                {LinearGradientFillPattern
+                    {Fraction2d 0.5, 0},
+                    {Fraction2d 0.5, 1},
+                    {Spectrum.from-envelope
+                        {Color .9, .95, .0, opacity = 1.0}, 0.0,
+                        {Color .0, .9, .9, opacity = 1.0}, 1.0
+                    }
+                },
+            margin = 2px,
+            {EllipseShape 
+                color = "#f04040",
+                {GRect 7pt, 6pt, 10pt, 4pt},
+                {TextShape 
+                    color = "white", font-weight = "bold", 
+                    {format "%s", s.size}
+                }
+            },
+            {big {value s}},
+            {Fill}
+        }
+    }
+}
+
+{define-proc {bold-item-proc s:String, acf:AutocompleteMixin}:Graphic
+    def actf = acf.text-field
+    def label = {text-part font-size = 1.2em}
+
+    let v:String = actf.value
+    let rng:StringDataModelWritableRange = actf.selected-range
+    {if rng.point > rng.anchor then
+        set v = {v.substr 0, rng.anchor}
+    }
+
+    def left = {s.find-string v}
+    {if left < 0 then
+        {label.add s}
+     else
+        def right = left + v.size
+        {if left > 0 then
+            {label.add {s.substr 0, left}}
+        }
+        {label.add {bold {value v}}}
+        {label.add {s.tail right}}
+    }
+    {return label}
+}
+
+{AutocompleteTextField
+    {AsyncCompletionProvider host & "/words-containing.php?value=%s&max=%s"},
+    dropdown-height = 2.5in,
+    label-creation-proc = bold-item-proc,
+    {on ValueFinished at acf:TextField do
+        {vframe.add replace? = true, acf.value}
+    }
+} Completions from server {value host}/words-containing.php
+
+A different customization:{br}
+{AutocompleteTextField
+    {AsyncCompletionProvider host & "/words-prefix.php?value=%s&max=%s"},
+    dropdown-height = 2.5in,
+    label-creation-proc = custom-item-proc,
+    {on ValueFinished at acf:TextField do
+        {vframe.add replace? = true, acf.value}
+    }
+} Completions from server {value host}/words-prefix.php
+
+Finally, here is an example that shows how to get completions in a
+RecordGridCell based on the values in the same column. Double-click
+"Ben" in the grid below and type "f" or "g" to see how it works.
+
+{define-proc {dummy-record-set}:RecordSet
+    let dummy-rs:RecordSet =
+        {RecordSet
+            {RecordFields
+                {RecordField "id", domain = int},
+                {RecordField 
+                    "First", caption = "First", domain = String
+                },
+                {RecordField 
+                    "Last", caption = "Last", domain = String
+                },
+                {RecordField 
+                    "City", caption = "City", domain = String
+                },
+                {RecordField 
+                    "State", caption = "State", domain = String
+                },
+                {RecordField "date", domain = DateTime},
+                {RecordField "time", domain = Time},
+                {RecordField 
+                    "rank", caption = "Rank", domain = String
+                },
+                {RecordField "notified", domain = bool}
+            },
+            {RecordData 
+                id = 1,
+                Last = "Smith",
+                First = "Gene",
+                City = "Boston",
+                State = "MA",
+                date = {DateTime.date},
+                time = 5s,
+                rank = "First",
+                notified = true
+            },
+            {RecordData 
+                id = 2,
+                Last = "Rogers",
+                First = "Fred",
+                City = "Cambridge",
+                State = "MA",
+                date = {DateTime.date},
+                time = 5s,
+                rank = "First",
+                notified = false
+            },
+            {RecordData 
+                id = 3,
+                Last = "Abrams",
+                First = "Ben",
+                City = "New Haven",
+                State = "MA",
+                date = {DateTime.date},
+                time = 5s,
+                rank = "Second",
+                notified = true
+            },
+            {RecordData 
+                id = 4,
+                Last = "Smith",
+                First = "Gary",
+                City = "Warwick",
+                State = "NH",
+                date = {DateTime.date},
+                time = 5s,
+                rank = "Third",
+                notified = true
+            }
+        }
+    {dummy-rs.add-event-handler
+        {on e:RecordModified at rs:RecordSet do
+            {dump e.record["id"], e.record["First"]}
+        }
+    }
+    {return dummy-rs}
+}
+
+{RecordGrid 
+    record-source = {dummy-record-set},
+    width = 4in, height = 2in,
+    automatic-columns? = false,
+
+    {RecordGridColumn  width = .75in, "id"},
+    {RecordGridColumn  width = 1.0in, "First",
+        cell-spec = AutocompleteStringCell
+    }    
+}

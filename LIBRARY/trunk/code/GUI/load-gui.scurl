@@ -1,0 +1,668 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0 package}
+
+{doc type = package, COM.CURL.EXT.GUI
+    {purpose
+        Experimental GUI APIs.
+    }
+}
+
+
+{package COM.CURL.EXT.GUI,
+    resource-directory = "curl://install/curl-resources", ||""
+    translations-file = "translations.ctd", ||""
+    default-locale = "en", ||""
+    version = "1.0", ||""
+    {compiler-directives stringent? = true}
+}
+
+{import * from CURL.UTIL.OBSERVER}
+{import * from CURL.GUI.STANDARD}
+{import * from CURL.GUI.SHAPES}
+{import * from CURL.GUI.CHARTS}
+{import CURL.GRAPHICS.DISPLAY, using-name="DISPLAY"}
+
+{import * from CURL.ENGINE.APPLET}
+{import * from CURL.IO.JSON}
+{import * from CURL.LANGUAGE.EXCEPTIONS}
+
+||--{include "mg-DateTimeAxis.scurl"} ||""
+||--{include "simple-DateTimeAxis.scurl"} ||""
+||--{include "DateTimeAxis.scurl"} ||""
+{include "popup-balloon.scurl"} ||""
+{include "titled-view.scurl"} ||""
+{include "autocomplete.scurl"} ||""
+
+{include "file-app.scurl"} ||""
+{include "data-store.scurl"} ||""
+
+|| ----------------------------------------------------------------------
+
+|| ----------------
+|| Chart utilities
+|| ----------------
+
+{doc-next
+    {purpose A shape factory that generates no label, useful when you
+        want tick marks but no labels on a {docref ChartAxis}.
+    }
+}
+{define-proc public {empty-shape-factory
+                        layer:BarLayer,
+                        rectangle:GRect,
+                        record:Record,
+                        record-index:int,
+                        series-index:int,
+                        border-width:any,
+                        border-line-style:LineStyle
+                    }:Shape
+    {return {ShapeGroup}}
+}
+
+|| ----------------------------------------------------------------------------
+
+{doc-next
+    {purpose A {docref Frame} that maintains it's width below some value.}
+}
+{define-class public open LimitedWidthFrame {inherits Frame}
+
+  field package max-width:Distance = 0m
+
+  {doc-next 
+    {purpose Initialize the {docref LimitedWidthFrame} and specify the
+        maximum width, {param max-width} to be used if a width is not
+        set explicitly on this object.
+    }
+  }
+  {constructor public {default max-width:Distance = 0m, ...}
+    {construct-super 
+        vorigin = "top", horigin = "left", ||""
+        {splice ...}
+    }
+    {set self.max-width = max-width}
+  }
+
+  {method public open {get-width-preference lc:LayoutContext}:Dimension
+    || Pass it up the class hierarchy, which will pass it down the
+    || graphical hierarchy, sum everything up, and return it here.
+    let d:Dimension = {super.get-width-preference lc}
+    let wd:Distance = d.preferred-size
+
+    {if self.max-width <= 0m or wd <= self.max-width then
+        {return d}
+     else
+        let oe:OriginElastic = {dimension-to-origin-elastic d}
+        {return {oe.set-total self.max-width}}
+    }
+
+  }
+}
+
+|| -------------------
+|| Improved ClipFrame
+|| -------------------
+
+{doc-next
+    {purpose Modify a width or height preference to make it
+        compressible down to 0m, if necessary.
+    }
+    {details
+        This procedure is designed to be used as the width or height
+        preference for a {docref Graphic} object. It will modify the
+        width or height elastic that results from a layout negotiation
+        to force the origin to the top left and allow the graphic to
+        be compressed down to nothing.  This makes it a good choice
+        for the width and/or height of a {docref ClipFrame}, for one
+        example, or any other object where you'd like it to disappear
+        before forcing some other object to shrink.
+    }
+}
+{define-proc public {make-compressible}:{proc-type
+                                             {Graphic, OriginElastic
+                                             }:OriginElastic
+                                         }
+    let sproc:{proc-type {Graphic, OriginElastic}:OriginElastic} =
+        {proc {g:Graphic, e:OriginElastic}:OriginElastic
+            let (min-size:Distance,
+                 pref:Distance,
+                 compress:double,
+                 orderc:int,
+                 stretch:double,
+                 orders:int) = 
+                {e.first.unpack-as-stretchy-elastic}
+            def new-first = 
+                {make-elastic
+                    minimum-size = 0m,
+                    preferred-size = pref,
+                    compressibility = compress,
+                    compress-order = rigid-stretch-order,
+                    stretchiness = stretch,
+                    stretch-order = rigid-stretch-order
+                }
+            set (min-size,
+                 pref,
+                 compress,
+                 orderc,
+                 stretch,
+                 orders) = 
+                {e.last.unpack-as-stretchy-elastic}
+            def new-last = 
+                {make-elastic
+                    minimum-size = 0m,
+                    preferred-size = pref,
+                    compressibility = compress,
+                    compress-order = orderc,
+                    stretchiness = stretch,
+                    stretch-order = compliant-stretch-order
+                }
+            {return {make-origin-elastic first = new-first, last = new-last}}
+        }
+    {return sproc}
+}
+
+{define-proc public {clipper child:any, ...}:ClipFrame
+    {return
+        {ClipFrame 
+            child, 
+            width = {make-compressible},
+            height = {make-compressible},
+            {splice ...}
+        }
+    }
+}
+
+
+|| -----------------------------------
+|| Detect mouse "click" on any Visual
+|| -----------------------------------
+
+{doc-next
+    {purpose
+        Event fired when a click is recognized.
+    }
+}
+{define-class public open Click {inherits PointerButtonEvent}
+  {doc-next
+    {purpose
+        Creates a new {ctext Click} object.
+    }
+  }
+  {constructor public {default}
+    {construct-super}
+  }
+
+}
+
+{define-proc public {click-recognizer consume?:bool = true}:EventHandler
+    let pressed?:bool = false
+    let entered?:bool = false
+    let click:Click = {Click}
+    {return
+        {on e:GuiInputEvent at t:Visual do
+            {type-switch e
+             case pe:PointerEnter do
+                set entered? = true
+                {if consume? then {e.consume}}
+             case pl:PointerLeave do
+                set entered? = false
+                {if consume? then {e.consume}}
+             case pp:PointerPress do
+                set click.state-mask = pp.state-mask
+                set click.x = pp.x
+                set click.y = pp.y
+                set click.event-time = pp.event-time
+                set click.button = pp.button
+                set click.click-count = pp.click-count
+                {if not e.consumed? and
+                    pp.button == left-button and pp.click-count == 1 then
+                    set pressed? = true
+                    {if consume? then {e.consume}}
+                }
+             case pr:PointerRelease do
+                set click.click-count = pr.click-count
+                {if pressed? and pr.button == left-button then
+                    {if entered? then
+                        {after 0s do
+                            {t.handle-event click}
+                        }
+                    }
+                    {if consume? then {e.consume}}
+                    set pressed? = false
+                }
+            }
+        }
+    }
+}
+
+|| ---------------------------------------------------------------------------
+
+{doc-next
+    {purpose Indicates the state of a tree node to be reflected in
+        the user interface.
+    }
+    {details
+        Enumeration of the possible states of the UI affordance that
+        shows the expansion state of a tree node.  In the common case
+        where a triangle is used, the the triangle will be pointing
+        right for the collapsed state, down for the expanded state,
+        and halfway in between for the changing state. The singleton
+        state is used for leaf nodes.
+    }
+}
+{define-enum public DisclosureState
+    collapsed, changing, expanded, singleton
+}
+
+{doc-next
+    {purpose Provide an icon that indicates the state of a tree node
+        in a {docref TreeGrid}.
+    }
+}
+{define-class abstract public open Discloser {inherits BaseFrame}
+
+  {constructor public {default ...}
+    {construct-super
+        opaque-to-events? = true,
+        vorigin = "center", {splice ...} ||""
+    }
+  }
+
+  {doc-next
+    {purpose Indicates the state of a tree node to be reflected in
+        the discloser.
+    }
+  }
+  {local-option public state:DisclosureState = DisclosureState.collapsed
+    {self.refresh-icon}
+  }
+ 
+  {nonlocal-option public font-size:any
+    || Superclass handler runs last
+    {self.refresh-icon}
+  }
+
+  {nonlocal-option public enabled?:bool
+    {self.refresh-icon}
+  }
+
+  {nonlocal-option public color:FillPattern
+    {if self.enabled? then
+        {self.refresh-icon}
+    }
+  }
+
+  {nonlocal-option public disabled-color:FillPattern
+    {if not self.enabled? then
+        {self.refresh-icon}
+    }
+  }
+
+  {doc-next
+    {purpose Rebuild the icon image to correctly reflect the expansion
+       state of the item, and other attributes.
+    }
+    {override
+        Replace the graphical child of self with an image that
+        reflects the current state and option values.
+
+        When overriding this method, you should pay attention to the
+        following options: {docref font-size}, {docref-abbr Graphic.enabled?},
+        {docref color}, and {docref disabled-color}. An override will of
+        course use {ctext self.state} to determine what image correctly
+        reflects the state of the discloser.
+
+        It is important that the time taken to rebuild the image is
+        negligable. In particular, it is a mistake to load an image
+        from a server each time this method is called.
+    }        
+  }
+  {method abstract protected open {refresh-icon}:void
+  }
+
+}
+
+||FIXME: Could memoize the pixmaps and share them among instances
+{doc-next
+    {purpose A {docref Discloser} that uses a simple triangle image
+        to reflect the state of a node in a {docref TreeGrid}.
+    }
+    {details
+        This is a {docref Graphic} designed to be used to indicate the
+        state of a tree node (open or closed). As such it is a solid
+        triangle with a color given by the {docref-abbr Visual.color}
+        option (which will consequently match the color of text in the
+        same container. The triangle can also be drawn in a third
+        state, halfway between the other two. This is used as a
+        transient state to show that the node is opening or closing.
+
+        Subclass this class if you want to create a custom discloser
+        using images.
+    }
+}
+{define-class public open DefaultDiscloser {inherits Discloser}
+
+  field protected cell:RecordGridCell
+
+  field protected empty-pixmap:Pixmap
+  field protected current-pixmap:Pixmap
+
+  field protected _collapsed-pixmap:#Pixmap
+  field protected _changing-pixmap:#Pixmap
+  field protected _expanded-pixmap:#Pixmap
+  field protected _singleton-pixmap:#Pixmap
+
+  {getter protected open {collapsed-pixmap}:#Pixmap
+    {if-non-null pm = self._collapsed-pixmap then
+        {return pm}
+     else
+        set self._collapsed-pixmap = {self.get-pixmap DisclosureState.collapsed}
+        {return self._collapsed-pixmap}
+    }
+  }
+
+  {getter protected open {changing-pixmap}:#Pixmap
+    {if-non-null pm = self._changing-pixmap then
+        {return pm}
+     else
+        set self._changing-pixmap = {self.get-pixmap DisclosureState.changing}
+        {return self._changing-pixmap}
+    }
+  }
+
+  {getter protected open {expanded-pixmap}:#Pixmap
+    {if-non-null pm = self._expanded-pixmap then
+        {return pm}
+     else
+        set self._expanded-pixmap = {self.get-pixmap DisclosureState.expanded}
+        {return self._expanded-pixmap}
+    }
+  }
+  
+  {getter protected open {singleton-pixmap}:#Pixmap
+    {if-non-null pm = self._singleton-pixmap then
+        {return pm}
+     else
+        set self._singleton-pixmap = {self.get-pixmap DisclosureState.singleton}
+        {return self._singleton-pixmap}
+    }
+  }
+  
+  field protected last-state:DisclosureState
+  field protected last-font-size:Distance
+  field protected last-enabled?:bool
+  field protected last-color:FillPattern
+  field protected last-disabled-color:FillPattern
+
+  {doc-next
+    {purpose Initialize this object. The rest args are any options
+        that can be applied to a {docref Graphic}. They are simply
+        passed to the superclass.
+    }
+  }
+  {constructor public {default cell:RecordGridCell, ...}
+    {construct-super {splice ...}}
+    set self.cell = cell
+    set self.empty-pixmap = {Pixmap 9, 9, ignore-alpha? = false}
+    set self.current-pixmap = self.empty-pixmap
+    set self.last-state = self.state
+    set self.last-font-size = 10.1pt
+    set self.last-enabled? = self.enabled?
+    set self.last-color = self.color
+    set self.last-disabled-color = self.disabled-color
+  }
+
+||--  {nonlocal-option public font-size:any
+||--      || Superclass handler will call refresh-icon
+||--  }
+
+  {method protected open {options-changed?}:bool
+    let changed?:bool = false
+    let d:Distance = {self.any-to-Distance self.font-size,
+                         convert-font-relative-values? = true,
+                         for-font-size? = true
+                     }
+    {if d != self.last-font-size then
+        {self.request-layout}
+        set self.last-font-size = d
+        set changed? = true
+    }
+    {if self.enabled? != self.last-enabled? then
+        set self.last-enabled? = self.enabled?
+        set changed? = true
+    }
+    {if self.color != self.last-color then
+        set self.last-color = self.color
+        set changed? = true
+    }
+    {if self.disabled-color != self.last-disabled-color then
+        set self.last-disabled-color = self.disabled-color
+        set changed? = true
+    }
+    {return changed?}
+  }
+
+  {method protected open {request-update-pixmaps}:void
+      set self._collapsed-pixmap = null
+      set self._changing-pixmap = null
+      set self._expanded-pixmap = null
+      set self._singleton-pixmap = null
+  }
+
+  {method protected open {get-pixmap 
+                             state:DisclosureState
+                         }:#Pixmap
+    let dpx:int = 9
+    def d = self.last-font-size
+    set dpx = {floor ((d/{any-to-Distance 1px})) * 0.8} asa int
+      {if-non-null dc = self.display-context then
+        set dpx = {floor (d/dc.pixel-size) * 0.8} asa int
+    }
+||--    {dump font-size, dpx}
+    {if dpx < 5 then
+        set dpx = 5
+    }
+
+    let background-pixel:Pixel = {Pixel.from-int 0, 0, 0, alpha = 0}
+      let triangle-pixel:Pixel =
+        {if self.enabled? then
+            {self.color.to-Pixel}
+         else
+            {self.disabled-color.to-Pixel}
+        }
+
+    let new-pixmap:Pixmap = {Pixmap dpx, dpx, ignore-alpha? = false}
+    {for row:int = 0 below new-pixmap.height do
+        {for col:int = 0 below new-pixmap.width do
+            set new-pixmap[col,row] = background-pixel
+        }
+    }
+
+    let first:int = new-pixmap.height div 5
+    let last:int = new-pixmap.height - first
+
+    {switch state
+     case DisclosureState.collapsed do
+            || point East
+            {for row = first to last do
+                {for col:int = (row - 1) to (new-pixmap.width - row) do
+                    set new-pixmap[row + 1, col] = triangle-pixel
+                }
+            }
+     case DisclosureState.changing do
+        || point SE
+        set first = (new-pixmap.height * 27) div 100
+        set last = new-pixmap.height - first
+        {for row = 1 to last do
+            {for col = (new-pixmap.width - row) to last do
+                set new-pixmap[col - 1, row - 0] = triangle-pixel
+            }
+        }
+
+     case DisclosureState.expanded do
+        || point down
+        set first = new-pixmap.height div 5
+        set last = new-pixmap.height - first
+        {for row = first to last do
+            {for col:int = row - 1 to (new-pixmap.width - row) do
+                def ri = {min row + 2, new-pixmap.height - 1}
+                set new-pixmap[col, ri] = triangle-pixel
+            }
+        }
+
+     else
+        || small square
+        set first = new-pixmap.height div 3
+        set last = new-pixmap.height - first
+        {for row = first to last do
+            {for col:int = first to last do
+                set new-pixmap[col, row] = triangle-pixel
+            }
+        }
+    }
+    {return new-pixmap}
+  }
+
+  {method protected open {refresh-icon}:void
+    {if not {self.options-changed?} then
+        {if self.state == self.last-state then
+            {return}
+        }
+     else
+        {self.request-update-pixmaps}
+    }
+    def new-pixmap =
+        {switch self.state
+         case DisclosureState.collapsed do
+            self.collapsed-pixmap
+         case DisclosureState.changing do
+            self.changing-pixmap
+         case DisclosureState.expanded do
+            self.expanded-pixmap
+         else
+            self.singleton-pixmap
+        }
+    {if-non-null new-pixmap then
+        set self.current-pixmap = new-pixmap
+    }
+    set self.last-state = self.state
+    {self.request-draw}
+  }
+
+  {method public open {draw renderer2d:Renderer2d}:void
+    {super.draw renderer2d}
+    let bounds:GRect = {self.layout.get-bounds}
+    let top-edge:Distance    = -bounds.ascent
+    let bottom-edge:Distance =  bounds.descent
+    let left-edge:Distance   = -bounds.lextent
+    let right-edge:Distance  =  bounds.rextent
+    
+    {with-render-properties 
+        draw-operation = DrawOperation.mask on renderer2d do     
+        {renderer2d.render-pixmap 
+            left-edge, top-edge,
+            right-edge - left-edge, bottom-edge - top-edge,
+            self.current-pixmap
+        }
+    }
+  }
+
+  {method public open {get-width-preference lc:LayoutContext}:Dimension
+    {return 
+        (self.current-pixmap.width * lc.layout-display-context.pixel-size)
+    }
+  }
+  
+  {method public open {get-height-preference lc:LayoutContext}:Dimension
+    {return 
+        (self.current-pixmap.height * lc.layout-display-context.pixel-size)
+    }
+  }
+  
+  {method public open {constrain-width
+                     lc:LayoutContext,
+                     lextent:Distance,
+                     rextent:Distance
+                 }:Dimension
+    {return {self.get-height-preference lc}}
+  }
+
+  {method public open {constrain-height
+                     lc:LayoutContext,
+                     ascent:Distance,
+                     descent:Distance
+                 }:Dimension
+    {return {self.get-width-preference lc}}
+  }
+}
+
+
+|| --------------------
+|| UI for Enumerations
+|| --------------------
+
+{doc-next
+    {purpose A {docref DropdownList} to choose from an enumeration
+        where the displayed choices are the values assigned to the
+        enumeration items (see {docref define-enum}).
+    }
+}
+{define-class public final {EnumValueDropdown-of enum:Type} 
+  {inherits DropdownList}
+
+  || Initialize a UI that allows you to choose from an enum.
+  {constructor public {default ...}
+    let lma:{Array-of ListValueItem} = {new {Array-of ListValueItem}}
+    {for v:enum in enum do
+        {lma.append {ListValueItem v, label = v.value}}
+    }
+
+    {construct-super
+        {splice lma}, {splice ...}
+    }
+  }
+}
+
+
+{doc-next
+    {purpose A {docref DropdownList} to choose from an enumeration
+        where the displayed choices are the names of the enumeration
+        items (see {docref define-enum}).
+    }
+}
+{define-class public final {EnumDropdown-of enum:Type} 
+  {inherits DropdownList}
+
+  || Initialize a UI that allows you to choose from an enum.
+  {constructor public {default ...}
+    let lma:{Array-of ListValueItem} = {new {Array-of ListValueItem}}
+    {for v:enum in enum do
+        {lma.append {ListValueItem v, label = v.name}}
+    }
+
+    {for v:enum in enum do
+        {construct-super
+            value = v,
+            {splice lma}, {splice ...}
+        }
+        {break}
+    }
+  }
+}
+
+|| ----------------------------------------------------------------------
