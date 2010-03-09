@@ -1,0 +1,580 @@
+||| Copyright (C) 2009, Sumisho Computer Systems Corp.  All Rights Reserved.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+
+|| Main class that implements queueing of Background tasks to subapplets.
+
+{doc-next
+  {purpose
+    Class that manages a set of subapplets used as threads to run
+    background tasks.
+  }
+  {notes
+    Mainly used by calling {docref BackgroundTaskQueue.async-start-task}.
+  }
+}
+{define-class public open BackgroundTaskQueue
+
+  let package default-queue:#BackgroundTaskQueue
+  {doc-next
+    {purpose
+        Get a singleton {docref BackgroundTaskQueue} with the default
+        values for {param max-threads} and {param max-idle-threads}.
+    }
+  }
+  {define-proc public {get-default-background-task-queue}:BackgroundTaskQueue
+    {if BackgroundTaskQueue.default-queue == null then
+        set BackgroundTaskQueue.default-queue = {BackgroundTaskQueue}
+    }
+    {return {non-null BackgroundTaskQueue.default-queue}}
+  }
+
+  field protected constant max-threads:int
+
+  || -1 means always destroy threads even if there are tasks waiting.
+  field protected constant max-idle-threads:int
+
+  || Url which will be used for the subapplet.  The subapplet is
+  || expected to include code to register an handler/yxorp with whom == 0
+  || to answer BackgroundTaskRemoteInterface.run-task calls.
+  field public async-task-applet-url:Url
+
+  || If we expected large numbers of threads, HashTables for the
+  || active threads, and a freelist for the idle ones would be more
+  || efficient.  For small numbers this lets the code be simpler and
+  || similarly fast.
+  field protected constant threads:{Array-of BackgroundThread} =
+    {new {Array-of BackgroundThread}}
+
+  || A Dequeue-of would be nice for this, but supporting cancel
+  || requires deleting from the middle, so this would need to use
+  || ExtendedDequeue-of from zuzu/LIB/CONTAINERS/ExtendedDequeue-of.scurl
+  field protected constant task-infos:{Array-of BackgroundTaskInfo} =
+    {new {Array-of BackgroundTaskInfo}}
+
+  {doc-next
+    {purpose
+        Create a {docref BackgroundTaskQueue}.
+    }
+    {parameter max-threads,
+        Maximum number of active threads to have at a time.
+    }
+    {parameter max-idle-threads,
+        Maximum number of idle threads to have at a time.  A value of
+        {ctext 0} means keep no idle threads around.  A value of
+        {ctext -1} means destroy each thread after one use, even if
+        there are more tasks waiting to be run.  A value greater than
+        {param max-threads} will act the same as being equal to
+        {param max-threads}.
+    }
+    {parameter async-task-applet-url,
+        {docref Url} to a subapplet to answer
+        {docref BackgroundTaskRemoteInterface} calls.
+        The default value is the return from
+        {docref BackgroundTaskQueue.default-async-task-applet-url}.
+        A custom {docref Url} could be used to allow calling procs that are
+        defined in the applet, and not just ones from packages.
+    }
+    {notes
+        Starting subapplets is slow, so providing a non-zero number for
+        {param max-idle-threads} may speed up the launching of additional
+        tasks, however each subapplet does use up memory, so the default
+        is to have no subapplets kept around when no work is queued up.
+    }
+  }
+  {constructor public {default
+                          max-threads:int = 4,
+                          max-idle-threads:int = 0,
+                          async-task-applet-url:Url =
+                              {BackgroundTaskQueue.default-async-task-applet-url}
+                      }
+    {assert max-threads > 0}
+    set self.max-threads = max-threads
+    set self.max-idle-threads = max-idle-threads
+    set self.async-task-applet-url = async-task-applet-url
+  }
+
+
+  {doc-next
+    {purpose
+        Start a background task, or queue it up to be started once a
+        thread is available, and send a {docref BackgroundTaskEvent}
+        to {param event-handler} when the task finishes, fails or is
+        canceled.
+    }
+    {parameter proc-name,
+        Name of the proc to run, or the name of a class to run the
+        default constructor of.  May include a class name for class procs,
+        or a package name.
+    }
+    {parameter package-selector,
+        Package selector used to import a package and then look
+        up {param proc-name} in.  Not needed if proc is in applet's
+        default package.
+        You can make a value for this parameter with
+        {docref make-package-selector}.
+    }
+    {parameter args,
+        Arguments to pass to {param proc-name}.
+    }
+    {parameter manifest,
+        {docref Manifest} to use to find the package for
+        {param package-selector}.
+        If not supplied, the values from {param manifest-url} and
+        {param root-manifest-url} will be used, and if those are
+        not supplied, then the current process's default manifest will be used.
+    }
+    {parameter manifest-url,
+        {docref Url} where the main manifest can be found, if needed.
+    }
+    {parameter root-manifest-url,
+        {docref Url} where the root manifest can be found, if needed.
+    }
+    {parameter queue,
+        A {docref BackgroundTaskQueue} to use to start this task.
+        Defaults to the return value of
+        {docref BackgroundTaskQueue.get-default-background-task-queue}.
+    }
+    {parameter event-handler,
+        {docref EventHandler} that must take a {docref BackgroundTaskEvent}.
+    }
+    {parameter ...,
+       More optional {docref EventHandler}s that must take a
+       {docref BackgroundTaskEvent}.
+    }
+    {notes
+        If the {param queue} is allowed to start more threads or has idle
+        threads then this will start immediately.  Otherwise it will be queued
+        up until there are threads available.
+    }
+    {licensing
+        This procedure can only be used by an applet that has a
+        {curl-pro-server-license}.
+    }
+  }
+  {define-proc public {async-start-task
+                          proc-name:String,
+                          args:Arguments,
+                          package-selector:#ComponentSelector = null,
+|| For 7.0.1 can it generate the appropriate declarations in a curl://string
+|| to exactly copy the manifest/curl-root etc?
+                          manifest:#ComponentManifest = {get-process-manifest},
+                          manifest-url:#Url = null,
+                          root-manifest-url:#Url = null,
+                          queue:BackgroundTaskQueue =
+                              {BackgroundTaskQueue.get-default-background-task-queue},
+||--                          multiple-event-task?:bool = false,
+                          event-handler:EventHandler,
+                          ...:EventHandler
+                      }:AsyncWorker
+    {if-non-null manifest then
+        set manifest-url = manifest.source-url
+        set root-manifest-url =
+            {api-version-switch
+             case "6.0" do
+                null
+             else
+                {if-non-null root = manifest.root then
+                    root.source-url
+                 else
+                    null
+                }
+            }
+    }
+    def worker = {BackgroundTaskWorker queue, null, null, event-handler, ...}
+    def worked? =
+        {queue.run-task-for-worker
+            worker,
+            proc-name,
+            args,
+            package-selector = package-selector,
+            manifest-url = manifest-url,
+            root-manifest-url = root-manifest-url
+        }
+     {if not worked? then
+        || Queue up task for when a thread becomes available...
+        def task-info =
+            {BackgroundTaskInfo
+                worker,
+                proc-name,
+                args,
+                package-selector,
+                manifest-url,
+                root-manifest-url
+            }
+        {queue.save-task task-info}
+        set worker.task-info = task-info
+    }
+    {return worker}
+  }
+
+  {doc-next
+    {purpose
+        Tries to run a task, returning {ctext false} if it can't start one
+        immediately.
+    }
+  }
+  {method protected open {run-task-for-worker
+                             worker:BackgroundTaskWorker,
+                             proc-name:String,
+                             args:Arguments,
+                             package-selector:#ComponentSelector = null,
+                             manifest-url:#Url = null,
+                             root-manifest-url:#Url = null
+||--                             multiple-event-task?:bool = false
+                         }:bool
+    def thread = {self.get-idle-thread}
+    {if-non-null thread then
+        set worker.thread = thread
+        set worker.task-info = null
+        {assert thread.worker == null}
+        set thread.worker = worker
+        def serializable-selector =
+            {api-version-switch
+             case "6.0" do
+                {if-non-null package-selector then
+                    {SerializableComponentSelector package-selector}
+                 else
+                    null
+                }
+             else
+                package-selector
+            }
+        || Make remote call via the proxy.
+        {try
+            {remote-invoke-async
+                {thread.proxy.run-task
+                    proc-name,
+                    args,
+                    serializable-selector,
+                    manifest-url,
+                    root-manifest-url
+                }
+            receiving exception:#String, result:#FastArray do
+                || Later, from the event loop, this code will be called
+                || if the run-task call succeeds, with the return values
+                || in exception and result.
+                {worker.enqueue-event
+                    {BackgroundTaskEvent
+                        {if-non-null exception then
+                            {BackgroundTaskException exception}
+                         else
+                            null
+                        },
+                        result, true, false
+                    }
+                }
+                {self.mark-run-done thread}
+             catch exception:Exception do
+                || If the run-task fails, this code be called instead.
+                {worker.enqueue-event
+                    {BackgroundTaskEvent exception, null, true, false}
+                }
+                {self.mark-run-done thread}
+            }
+         catch exception:Exception do
+            || If you send unserialiable types then remote-invoke-async
+            || can throw, so handle it here.
+            {worker.enqueue-event
+                {BackgroundTaskEvent exception, null, true, false}
+            }
+            {self.mark-run-done thread}
+        }
+        {return true}
+    }
+    {return false}
+  }
+
+  {doc-next
+    {purpose
+        Create a subapplet set up such that their entries get cleaned up 
+        if unexpected errors occur in the subapplet.
+    }
+  }
+  {method protected open {spawn-subapplet
+                         }:(AppletData, BackgroundTaskRemoteInterfaceProxy)
+    || FIXME: by default subapplets are suspended when the parent applet is
+    || suspended, we might want to kill the idle ones instead.
+    def applet-data =
+        {BackgroundTaskAppletData
+            || null for the AppletGraphic means that the applet will not be
+            || visible anywhere unless it makes views or dialogs.
+            null, 
+            self.async-task-applet-url,
+            grant-privilege? = {process-privileged?},
+            error-proc =
+                {proc {message:String}:void
+                    def thread = {self.get-thread-for-applet-data applet-data}
+                    {if-non-null thread then
+                        {self.remove-thread thread, message = message}
+                    }
+                }
+        }
+        || Note: we do not need to wait for it to finish loading, although
+        || it will not handle the messages that we send until it does.
+        ||--{while applet-data.loading? do
+        ||--    {dispatch-events true}
+        ||--}
+
+    || The sample could instead use AppletData.async-invoke-async and
+    || related APIs instead of the inline-remote-connection with the
+    || CURL.REMOTE package, but AppletData.async-invoke-async can only
+    || handles types that are serializable with JSON, which is limited
+    || to numbers, strings, arrays and JsonObject's.  The technique used
+    || below allows a much wider range of types, and a smaller serialization
+    || format.
+
+    || RemoteConnection to the subapplet that we can make remote calls over.
+    def rc = applet-data.inline-remote-connection
+    || Tell RemoteConnection to use full serialization, from CURL.IO.SERIALIZE
+    || instead of the simpler remote marshaling that is limited to numbers,
+    || strings and bytes.
+    {rc.use-simple-serialization}
+    || Set up the proxy that we can make calls on.
+    || Uses a whom value of 0, which must match how the handler/yxorp in
+    || the subapplet is registered.
+    def proxy = {BackgroundTaskRemoteInterfaceProxy rc, 0}
+    {return applet-data, proxy}
+  }
+
+  {doc-next
+    {purpose
+        Find the {docref BackgroundThread} for this {docref AppletData}.
+    }
+  }
+  {method protected open {get-thread-for-applet-data
+                             applet-data:AppletData
+                         }:#BackgroundThread
+    {for thread in self.threads do
+        {if thread.applet-data == applet-data then  
+            {return thread}
+        }
+    }
+    {return null}
+  }
+
+  {doc-next
+    {purpose
+        Create a {ctext curl://string} {docref Url} for a working
+        subapplet to answer {docref BackgroundTaskRemoteInterface}
+        calls for RTE version 7.0.1 and higher, or return the {docref Url}
+        for {ctext BackgroundTaskSubApplet.curl}.
+    }
+  }
+  {define-proc public {default-async-task-applet-url}:Url
+    {return
+        {api-version-switch
+         case "7.0.1+" do
+            {abs-url |"curl://string/{curl "| & curl-version-number-2 &
+                 |" applet}"| &
+|| FIXME: What about manifest or curl-root, at least for 7.0.1?
+                || Should this be async somehow?
+                {read-from {url "BackgroundTaskRemoteInterface.scurl"}} &
+                |"{do {{BackgroundTaskRemoteInterface}.make-handler}}"|} ||""
+         else
+            {url "BackgroundTaskSubApplet.curl"}
+        }
+    }
+  }
+
+  {doc-next
+    {purpose
+        Find an idle thread or make a new one if needed.
+    }
+  }
+  {method protected open {get-idle-thread}:#BackgroundThread
+    {for t in self.threads do
+        {if t.worker == null then
+            {return t}
+        }
+    }
+    {if self.max-threads > self.threads.size then
+        def (applet-data, proxy) = {self.spawn-subapplet}
+        def thread = {BackgroundThread applet-data, proxy}
+        {self.threads.append thread}
+        {return thread}
+    }
+    || No threads available, caller should manage queueing or fail as
+    || appropriate.
+    {return null}
+  }
+
+  {doc-next
+    {purpose
+        Save a task at the end of the list of tasks.
+    }
+    {notes
+        Only call this if there are not available idle threads.
+    }
+  }
+  {method protected open {save-task t:BackgroundTaskInfo}:void
+    {self.task-infos.append t}
+  }
+
+  {doc-next
+    {purpose
+        Cancel a task if it is queued up, but not running.
+        And if the task is canceled, queue up an event.
+    }
+  }
+  {method protected open {cancel-task t:BackgroundTaskInfo}:bool
+    def i = {self.task-infos.find t}
+    {if i >= 0 then
+        def worker = self.task-infos[i].worker
+        {self.task-infos.remove i}
+        {worker.enqueue-event
+            {BackgroundTaskEvent null, null, true, true}
+        }
+        {return true}
+    }
+    {return false}
+  }
+
+  {doc-next
+    {purpose
+        Return a count of idle threads, for comparison with max-idle-threads.
+        However this may return an answer before counting all of them if
+        the number is obviously more or less than max-idle-threads.
+    }
+    {param thread,
+        {docref BackgroundThread} if one just exited.
+    }
+    {notes
+        Returns {ctext 0} if {param thread} is not {ctext null} and it was
+        not found, because that means that this is an orphaned thread that
+        this queue has forgotten about.
+    }
+  }
+  {method protected open {idle-thread-count thread:#BackgroundThread = null}:int
+    let seen-thread?:bool
+    let idle-count:int
+    {for t in self.threads do
+        {if t == thread then set seen-thread? = true}
+        {if t.worker == null then {inc idle-count}}
+    }
+    {return
+        {if seen-thread? or thread == null then
+            idle-count
+         else
+            0
+        }
+    }
+  }
+
+  {method protected open {mark-run-done t:BackgroundThread}:void
+    || Mark thread as idle so counting will include it.
+    set t.worker = null
+    def idle-count = {self.idle-thread-count thread = t}
+    || If more idle stuff than there should be, and either max-idle-threads
+    || is -1 meaning always destroy threads after each request,
+    || or there are more idle threads than tasks, destroy the thread that
+    || just finished.
+    {if idle-count > self.max-idle-threads and
+        (idle-count > self.task-infos.size or self.max-idle-threads == -1)
+     then
+        {self.remove-thread t}
+    }
+    || Take a task off of the queue and start it.
+    {if idle-count > 0 and self.task-infos.size > 0 then
+        def t = self.task-infos[0]
+        {self.task-infos.remove 0}
+        || There must be at least one idle thread or space to start a new
+        || thread.
+        {assert
+            {self.run-task-for-worker
+                t.worker,
+                t.proc-name,
+                t.args,
+                package-selector = t.package-selector,
+                manifest-url = t.manifest-url,
+                root-manifest-url = t.root-manifest-url
+            }
+        }
+    }
+  }
+
+  {method protected open {remove-thread
+                             thread:BackgroundThread,
+                             message:String = ""
+                         }:void
+    def i = {self.threads.find thread}
+    {if i >= 0 then
+        {self.remove-thread-by-index i, message = message}
+    }
+  }
+
+  {doc-next
+    {purpose
+        Remove a thread, and kill it by calling {docref AppletData.destroy}.
+        Also send an event saying that things were canceled, if there is
+        a {docref BackgroundTaskWorker} waiting for an event.
+    }
+    {parameter message,
+        Error message to include in an event.  If {param message} is empty,
+        send an event marked with {ctext canceled? = true} 
+    }
+  }
+  {method protected open {remove-thread-by-index
+                             i:int, message:String = ""
+                         }:void
+    def thread = self.threads[i]
+    {thread.applet-data.destroy}
+    {if-non-null worker = thread.worker then
+        {worker.enqueue-event
+            {if message.size > 0 then
+                {BackgroundTaskEvent
+                    {BackgroundTaskException message},
+                    null, true, false
+                }
+             else
+                || No message means it just died, which we
+                || will mark as canceled.
+                {BackgroundTaskEvent null, null, true, true}
+            }
+        }
+        set thread.worker = null
+    }
+    {self.threads.remove i}
+  }
+
+  {doc-next
+    {purpose
+        Destroy all threads and pending tasks, sending events as
+        appropriate.
+    }
+  }
+  {method public open {destroy}:void
+    {for i = self.threads.size - 1 downto 0 do
+        || Note that this will act like we canceled the call,
+        || but really it will keep running until the applet dies.
+        {self.remove-thread-by-index i}
+    }
+    {self.cancel-pending-tasks}
+  }
+
+  {doc-next
+    {purpose
+        Clear queue of pending tasks, but allow running tasks to finish,
+        sending canceled events as appropriate.
+    }
+  }
+  {method public open {cancel-pending-tasks}:void
+    {for t in self.task-infos do
+        {t.worker.enqueue-event
+            {BackgroundTaskEvent null, null, true, true}
+        }
+    }
+    {self.task-infos.clear}
+  }
+}
