@@ -447,7 +447,7 @@
         However this may return an answer before counting all of them if
         the number is obviously more or less than max-idle-threads.
     }
-    {param thread,
+    {parameter thread,
         {docref BackgroundThread} if one just exited.
     }
     {notes

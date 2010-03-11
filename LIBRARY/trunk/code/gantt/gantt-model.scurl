@@ -843,11 +843,11 @@ How to handle foreign key fields?
         let n:int = 0
         {for r:Record key ri in task-records do
             ||FIXME: ord is not used if Gantt is based on BarLayer
-            || Order the records via the "ord" field, with a gap for each
+            || Order the records via the "_ord" field, with a gap for each
             || project. This is sort of a hack.
             {inc n}
-            {if r["ord"] asa int == 0 then ||""
-                set r["ord"] = n ||""
+            {if r["_ord"] asa int == 0 then ||""
+                set r["_ord"] = n ||""
             }
             set r["critical"] = false ||""
         }
@@ -1300,10 +1300,10 @@ INSERT INTO resource VALUES (1,Fred,Programmer,"FP","Dev","http://www.curl.com",
   }
 
   {setter public open {parent-id i:int}
-    set self.record["pid"] = i ||""
+    set self.record["_pid"] = i ||""
   }
   {getter public open {parent-id}:int
-    {return self.record["pid"] asa int} ||""
+    {return self.record["_pid"] asa int} ||""
   }
 
   {setter public open {c x:double}
@@ -1378,24 +1378,24 @@ INSERT INTO resource VALUES (1,Fred,Programmer,"FP","Dev","http://www.curl.com",
   }
 
   {setter public open {depth v:int}
-    set self.record["depth"] = v ||""
+    set self.record["_depth"] = v ||""
   }
   {getter public open {depth}:int
-    {return self.record["depth"] asa int} ||""
+    {return self.record["_depth"] asa int} ||""
   }
 
   {setter public open {ln v:int}
-    set self.record["ln"] = v ||""
+    set self.record["_ln"] = v ||""
   }
   {getter public open {ln}:int
-    {return self.record["ln"] asa int} ||""
+    {return self.record["_ln"] asa int} ||""
   }
 
   {setter public open {rn v:int}
-    set self.record["rn"] = v ||""
+    set self.record["_rn"] = v ||""
   }
   {getter public open {rn}:int
-    {return self.record["rn"] asa int} ||""
+    {return self.record["_rn"] asa int} ||""
   }
 
   {setter public open {begin v:#DateTime}
@@ -1430,10 +1430,10 @@ INSERT INTO resource VALUES (1,Fred,Programmer,"FP","Dev","http://www.curl.com",
   }
 
   {setter public open {ord i:int}
-    set self.record["ord"] = i ||""
+    set self.record["_ord"] = i ||""
   }
   {getter public open {ord}:int
-    {return self.record["ord"] asa int} ||""
+    {return self.record["_ord"] asa int} ||""
   }
 
   {setter public open {check v:String}
@@ -1451,10 +1451,10 @@ INSERT INTO resource VALUES (1,Fred,Programmer,"FP","Dev","http://www.curl.com",
   }
 
   {setter public open {hide v:bool}
-    set self.record["hide"] = v ||""
+    set self.record["_hide"] = v ||""
   }
   {getter public open {hide}:bool
-    {return self.record["hide"] asa bool} ||""
+    {return self.record["_hide"] asa bool} ||""
   }
 
   {getter public open {has-subtasks?}:bool
@@ -1490,7 +1490,7 @@ INSERT INTO resource VALUES (1,Fred,Programmer,"FP","Dev","http://www.curl.com",
      else
         set self._fields =
             {RecordFields
-                {splice RecordSetTreeModel.tree-fields},
+                {splice {RecordSetTreeModel.get-fields id-field = "id"}},
                 {RecordField "scenario",
                     caption = "Scenario",
                     domain = String,
@@ -1695,7 +1695,7 @@ INSERT INTO task VALUES (1,0,0,0,0,'Sample Task 1','JP','',1.0,0.0,0.0);
                                           }:void
                                } = null,
                           parent-id:int = 0,
-                          pf:String = "pid", ||""
+                          pf:String = "_pid", ||""
                           v:any = null
                       }:void
     {with self.rs.batch-events? = true do

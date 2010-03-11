@@ -49,6 +49,22 @@
     location = "tiled-windows/load.scurl"
 }
 
+{component package COM.CURL.EXT.BACKGROUND-TASK,
+    location = "BackgroundTask/load.scurl"
+}
+
+{component package COM.CURL.EXT.BACKGROUND-TASK-REMOTE,
+    location = "BackgroundTask/BackgroundTaskRemoteInterfacePackage.scurl"
+}
+
+{component file BackgroundTaskSubApplet.curl,
+    location = "BackgroundTask/BackgroundTaskSubApplet.curl"
+}
+
+{component file BackgroundTaskRemoteInterface.scurl,
+    location = "BackgroundTask/BackgroundTaskRemoteInterface.scurl"
+}
+
 {component directory docs,
     location = "docs"
 }
@@ -60,27 +76,3 @@
 {component package COM.CURL.EXT.STANDARD,
     location = "load.scurl"
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -9,6 +9,7 @@
     font-size = 9pt
 }
 {import * from CURL.LANGUAGE.SOURCE}
+{import * from CURL.IO.JSON}
 {import * from CURL.GUI.STANDARD}
 {import * from CURL.GUI.SHAPES}
 {import * from CURL.GUI.CHARTS}
@@ -50,14 +51,60 @@ id,pid,ord,expand?,depth,ln,rn,data
 
 || -------------------------------------------------------------------------
 
+{define-proc public {make-treegrid
+                        model:RecordSetTreeModel,
+                        label-field:String,
+                        show-all?:bool = true,
+                        ...
+                    }:TreeGrid
+    def columns =
+        {if show-all? then
+            {new {Array-of RecordGridColumn},
+||--                {RecordGridColumn  width=1in, label-field,
+||--                    cell-spec = ExpanderCell, valign = "top"},
+                {RecordGridColumn  width=24pt, model.id-field},
+                {RecordGridColumn  width=24pt, "_pid"},
+                {RecordGridColumn  width=18pt, "_expand?"},
+                {RecordGridColumn  width=24pt, "_ord"},
+                {RecordGridColumn  width=18pt, "_depth"},
+                {RecordGridColumn  width=18pt, "_ln"},
+                {RecordGridColumn  width=18pt, "_rn"},
+                {RecordGridColumn  width=18pt, "_hide"},
+                {RecordGridColumn  width=48pt, "_status"}
+            }
+         else
+            {new {Array-of RecordGridColumn}
+            }
+        }
+    {return
+        {TreeGrid
+            model,
+            width = 7.5in,
+            height = 4in,
+            display-navigation-panel? = false,
+            display-filler-column? = true,
+            background = "#eeeeee",
+            alternate-row-background="#f0f0f0",
+            automatic-columns? = false,
+            {RecordGridColumn width=1.5in, label-field,
+                cell-spec = ExpanderCell, valign = "top"
+            },
+            {splice ...},
+            {splice columns}
+        }
+    }
+}
+
+
 {define-proc {make-sample-data ...:EventHandler}:RecordSetTreeModel
     {let sample:RecordSetTreeModel =
         {RecordSetTreeModel.from-Url
-            {url "data/t-treegrid.csv"},
-            {RecordFields
-                {splice RecordSetTreeModel.tree-fields},
-                {RecordField "data", domain = String}
-            },
+||--            {url "data/t-treegrid.csv"},
+            {url "data/sort-test.csv"},
+            id-field = "id",
+            {RecordField "data", domain = String},
+            {RecordField "notes", domain = String}, ||""
+            {RecordField "status", domain = String}, ||""
             {splice ...}
         }
     }
@@ -73,25 +120,24 @@ id,pid,ord,expand?,depth,ln,rn,data
 ||--        font-size = 12pt,
         tree-model,
         name = "tree-grid",
-        width = 6.5in,
+        width = 7.5in,
         height = 3in,
         display-navigation-panel? = false,
         display-filler-column? = true,
         background = "#eeeeee",
-        sort = "ord", || ord
-        key-spec = "ord", || id
         alternate-row-background="#f0f0f0",
         automatic-columns? = false,
-        {RecordGridColumn  width=24pt, "id"},
-        {RecordGridColumn  width=24pt, "pid"},
+        {RecordGridColumn  width=24pt, "_id"},
+        {RecordGridColumn  width=24pt, "_pid"},
         {RecordGridColumn  width=3.75in, "data", 
             cell-spec = ExpanderCell, valign = "top"},
-        {RecordGridColumn  width=18pt, "expand?"},
-        {RecordGridColumn  width=24pt, "ord"},
-        {RecordGridColumn  width=18pt, "depth"},
-        {RecordGridColumn  width=18pt, "ln"},
-        {RecordGridColumn  width=18pt, "rn"},
-        {RecordGridColumn  width=18pt, "hide"}
+        {RecordGridColumn  width=18pt, "_expand?"},
+        {RecordGridColumn  width=24pt, "_ord"},
+        {RecordGridColumn  width=18pt, "_depth"},
+        {RecordGridColumn  width=18pt, "_ln"},
+        {RecordGridColumn  width=18pt, "_rn"},
+        {RecordGridColumn  width=18pt, "_hide"},
+        {RecordGridColumn  width=48pt, "status"}
     }
 }
 
@@ -177,28 +223,28 @@ id,pid,ord,expand?,depth,ln,rn,data
         {url "resources/folder-new.gif"}}
 }
 
-{TreeGrid
-    tree-model,
-    width = 4.5in,
-    height = 3in,
-    display-navigation-panel? = false,
-    display-filler-column? = true,
-    background = "#eeeeee",
-    sort = "ord", || ord
-    key-spec = "ord", || id
-    alternate-row-background="#f0f0f0",
-    icon-proc =
-        {proc {cell:RecordGridCell, state:DisclosureState}:Pixmap
-            {return pm}
-        },
-    item-proc =
-        {proc {discloser:RecordGridCell}:Graphic
-            {return {bold TBD!}}
-        },
-    automatic-columns? = false,
-    {RecordGridColumn  width=3.75in, "data", 
+{def tg =
+    {TreeGrid
+        tree-model,
+        width = 4.5in,
+        height = 3in,
+        display-navigation-panel? = false,
+        display-filler-column? = true,
+        background = "#eeeeee",
+        alternate-row-background="#f0f0f0",
+        icon-proc =
+            {proc {cell:RecordGridCell, state:DisclosureState}:Pixmap
+                {return pm}
+            },
+        item-proc =
+            {proc {discloser:RecordGridCell}:Graphic
+                {return {bold TBD!}}
+            },
+        automatic-columns? = false,
+        {RecordGridColumn  width=3.75in, "data", 
 ||--        cell-spec = ExpanderCell, valign = "top"
-        cell-spec = ExpanderCell, valign = "top"
+            cell-spec = ExpanderCell, valign = "top"
+        }
     }
 }
 
@@ -208,9 +254,284 @@ Here is a complete applet that uses a TreeGrid to make a
     {url "sample-tree.curl"}, 
 hierarchal To Do list}.
 
-{bold Known Issues}
-{itemize
-    {item Review the API}
-    {item Write complete doc strings}
-    {item Test and Fix}
+
+{CommandButton
+    label = "Sort",
+    {on Action do
+
+        set tree-grid.sort = {TreeRecordSort "status"}
+||--        {if-non-null tgrs = tree-grid.record-source then
+||--            def recs = {tgrs.select}
+||--||--            def id-rv = {RecordView tgrs, sort = "_id"}
+||--            def comp =
+||--                {proc {a:Record, b:Record}:int
+||--                    def a-pid = a["pid"] asa int
+||--                    def b-pid = b["pid"] asa int
+||--                    def a-status = a["status"] asa String
+||--                    def b-status = b["status"] asa String
+||--                    {if a-pid == b-pid then
+||--                        {return {a-status.compare b-status}}
+||--                    }
+||--                    def ap = {tgrs.select-one
+||--                                 filter = {RecordData id = a-pid}}
+||--                    def bp = {tgrs.select-one
+||--                                 filter = {RecordData id = b-pid}}
+||--                    {if-non-null ap, bp then
+||--                        {dump ap["id"], bp["id"]}
+||--                        {return {comp ap, bp}}
+||--                     else
+||--                        {return 0}
+||--                    }
+||--                }
+||--            {recs.sort
+||--                comparison-proc = {proc {p:Record, q:Record}:bool
+||--                                      {return {comp p, q} <= 0}
+||--                                  }
+||--            }
+||--            {for r:Record key ri in recs do
+||--                set r["ord"] = ri + 1
+||--            }
+||--        }
+||--    }
+
+||--        set tree-grid.sort =
+||--            {proc {a:Record, b:Record}:int
+||--                def a-depth = a["depth"] asa int
+||--                def b-depth = b["depth"] asa int
+||--                def a-pid = a["pid"] asa int
+||--                def b-pid = b["pid"] asa int
+||--                def a-status = a["status"] asa String
+||--                def b-status = b["status"] asa String
+||--                {if a-pid == b-pid then
+||--                    {return {a-status.compare b-status}}
+||--                }
+||--                {return a-pid - b-pid}
+||--            }
+
+||--            {proc {a:Record, b:Record}:int
+||--                def comp =
+||--                    {proc {a:Record, b:Record}:int
+||--                        def a-pid = a["pid"] asa int
+||--                        def b-pid = b["pid"] asa int
+||--                        def a-status = a["status"] asa String
+||--                        def b-status = b["status"] asa String
+||--                        {if a-pid == b-pid then
+||--                            {return {a-status.compare b-status}}
+||--                        }
+||--                        def ap = {a.record-set.select-one
+||--                                     filter = {RecordData id = a-pid}}
+||--                        def bp =
+||--                            {b.record-set.select-one
+||--                                filter = {RecordData id = b-pid}}
+||--                        {dump a["id"], b["id"]}
+||--                        {if-non-null ap, bp then
+||--                            {return {comp ap, bp}}
+||--                         else
+||--                            {return 0}
+||--||--                            {return {if a-pid == 0 then -1 else 1}}
+||--                        }
+||--                    }
+||--                {return {comp a, b}}
+||--            }
+    }
+}
+
+{value tg}
+
+||--                def data:{Array-of RecordData} = {new {Array-of RecordData}}
+||--                {for val key name in obj do
+||--                    def nr = {RecordData}
+||--                    set nr["name"] = name
+||--                    set nr["value"] = val
+||--                    set nr["_pid"] = pid
+||--                    set nr["_expand?"] = true
+||--                    set nr["_val"] = val
+||--                    {data.append nr}
+||--                }
+||--                {data.sort
+||--                    comparison-proc =
+||--                        {proc {a:RecordData, b:RecordData}:bool
+||--                            {return 
+||--                                {(a["name"] asa String).compare
+||--                                    ignore-case? = true,
+||--                                    (b["name"] asa String)
+||--                                } <= 0
+||--                            }
+||--                        }
+||--                }
+||--                {for nr:RecordData in data do
+||--                    {rstm.source.append nr}
+||--                    {append-nodes nr[rstm.id-field] asa int, nr["_val"]}
+||--                }
+
+{define-proc public {make-TreeModel ds:DataStore}:RecordSetTreeModel
+
+    def rstm =
+        {RecordSetTreeModel.from-fields
+            null,
+            id-field = "xid",
+            {RecordField "name", caption = "Name", domain = any},
+            {RecordField "value", caption = "Value", domain = any}
+        }
+
+    {rstm.source.delete-all}
+    def append-nodes =
+        {proc {pid:int, v:JsonValue}:void
+            {type-switch v
+             case obj:JsonObject do
+                {for val key name in obj do
+                    def nr = {rstm.source.new-record}
+                    set nr["name"] = name
+                    set nr["value"] = val
+                    set nr["_pid"] = pid
+                    set nr["_expand?"] = true
+                    {rstm.source.append nr}
+                    {append-nodes nr[rstm.id-field] asa int, val}
+                }
+
+             case aval:JsonArray do
+                {for val key i in aval do
+                    def nr = {rstm.source.new-record}
+                    set nr["name"] = {String i}
+                    set nr["value"] = val
+                    set nr["_pid"] = pid
+                    set nr["_expand?"] = true
+                    {rstm.source.append nr}
+                    {append-nodes nr[rstm.id-field] asa int, val}
+                }
+            }
+        }
+    {append-nodes 0, ds.source}
+    {return rstm}
+}
+
+{def today = {DateTime.date}}
+{def settings =
+    {DataStore
+        {JsonObject
+            "application",
+            {JsonObject
+                "begin-date", 
+                {DateTime.date
+                    today, month = today.info.month, day = 1
+                }.info.iso-date,
+                "end-date",
+                {DateTime.date
+                    today, month = today.info.month + 2, day = 31
+                }.info.iso-date
+            },
+            "files",
+            {JsonArray
+                {url "data/foo.dat"},
+                "data/bar.dat"
+            }
+        }
+    }
+}
+
+{make-treegrid {make-TreeModel settings}, "name", show-all? = true,
+    {RecordGridColumn  width=3in, "value"},
+    height = 1.5in
+}
+
+{define-proc {dummy-record-set}:RecordSet
+    let dummy-rs:RecordSet =
+        {RecordSet
+            {RecordFields
+                {RecordField "id", domain = int},
+                {RecordField 
+                    "First", caption = "First", domain = String
+                },
+                {RecordField 
+                    "Last", caption = "Last", domain = String
+                },
+                {RecordField 
+                    "City", caption = "City", domain = String
+                },
+                {RecordField 
+                    "State", caption = "State", domain = String
+                },
+                {RecordField "date", domain = DateTime},
+                {RecordField "time", domain = Time},
+                {RecordField 
+                    "rank", caption = "Rank", domain = String
+                },
+                {RecordField "notified", domain = bool}
+            },
+            {RecordData 
+                id = 1,
+                Last = "Smith",
+                First = "Gene",
+                City = "Boston",
+                State = "MA",
+                date = {DateTime.date},
+                time = 5s,
+                rank = "First",
+                notified = true
+            },
+            {RecordData 
+                id = 2,
+                Last = "Rogers",
+                First = "Fred",
+                City = "Cambridge",
+                State = "MA",
+                date = {DateTime.date},
+                time = 5s,
+                rank = "First",
+                notified = false
+            },
+            {RecordData 
+                id = 3,
+                Last = "Abrams",
+                First = "Ben",
+                City = "New Haven",
+                State = "MA",
+                date = {DateTime.date},
+                time = 5s,
+                rank = "Second",
+                notified = true
+            },
+            {RecordData 
+                id = 4,
+                Last = "Smith",
+                First = "Gary",
+                City = "Warwick",
+                State = "NH",
+                date = {DateTime.date},
+                time = 5s,
+                rank = "Third",
+                notified = true
+            },
+            {RecordData 
+                id = 5,
+                Last = "Smith",
+                First = "Eliot",
+                City = "Boston",
+                State = "MA",
+                date = {DateTime.date},
+                time = 5s,
+                rank = "Second",
+                notified = true
+            }
+        }
+    {dummy-rs.add-event-handler
+        {on e:RecordModified at rs:RecordSet do
+            {dump e.record["id"], e.record["First"]}
+        }
+    }
+    {return dummy-rs}
+}
+
+{def group-tree = {RecordSetTreeModel.from-RecordSet
+                      {dummy-record-set},
+||--                      {StringArray "State", "rank", "Last"},
+                      {StringArray "State", "Last"},
+                      id-field = "id"
+                  }
+}
+{make-treegrid group-tree, "State",
+    {RecordGridColumn  width=48pt, "Last"},
+    {RecordGridColumn  width=48pt, "First"},
+    {RecordGridColumn  width=48pt, "rank"},
+    {RecordGridColumn  width=48pt, "City"}
 }

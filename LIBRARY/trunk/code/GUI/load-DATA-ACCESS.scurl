@@ -794,15 +794,15 @@
         {self.mover.marker.add-event-handler
             {on e:Click at t:DefaultDiscloser do
                 {if-non-null r = self.record then
-                    let expand?:bool = r["expand?"] asa bool ||""
+                    let expand?:bool = r["_expand?"] asa bool ||""
                     let parent?:bool = 
-                        r["rn"] asa int > (r["ln"] asa int) + 1 ||""
+                        r["_rn"] asa int > (r["_ln"] asa int) + 1 ||""
                     {if parent? then
                         {after .0s do
                             {set t.state = DisclosureState.changing}
                         }
                         {after .1s do
-                            set r["expand?"] = not expand? ||""
+                            set r["_expand?"] = not expand? ||""
                         }
                     }
                 }
@@ -911,7 +911,7 @@
     }
   }
   {getter public open {depth-field}:String
-    {return "depth"} ||""
+    {return "_depth"} ||""
   }
 
   {doc-next
@@ -984,9 +984,9 @@
     {if-non-null discloser = self.discloser then
         set discloser.visible? = valid?
         {if-non-null r = self.record then
-            set val = r["expand?"] ||""
+            set val = r["_expand?"] ||""
             {if valid? then
-                {if r["ln"] asa int + 1 == r["rn"] asa int then ||""
+                {if r["_ln"] asa int + 1 == r["_rn"] asa int then ||""
                     set discloser.color = "silver" ||""
                     set discloser.state = DisclosureState.singleton
                  else
@@ -1088,7 +1088,7 @@
 ||--        {if-non-null r = self.record, cc = self.grid
 ||--         then
 ||--            {if ev.value == KeyPressValue.space then
-||--                set r["expand?"] = not r["expand?"] asa bool ||""
+||--                set r["_expand?"] = not r["_expand?"] asa bool ||""
 ||--                {ev.consume}
 ||--                {return}
 ||--             elseif ev.value == KeyPressValue.delete then
@@ -1918,8 +1918,8 @@ How this evolved:
 
 {define-proc public {walk-record-tree
                         rs:RecordSet,
-                        id-field:String = "id", ||""
-                        pid-field:String = "pid", ||""
+                        id-field:String = "_id", ||""
+                        pid-field:String = "_pid", ||""
                         pre:#{proc-type {
                                          parent:Record,
                                          records:{Array-of Record}
@@ -2021,8 +2021,12 @@ How this evolved:
     {return self.change-count}
   }
 
+  {getter public open {temporary?}:bool
+    {return self.url == {get-base-url}}
+  }
+
   {constructor public {default
-                          url:Url,
+                          url:#Url,
                           fields:RecordFields,
                           id-field:String = "", ||""
                           modifiable?:bool = true,
@@ -2033,8 +2037,11 @@ How this evolved:
                       }
     ||FIXME: support http in read-only mode
     let modified:#DateTime = null
+      
+    set self.url = {if-non-null url then url else {get-base-url}}
+
     {try
-        set modified = ({url.instantiate-File} asa File).when-last-modified
+        set modified = ({self.url.instantiate-File} asa File).when-last-modified
      catch e:Exception do
         || ignore
     }
@@ -2052,7 +2059,7 @@ How this evolved:
         }
         {header.append {fbuf.to-String}}
         {construct-super.create
-            url,
+            self.url,
             fields,
             header = header,
             modifiable? = modifiable?,
@@ -2062,7 +2069,7 @@ How this evolved:
         }
      else
         {construct-super
-            url,
+            self.url,
             fields = fields,
             header-line-count = 2,
             modifiable? = modifiable?,
@@ -2117,11 +2124,17 @@ How this evolved:
   }
 
   {method public open {load}:void
-    {super.load}
-    {self.update-last-modified}
+    {if not self.temporary? then
+        {super.load}
+        {self.update-last-modified}
+    }
   }
 
   {method public open {commit}:void
+
+    {if self.temporary? then
+        {return}
+    }
 
     {if self.file-changed? then
         {if self.records-changed? then

@@ -524,7 +524,7 @@
             }
         ||FIXME: Observe _pm and if dates change, update self.scale
 
-        def tm = {RecordSetTreeModel pm.tasks.rs}
+        def tm = {RecordSetTreeModel pm.tasks.rs, id-field = "id"}
         set self.gantt-grid =
             {TreeGrid
                 tm,

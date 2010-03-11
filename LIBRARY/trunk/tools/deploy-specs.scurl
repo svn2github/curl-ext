@@ -16,7 +16,7 @@
 
 {value
     def name = "COM.CURL.EXT"
-    def version = "0.1"
+    def version = "0.2"
     def dirname = name & "-V" & version
     
     {DeploySpecs
@@ -96,7 +96,11 @@
                         "project.cprj",
                         "classic-project.cprj",
                         ".project",
-                        ".settings"
+                        ".settings",
+                        "BackgroundTask/project.cprj",
+                        "BackgroundTask/manifest.mcurl",
+                        "BackgroundTask/sample",
+                        "BackgroundTask/tests"
                     }
                 {for file in files do
                     {copy 

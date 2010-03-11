@@ -7,9 +7,9 @@
 14,0,15,false,0,17,18,false,This is just a test.
 15,0,8,true,0,19,30,false,Moving nodes
 16,15,9,true,1,28,29,false,Use the buttons at the right to indent/un-indent
-17,10,2,false,1,2,3,true,A.1
-18,10,3,false,1,4,5,true,A.2
 19,10,4,false,1,6,7,true,A.3
+18,10,3,false,1,4,5,true,A.2
+17,10,2,false,1,2,3,true,A.1
 20,11,6,false,1,10,11,false,Add Node will add a sibling
 22,11,7,false,1,12,13,false,Add Child will add a child of the current node
 1,12,11,false,2,21,22,false,Drag the marker at the left

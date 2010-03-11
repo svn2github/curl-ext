@@ -289,4 +289,59 @@ of the tests. You can click any Test button to run a single test.
 
 
 
+{destination name = "gui-utils",
+{heading level = 3,
+    Useful GUI Utilities
+}}
+{paragraph
+    Several miscellaneous APIs are included in the Curl External
+    Library simply because they may be useful in other applets.
+}
+
+
+||--    {if file-locator.saved-url == null then
+||--        {if {choose-action-dialog
+||--                title = {hlmessage Create or Select File},
+||--                {Frame
+||--                    width = 4in,
+||--                    {text
+||--                        {hlmessage
+||--                            This applet uses a TreeGrid to keep track of a
+||--                            list of things to do. The first time you run it,
+||--                            you must choose a file where the list can be
+||--                            saved, or select an existing file.
+||--                        }
+||--                    }
+||--                },
+||--                {ok-button
+||--                    label = {hlmessage New File...},
+||--                    {on e:Action do
+||--                        {if-non-null new-loc = {file-locator.choose-new-file}
+||--                         then
+||--                            set location = new-loc
+||--                         else
+||--                            {e.consume}
+||--                        }
+||--                    }
+||--                },
+||--                {ok-button
+||--                    label = {hlmessage Open File...},
+||--                    {on e:Action do
+||--                        {if-non-null loc = {file-locator.get-url choose? = true}
+||--                         then
+||--                            set location = loc
+||--                         else
+||--                            {e.consume}
+||--                        }
+||--                    }
+||--                }
+||--            }
+||--         then
+||--            || Have set location, so continue
+||--         else
+||--            {exit 0}
+||--        }
+||--    }
+
+
 {curl-copyright}

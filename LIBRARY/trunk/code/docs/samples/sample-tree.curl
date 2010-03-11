@@ -190,12 +190,9 @@
     def model =
         {RecordSetTreeModel.from-Url
             location,
-            {RecordFields
-                {splice RecordSetTreeModel.tree-fields},
-                {RecordField "title", domain = String}, ||""
-                {RecordField "notes", domain = String}, ||""
-                {RecordField "status", domain = Status} ||""
-            },
+            {RecordField "title", domain = String}, ||""
+            {RecordField "notes", domain = String}, ||""
+            {RecordField "status", domain = Status}, ||""
             {on e:RecordsChanged at rs:RecordSet do
                 {self.note-edited}
             }

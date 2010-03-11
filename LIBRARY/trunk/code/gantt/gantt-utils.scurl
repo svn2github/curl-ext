@@ -283,7 +283,7 @@
                           current-index:int = -1,
                           sort:#RecordSort = null,
                           filter:#RecordFilter = null,
-                          key-spec:any = null,
+                          key-spec:any = "_ord",
                           ...
                       }
 
@@ -603,7 +603,7 @@
   {method protected open {execute}:void
     def form = {TaskDialog
                    record-source = self.record-display.record-source,
-                   key-spec = "ord", ||""
+                   key-spec = "_ord", ||""
                    current-index = self.record-display.current-index,
                    project-model = self.project-model
                }
@@ -649,7 +649,7 @@
             {focus-record self.record-display, id}
             def form = {TaskDialog
                            record-source = self.record-display.record-source,
-                           key-spec = "ord", ||""
+                           key-spec = "_ord", ||""
                            current-index = self.record-display.current-index,
                            project-model = self.project-model
                        }
@@ -696,7 +696,7 @@
             {focus-record self.record-display, id}
             def form = {TaskDialog
                            record-source = self.record-display.record-source,
-                           key-spec = "ord", ||""
+                           key-spec = "_ord", ||""
                            current-index = self.record-display.current-index,
                            project-model = self.project-model
                        }
