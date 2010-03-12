@@ -1,0 +1,74 @@
+||| Maintained by: cwstern
+
+{curl-file-attributes character-encoding = "utf8"}
+
+{doc-next
+    {purpose
+        An edge-weighted, directed graph.
+    }
+}
+{define-class public abstract open {WeightedDirectedGraph-of
+                                     t:Type,
+                                     tWeight:Type
+                                   }
+  {inherits {DirectedGraph-of t}, {WeightedGraph-of t, tWeight}}
+  
+  {method public open {transpose}:void
+    def all-edges = {self.get-all-edges}
+    {for edge in all-edges do
+        def start-node =
+            edge.t0 asa {DefaultWeightedDirectedGraphNode-of t, tWeight}
+        def end-node =
+            edge.t0 asa {DefaultWeightedDirectedGraphNode-of t, tWeight}
+        def weight = {start-node.get-weight-for-edge end-node}
+        {start-node.remove-edge end-node}
+        {end-node.add-edge start-node}
+        {end-node.set-weight-for-edge start-node, weight}
+    }
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        A single node in a directed, weighted graph.
+    }
+}
+{define-class public abstract shared open {WeightedDirectedGraphNode-of
+                                            t:Type,
+                                            tWeight:Type
+                                          }
+  {inherits {DirectedGraphNode-of t}, {WeightedGraphNode-of t, tWeight}}
+  
+  || ======== constructors ========
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter data,
+        The data associated with this node.
+    }
+    {parameter graph,
+        The graph of which this node will be a member.
+    }
+  }
+  {constructor public {default
+                          data:t,
+                          graph:{WeightedDirectedGraph-of t, tWeight}
+                      }
+    {construct-super.{DirectedGraphNode-of t} data, graph}
+    {construct-super.{WeightedGraphNode-of t, tWeight} data, graph}
+  }
+  
+  {secondary-constructor public {default
+                                    data:t,
+                                    graph:{WeightedDirectedGraph-of t, tWeight}
+                                }
+    set self.data = data
+    set self.graph = graph
+  }
+    
+}
+

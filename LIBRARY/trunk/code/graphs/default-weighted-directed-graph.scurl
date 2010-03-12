@@ -1,0 +1,255 @@
+||| Maintained by: cwstern
+
+{curl-file-attributes character-encoding = "utf8"}
+
+{doc-next
+    {purpose
+        An edge-weighted, directed graph.
+    }
+}
+{define-class public open {DefaultWeightedDirectedGraph-of
+                            t:Type,
+                            tWeight:Type
+                          }
+  {inherits
+    {DefaultDirectedGraph-of t},
+    {WeightedDirectedGraph-of t, tWeight}
+  }
+
+  || ======== fields ========
+  
+  field private _default-weight:tWeight  
+  field private _current-index:int32 = -1  
+  field package edge-weights:{HashTable-of int64, tWeight} = 
+      {new {HashTable-of int64, tWeight}}
+  
+  || ======== constructors ========
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter default-weight,
+        The default weight for an edge.
+    }
+  }
+  {constructor public {default
+                          default-weight:tWeight
+                      }
+    set self._default-weight = default-weight
+    {construct-super.{WeightedDirectedGraph-of t, tWeight}}
+    {construct-super.{DefaultDirectedGraph-of t}}
+  }
+
+  {getter public open {default-weight}:tWeight
+    {return self._default-weight}
+  }
+
+  || ======== node management ========
+  
+  {method public open {create-node data:t}:{GraphNode-of t}
+    || FIXME: could maintain the order by inserting:
+    set self.topological-order = null
+    
+    {inc self._current-index}
+    def new-node =
+        {new {DefaultWeightedDirectedGraphNode-of t, tWeight},
+            data,
+            self,
+            self._current-index
+        }
+    {self.nodes.insert new-node}
+    {return new-node}
+  }
+    
+  {method package {get-weight-for-edge
+                      a:{DefaultWeightedDirectedGraphNode-of t, tWeight},
+                      b:{DefaultWeightedDirectedGraphNode-of t,  tWeight}
+                  }:tWeight
+    def key = {self.get-key-for-edge a, b}
+    def (found-weight, valid?) = {self.edge-weights.get-if-exists key}
+    {if valid? then
+        {return found-weight}
+     else
+        {return self.default-weight}
+    }
+  }
+  
+  {method package {set-weight-for-edge
+                      a:{DefaultWeightedDirectedGraphNode-of t, tWeight},
+                      b:{DefaultWeightedDirectedGraphNode-of t,  tWeight},
+                      weight:tWeight
+                  }:void
+    def key = {self.get-key-for-edge a, b}
+    {self.edge-weights.set key, weight}
+  }
+  
+  {method package {remove-weight-for-edge
+                      a:{DefaultWeightedDirectedGraphNode-of t, tWeight},
+                      b:{DefaultWeightedDirectedGraphNode-of t,  tWeight}
+                  }:void
+    def key = {self.get-key-for-edge a, b}
+    {self.edge-weights.remove key, error-if-missing? = false}
+  }
+  
+  || Key: left index shifted into high 32 bits XOR right index unshifted.
+  {method private {get-key-for-edge
+                      a:{DefaultWeightedDirectedGraphNode-of t, tWeight},
+                      b:{DefaultWeightedDirectedGraphNode-of t,  tWeight}                      
+                  }:int64
+    {return
+        {bit-xor
+            {bit-sll a.creation-index asa int64, 32},
+            b.creation-index asa int64
+        }
+    }
+  }
+  
+  || ======== other ========
+  
+  {method public open {clone}:{Graph-of t}
+    def g = 
+        {new {DefaultWeightedDirectedGraph-of t, tWeight},
+            self.default-weight
+        }
+    def map =
+        {new
+            {HashTable-of
+                {DefaultWeightedDirectedGraphNode-of t, tWeight},
+                {DefaultWeightedDirectedGraphNode-of t, tWeight}
+            },
+            efficient-size = self.nodes.size
+        }
+    {for n in self.nodes do
+        def new-n = {g.create-node n.data}
+        {map.set
+            n  asa {DefaultWeightedDirectedGraphNode-of t, tWeight},
+            new-n  asa {DefaultWeightedDirectedGraphNode-of t, tWeight}
+        }
+    }
+    {for n in self.nodes do
+        def cast-n = n asa {DefaultWeightedDirectedGraphNode-of t, tWeight}
+        def new-n = {map.get cast-n}
+        {for successor in cast-n do
+            def cast-successor =
+                successor asa {DefaultWeightedDirectedGraphNode-of t, tWeight}
+            def new-successor =
+                ({map.get cast-successor} asa
+                 {DefaultWeightedDirectedGraphNode-of t, tWeight})
+            def weight = {cast-n.get-weight-for-edge cast-successor}
+            {new-n.add-edge new-successor}
+            {new-n.set-weight-for-edge new-successor, weight}
+        }
+    }
+    {return g}
+  }
+    
+}
+
+
+{doc-next
+    {purpose
+        A single node in a directed, weighted graph.
+    }
+}
+{define-class public open {DefaultWeightedDirectedGraphNode-of
+                            t:Type,
+                            tWeight:Type
+                          }
+  {inherits
+    {DefaultDirectedGraphNode-of t},
+    {WeightedDirectedGraphNode-of t, tWeight}
+  }
+
+  || ======== fields ========
+  
+  field package creation-index:int32
+  
+  || ======== constructors ========
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter data,
+        The data associated with this node.
+    }
+    {parameter graph,
+        The graph of which this node will be a member.
+    }
+    {parameter index,
+        A unique integer index for this node.
+    }
+  }
+  {constructor public {default
+                          data:t,
+                          graph:{DefaultWeightedDirectedGraph-of t, tWeight},
+                          index:int32
+                      }
+    {construct-super.{DefaultDirectedGraphNode-of t} data, graph}
+    {construct-super.{WeightedDirectedGraphNode-of t, tWeight} data, graph}
+    set self.creation-index = index
+  }
+  
+  {method public open {get-weight-for-edge
+                          node:{WeightedGraphNode-of t, tWeight}
+                      }:tWeight
+    {type-switch node
+     case default-node:{DefaultWeightedDirectedGraphNode-of t, tWeight} do
+        {if {self.successors.find default-node} >= 0 then
+            def cast-graph =
+                self.graph asa {DefaultWeightedDirectedGraph-of t, tWeight}
+            {return
+                {cast-graph.get-weight-for-edge self, default-node}
+            }
+        }
+    }
+    {throw
+        {GraphInvalidEdgeException
+            {hlmessage "No edge exists to node %s", node}
+        }
+    }
+  }
+  
+  {method public open {set-weight-for-edge
+                          node:{WeightedGraphNode-of t, tWeight},
+                          new-weight:tWeight
+                      }:void
+    {type-switch node
+     case default-node:{DefaultWeightedDirectedGraphNode-of t, tWeight} do
+        {if {self.successors.find default-node} >= 0 then
+            def cast-graph =
+                self.graph asa {DefaultWeightedDirectedGraph-of t, tWeight}
+            {cast-graph.set-weight-for-edge self, default-node, new-weight}
+            {return}
+        }
+    }
+    {throw
+        {GraphInvalidEdgeException
+            {hlmessage "No edge exists to node %s", node}
+        }
+    }
+  }
+  
+  {method package {remove-successor-internal
+                      node:{DefaultDirectedGraphNode-of t},
+                      error-if-missing?:bool = false,
+                      reverse-delink?:bool = true
+                  }:void
+    {super.remove-successor-internal
+        node,
+        error-if-missing? = error-if-missing?,
+        reverse-delink? = reverse-delink?
+    }
+    {if reverse-delink? then
+        def cast-graph =
+            self.graph asa {DefaultWeightedDirectedGraph-of t, tWeight}
+        {cast-graph.remove-weight-for-edge
+            self,
+            node asa {DefaultWeightedDirectedGraphNode-of t, tWeight}
+        }
+    }
+  }
+  
+}
+

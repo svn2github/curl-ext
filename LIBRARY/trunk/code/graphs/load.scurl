@@ -1,0 +1,42 @@
+||| Maintained by: cwstern
+
+{curl 6.0, 7.0 package}
+{curl-file-attributes character-encoding = "utf8"}
+
+{doc type = package, COM.CURL.EXT.GRAPHS
+    {purpose
+        This package provides parameterized, directed graphs.
+    }
+}
+
+{package COM.CURL.EXT.GRAPHS}
+
+{include "graph.scurl"}
+
+{include "undirected-graph.scurl"}
+{include "directed-graph.scurl"}
+
+{include "weighted-graph.scurl"}
+{include "weighted-directed-graph.scurl"}
+{include "weighted-undirected-graph.scurl"}
+
+{include "default-directed-graph.scurl"}
+{include "default-undirected-graph.scurl"}
+{include "default-weighted-directed-graph.scurl"}
+{include "default-weighted-undirected-graph.scurl"}
+
+{include "exceptions.scurl"}
+
+{doc-next
+    {purpose
+        A shortened synonym for {docref DefaultDirectedGraph-of}.
+    }
+}
+{define-alias public Digraph-of = DefaultDirectedGraph-of}
+
+{doc-next
+    {purpose
+        A shortened synonym for {docref DefaultDirectedGraphNode-of}.
+    }
+}
+{define-alias public DigraphNode-of = DefaultDirectedGraphNode-of}

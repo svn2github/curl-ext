@@ -1,0 +1,93 @@
+||| Maintained by: cwstern
+
+{curl-file-attributes character-encoding = "utf8"}
+
+{doc-next
+    {purpose
+        An edge-weighted, directed graph.
+    }
+}
+{define-class public abstract open shared {WeightedGraph-of
+                                            t:Type,
+                                            tWeight:Type
+                                          }
+  {inherits {Graph-of t}}
+
+  {doc-next
+    {purpose
+        The default weight for an edge.
+    }
+  }
+  {getter public abstract open {default-weight}:tWeight}
+  
+}
+
+
+{doc-next
+    {purpose
+        A single node in a directed, weighted graph.
+    }
+}
+{define-class public abstract open shared {WeightedGraphNode-of
+                                            t:Type,
+                                            tWeight:Type
+                                          }
+  {inherits {GraphNode-of t}}
+    
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter data,
+        The data associated with this node.
+    }
+    {parameter graph,
+        The graph of which this node will be a member.
+    }
+  }
+  {constructor public {default
+                          data:t,
+                          graph:{WeightedGraph-of t, tWeight}
+                      }
+    {construct-super.{GraphNode-of t} data, graph}
+  }
+  
+  {secondary-constructor public {default
+                                    data:t,
+                                    graph:{WeightedGraph-of t, tWeight}
+                                }
+    set self.data = data
+    set self.graph = graph
+  }
+  
+  || ======== weight ========
+
+  {doc-next
+    {purpose
+        Get the weight for an edge leading to the given node.
+    }
+    {parameter node,
+        The tail node.
+    }
+  }
+  {method public abstract open {get-weight-for-edge
+                                   node:{WeightedGraphNode-of t, tWeight}
+                               }:tWeight
+  }
+  
+  {doc-next
+    {purpose
+        Set the weight for an edge leading to the given node.
+    }
+    {parameter node,
+        The tail node.
+    }
+  }
+  {method public abstract open {set-weight-for-edge
+                                   node:{WeightedGraphNode-of t, tWeight},
+                                   new-weight:tWeight
+                               }:void
+  }
+  
+}
+

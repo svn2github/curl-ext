@@ -1,0 +1,61 @@
+||| Maintained by: cwstern
+
+{curl-file-attributes character-encoding = "utf8"}
+
+{doc-next
+    {purpose
+        An edge-weighted, undirected graph.
+    }
+}
+{define-class public abstract open {WeightedUndirectedGraph-of
+                                     t:Type,
+                                     tWeight:Type
+                                   }
+  {inherits {UndirectedGraph-of t}, {WeightedGraph-of t, tWeight}}
+  
+}
+
+
+{doc-next
+    {purpose
+        A single node in an undirected, weighted graph.
+    }
+}
+{define-class public abstract shared open {WeightedUndirectedGraphNode-of
+                                            t:Type,
+                                            tWeight:Type
+                                          }
+  {inherits {UndirectedGraphNode-of t}, {WeightedGraphNode-of t, tWeight}}
+  
+  || ======== constructors ========
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter data,
+        The data associated with this node.
+    }
+    {parameter graph,
+        The graph of which this node will be a member.
+    }
+  }
+  {constructor public {default
+                          data:t,
+                          graph:{WeightedUndirectedGraph-of t, tWeight}
+                      }
+    {construct-super.{UndirectedGraphNode-of t} data, graph}
+    {construct-super.{WeightedGraphNode-of t, tWeight} data, graph}
+  }
+  
+  {secondary-constructor public {default
+                                    data:t,
+                                    graph:{WeightedUndirectedGraph-of
+                                              t, tWeight}
+                                }
+    set self.data = data
+    set self.graph = graph
+  }
+  
+}
+

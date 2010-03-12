@@ -1,0 +1,370 @@
+||| Maintained by: cwstern
+
+{curl-file-attributes character-encoding = "utf8"}
+
+{doc-next
+    {purpose
+        A graph, or series of nodes (vertices) connected by edges.
+    }
+}
+{define-class public abstract shared open {Graph-of t:Type}
+  
+  {doc-next
+    {purpose
+        The number of nodes comprising this graph.
+    }
+  }
+  {getter public abstract open {node-count}:int}
+  
+  {doc-next
+    {purpose
+        Create a new node within this graph.
+    }
+    {parameter data,
+        The data or identity to associate with the new node.
+    }
+  }
+  {method public abstract open {create-node data:t}:{GraphNode-of t}}
+
+  {doc-next
+    {purpose
+        Removes a node from the graph.
+    }
+    {parameter node,
+        The node to delete.
+    }
+    {parameter error-if-missing?,
+        Whether an error should be thrown if this node is not contained
+        within the graph.
+    }
+    {override
+        This operation should first remove all edges connecting the node.
+    }
+  }
+  {method public abstract open {delete-node
+                                 node:{GraphNode-of t},
+                                 error-if-missing?:bool = true
+                             }:void
+  }
+
+  {doc-next
+    {purpose
+        Removes all nodes from the graph.
+    }
+  }
+  {method public abstract open {clear}:void
+  }
+
+  {doc-next
+    {purpose
+        Note that an edge was added between two nodes.
+    }
+    {parameter head,
+        The head node.
+    }
+    {parameter tail,
+        The tail node.
+    }
+    {notes
+        For undirected graphs, "head" and "tail" simply represent the
+        two unordered endpoints of the edge.
+    }
+  }
+  {method protected open {note-edge-added
+                             head:{GraphNode-of t},
+                             tail:{GraphNode-of t}
+                         }:void
+  }
+  
+  {doc-next
+    {purpose
+        Note that an edge was removed from between two nodes.
+    }
+    {parameter head,
+        The head node.
+    }
+    {parameter tail,
+        The tail node.
+    }
+    {notes
+        For undirected graphs, "head" and "tail" simply represent the
+        two unordered endpoints of the edge.
+    }
+  }
+  {method protected open {note-edge-removed
+                             head:{GraphNode-of t},
+                             tail:{GraphNode-of t}
+                         }:void
+  }
+
+  {doc-next
+    {purpose
+        Returns an Iterator-of containing each element of the collection.
+    }
+  }
+  {method public abstract open {to-Iterator}:{Iterator-of {GraphNode-of t}}}
+  
+  {doc-next
+    {purpose
+        Visit all nodes in this graph.
+    }
+    {parameter visit-proc,
+        This procedure will be called once with each node.
+    }
+    {parameter safe?,
+        If {ctext true}, the {param action-proc} will be called once for
+        each node that existed in the graph at the time this method was
+        called, allowing nodes to safely be
+        deleted from within the {param action-proc}. If {ctext false},
+        this method works with the existing set of nodes and the effects
+        of additions and deletions are undefined.
+    }
+  }
+  {method public abstract open {visit-nodes
+                                   visit-proc:{proc-type
+                                                   {{GraphNode-of t}}:void},
+                                   safe?:bool = false
+                               }:void
+  }
+  
+  {doc-next
+    {purpose
+        Create a copy of self, with similarly cloned nodes and edges.
+    }
+  }
+  {method public abstract open {clone}:{Graph-of t}
+  }
+  
+  {doc-next
+    {purpose
+        Returns every edge in self, as an array of tuples.
+    }
+  }
+  {method public abstract open {get-all-edges}:{Array-of
+                                                   {Tuple2-of
+                                                       {GraphNode-of t},
+                                                       {GraphNode-of t}
+                                                   }
+                                               }
+  }
+  
+}
+
+{doc-next
+    {purpose
+        A single node in a graph, containing some value of the
+        parameterized type.
+    }
+}
+{define-class public shared abstract open {GraphNode-of t:Type}
+
+  || ======== fields ========
+  
+  field private _data:t
+  field private _graph:#{Graph-of t}
+
+  || ======== constructors ========
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter data,
+        The data associated with this node.
+    }
+    {parameter graph,
+        The graph of which this node will be a member.
+    }
+    {notes
+        Nodes should not generally be constructed directly.
+        Instead, call {docref Graph-of.create-node},
+        which should then construct a {ctext GraphNode-of}.
+    }
+  }
+  {constructor public {default data:t, graph:{Graph-of t}}
+    set self._data = data
+    set self._graph = graph
+  }
+  
+  {secondary-constructor public {default data:t, graph:{Graph-of t}}
+    set self._data = data
+    set self._graph = graph
+  }
+  
+  || ======== identity/data access ========================
+
+  {doc-next
+    {purpose
+        The data associated with this node (node weighting).
+    }
+  }
+  {getter public open {data}:t
+    {return self._data}
+  }
+  {setter public open {data new-data:t}:void
+    set self._data = new-data
+  }
+
+  {doc-next
+    {purpose
+        The graph that this node belongs to.
+    }
+  }
+  {getter public open {graph}:#{Graph-of t}
+    {return self._graph}
+  }
+  {setter protected open {graph new-graph:#{Graph-of t}}:void
+    set self._graph = new-graph
+  }
+
+  || ======== edge queries  ========================
+  
+  {doc-next
+    {purpose
+        Whether there are any edges connecting this node to or from
+        others in the graph.
+    }
+  }
+  {getter public open {connected?}:bool
+    {return self.outdegree > 0 or self.indegree > 0}
+  }
+
+  {doc-next
+    {purpose
+        Whether there is an edge leading from this node to {param node}.
+    }
+  }
+  {method public abstract open {has-edge? node:{GraphNode-of t}}:bool}
+  
+  {doc-next
+    {purpose
+        The outdegree of this node;
+        i.e. the number of edges leading from this node.
+    }
+  }
+  {getter public abstract open {outdegree}:int}  
+
+  {doc-next
+    {purpose
+        Whether this node is a sink; i.e. has {ctext outdegree 0}.
+    }
+  }
+  {getter public open {sink?}:bool
+    {return self.outdegree == 0}
+  }  
+
+  {doc-next
+    {purpose
+        The indegree of this node;
+        i.e. the number of edges leading to this node.
+    }
+  }
+  {getter public abstract open {indegree}:int}  
+
+  {doc-next
+    {purpose
+        Whether this node is a source; i.e. has {ctext indegree 0}.
+    }
+  }
+  {getter public open {source?}:bool
+    {return self.indegree == 0}
+  }  
+
+  {doc-next
+    {purpose
+        Gets the n-th successor node to this node.
+    }
+  }
+  {method public abstract open {get i:int}:{GraphNode-of t}}
+  
+  {doc-next
+    {purpose
+        Returns the number of edges leading from this node.
+    }
+  }
+  {getter public abstract open {for-loop-count}:int}
+  
+  {doc-next
+    {purpose
+        Visit all nodes that share an edge with this node.
+    }
+    {parameter visit-proc,
+        This procedure will be called once with each neighboring node.
+    }
+    {details
+        The {param action-proc} will be called once for each
+        neighboring node, regardless of the number of edges connecting
+        the two nodes.
+    }
+  }
+  {method public abstract open {visit-neighbors
+                                   visit-proc:{proc-type
+                                                  {{GraphNode-of t}}:void}
+                               }:void
+  }
+  
+  || ======== edge modification ========
+
+  {doc-next
+    {purpose
+        Clears all edges that have this node as an endpoint.
+    }
+    {details
+        A disconnected node is still contained within its graph.
+        To additionally remove a node from the graph,
+        rendering it unuseable, use {docref GraphNode-of.delete} instead.
+    }
+  }
+  {method public abstract open {disconnect}:void}
+  
+  {doc-next
+    {purpose
+        Clears all edges that have this node as an endpoint and removes
+        this node from the graph.
+    }
+    {details
+        This method is the same as calling {docref Graph-of.delete-node}
+        with {ctext self} as an argument.
+    }
+  }
+  {method public open {delete}:void
+    {self.graph.delete-node self}
+  }
+  
+  {doc-next
+    {purpose
+        Add an edge leading from this node.
+    }
+    {parameter to-node,
+        The node to which to add an edge.
+    }
+    {parameter error-if-present?,
+        Whether to throw an error if the listed node already
+        has an edge leading to it from this node.
+    }
+  }
+  {method public abstract open {add-edge
+                                   to-node:{GraphNode-of t},
+                                   error-if-present?:bool = true
+                               }:void
+  }
+  
+  {doc-next
+    {purpose
+        Remove an edge leading from this node.
+    }
+    {parameter to-node,
+        The node to which to remove an edge.
+    }
+    {parameter error-if-missing?,
+        Whether to throw an error if there isn't an edge to {param to-node}.
+    }
+  }
+  {method public abstract open {remove-edge
+                                   to-node:{GraphNode-of t},
+                                   error-if-missing?:bool = true
+                               }:void
+  }
+  
+}
+

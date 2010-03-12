@@ -1,0 +1,92 @@
+||| Maintained by: cwstern
+
+{curl-file-attributes character-encoding = "utf8"}
+
+{doc-next
+    {purpose
+        An exception that occurs in a graph model.
+    }
+}
+{define-class public abstract open GraphException {inherits Exception}
+
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter message,
+        A human readable message.
+    }
+  }  
+  {constructor public {default message:String}
+    {construct-super message}
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        An exception thrown when an acyclic operation on a directed graph
+        encounters a cycle.
+    }
+}
+{define-class public open GraphCycleException {inherits GraphException}
+
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+  }  
+  {constructor public {default}
+    {construct-super
+        {hlmessage "Graph is not acyclic (has a circular dependency)."}
+    }
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        An exception thrown when a graph is told to operate on an invalid edge.
+    }
+}
+{define-class public open GraphInvalidEdgeException {inherits GraphException}
+
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter message,
+        A human readable message.
+    }
+  }  
+  {constructor public {default message:String}
+    {construct-super message}
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        An exception thrown when a graph is told to operate on an invalid
+        node; e.g. one belonging to another Graph.
+    }
+}
+{define-class public open GraphInvalidNodeException {inherits GraphException}
+
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter message,
+        A human readable message.
+    }
+  }  
+  {constructor public {default message:String}
+    {construct-super message}
+  }
+  
+}
+

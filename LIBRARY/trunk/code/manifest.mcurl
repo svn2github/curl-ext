@@ -13,8 +13,8 @@
     resource-directory = "curl://install/curl-resources",
     default-locale = "en"
 }
-{component package COM.CURL.EXT.DIGRAPH,
-    location = "GUI/load-digraph.scurl",
+{component package COM.CURL.EXT.GRAPHS,
+    location = "graphs/load.scurl",
     version = "1.0",
     translations-file = "translations.ctd",
     resource-directory = "curl://install/curl-resources",

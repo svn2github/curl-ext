@@ -20,7 +20,7 @@
 {import * from CURL.UTIL.OBSERVER}
 {import * from CURL.IDE.PERFORMANCE}
 
-{import * from COM.CURL.EXT.DIGRAPH}
+{import * from COM.CURL.EXT.GRAPHS}
 {import * from COM.CURL.EXT.DATA-ACCESS}
 
 || -------------------------------------------------------------------------
@@ -502,7 +502,9 @@ How to handle foreign key fields?
   field protected _dependencies:DependencyTable
 
   field protected scheduled:{Set-of TaskRecord} = {new {Set-of TaskRecord}}
-
+  
+  field protected graph:{Digraph-of TaskRecord} = {new {Digraph-of TaskRecord}}
+  
   {constructor public {default
                           begin-date:DateTime,
                           end-date:DateTime,
@@ -606,7 +608,7 @@ How to handle foreign key fields?
     {try
         def tra = {self.tasks.get-TaskRecord dr.ida}
         def trb = {self.tasks.get-TaskRecord dr.idb}
-        {tra.depnode.add-predecessor trb.depnode}
+        {trb.depnode.add-successor tra.depnode}
      catch ignored:Exception do
     }
   }
@@ -919,25 +921,29 @@ How to handle foreign key fields?
     {self.compute-end-date tn.data}
 
     || Now compute the effect on subsequent tasks
-    def sorted-tasks:TaskDinodeArray = {tn.topological-sort-successors}
+    def sorted-tasks = {tn.topological-sort-successors}
 ||--    {dump tn.data.id, sorted-tasks.size}
     {sorted-tasks.sort
         comparison-proc =
-            {proc {a:TaskDinode, b:TaskDinode}:bool
+            {proc {a:{DirectedGraphNode-of TaskRecord},
+                   b:{DirectedGraphNode-of TaskRecord}}:bool
                 {return a.data.ord < b.data.ord}
             }
     }
     {for dn in sorted-tasks do
         || Find the latest predecessor and use it to determine the begin date
         {if not {self.scheduled.member? dn.data}
-            and {self.preds-scheduled? dn}
+            and {self.preds-scheduled? dn asa TaskDinode}
          then
             let last:DateTime = self.begin-date - 3650d
-            {for pred in dn.predecessors do
-                {if-non-null pred-end = pred.data.end then
-                    {if pred-end > last then
-                        set last = pred-end
-                    }
+            {dn.visit-predecessors
+                {proc {pred:{DirectedGraphNode-of TaskRecord}}:bool
+                    {if-non-null pred-end = pred.data.end then
+                        {if pred-end > last then
+                            set last = pred-end
+                        }
+                    }                    
+                    {return false}
                 }
             }
             || Compute the end date once the begin date is known
@@ -1285,7 +1291,7 @@ INSERT INTO resource VALUES (1,Fred,Programmer,"FP","Dev","http://www.curl.com",
 
 || Type-safe wrapper for a record that represents a task
 {define-class public open TaskRecord
-
+  
   field protected record:Record
 
   {constructor public {default r:Record}
@@ -1417,7 +1423,11 @@ INSERT INTO resource VALUES (1,Fred,Programmer,"FP","Dev","http://www.curl.com",
   }
   {getter public open {depnode}:TaskDinode
     {if self.record["depnode"] == null then ||""
-        set self.record["depnode"] = {TaskDinode self} ||""
+        set self.record["depnode"] = ||""
+            {TaskDinode
+                self,
+                (self.record.record-set asa ProjectDataTable).project.graph
+            }
     }
     {return self.record["depnode"] asa TaskDinode} ||""
   }
