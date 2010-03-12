@@ -1,0 +1,20 @@
+||| Maintained by: cwstern
+
+{curl 7.0 package}
+{curl-file-attributes character-encoding = "utf8"}
+
+{doc type = package, COM.CURL.EXT.DATA-ACCESS.CALCULATED
+    {purpose
+        This package provides calculated record functionality;
+        e.g. equation support in spreadsheet-like data grids.
+    }
+}
+
+{package COM.CURL.EXT.CALCULATED-RECORDSET,
+    {compiler-directives careful? = true}
+}
+
+{import * from COM.CURL.EXT.GRAPHS}
+{import * from CURL.DATA-ACCESS.BASE}
+
+{include "calculated-record-set.scurl"}

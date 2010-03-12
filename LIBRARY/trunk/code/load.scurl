@@ -6,6 +6,7 @@
 {import public * from COM.CURL.EXT.AUTO-TEST}
 {import public * from COM.CURL.EXT.DATA-ACCESS}
 {import public * from COM.CURL.EXT.GRAPHS}
+{import public * from COM.CURL.EXT.CALCULATED-RECORDSET}
 {import public * from COM.CURL.EXT.GANTT}
 {import public * from COM.CURL.EXT.GUI}
 {import public * from COM.CURL.EXT.TILED-WINDOWS}

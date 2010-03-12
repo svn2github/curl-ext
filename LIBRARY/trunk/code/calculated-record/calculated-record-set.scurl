@@ -1,0 +1,2582 @@
+||| Maintained by: cwstern
+
+{curl-file-attributes character-encoding = "utf8"}
+
+|| TODO: add some index checking to produce more useful errors earlier.
+
+|| TODO: consider whether there are any ways to get actual data
+|| types into this system, and reduce the "any" operations.
+|| Sure, the Record system works off of them, but there's a lot
+|| of casting involved in any update cycle. It's less the overhead
+|| than the pain on the user side. So if we could do something like
+|| ValueControl-of, where you can get -asa-any but also a typed value,
+|| that would be handy. Possibly difficult or impossible to implement,
+|| and possibly more of a pain to the user in the end than just using any...
+
+|| TODO: In the manager, since updates happen via events, exceptions
+|| coming out of there might be hard for the user to deal with.
+|| And leaving internal state locked up is particularly bad because
+|| the manager is a singleton, so an unhandled exception could turn off
+|| all updates for the applet. Plus it frequently calls back into
+|| user-provided code, which could do arbitrarily bad things...
+|| Can't and shouldn't try to handle all cases, but some of the more
+|| obvious exceptions and those involving package-protected processes
+|| should probably be better covered, at least.
+
+|| TODO: we could, THEORETICALLY, attempt to make the entire update
+|| cycle (semi?)atomic. There would be overhead to this, certainly,
+|| and it's probably not worth it altogether since something could
+|| still blow up on the actual set step, but it's an interesting thought.
+
+|| TODO: rather than a single manager, it would be safer to have
+|| different managers that can either work together as needed, or
+|| can combine and split when appropriate. Merge is how the system worked
+|| originally, but it's hard to get right and the system occasionally
+|| has to do a big block of work when you merge/split, and the conditions
+|| for when you can split without worrying about having to then immediately
+|| re-merge are unclear.
+|| Note that you can't just treat the managers as another simple digraph
+|| level because the contained CFs can call back and forth between RecordSets.
+
+|| TODO: The abuse of batch-events? by ComputedRecordSet and
+|| ComputedFieldManager should be removed, but first we'll need a
+|| very similar-appearing state-tracking and event-mangling system...
+
+|| TODO: seems like we should be able to do more with the epoch.
+
+{doc-next
+    {purpose
+        An event relating to the operation of a {docref CalculatedField}.
+    }
+}
+{define-class public open CalculatedFieldEvent {inherits Event}}
+
+
+{doc-next
+    {purpose
+        An event relating to a {docref CalculatedField} update.
+    }
+}
+{define-class public open CalculatedFieldUpdateEvent
+  {inherits CalculatedFieldEvent}
+
+  {doc-next
+    {purpose
+        The update epoch this event was generated for.
+    }
+    {details
+        This integer tracks which numbered update cycle the event is
+        associated with.
+    }
+  }
+  field public constant epoch:int
+
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter epoch,
+        See {docref-abbr CalculatedFieldUpdateEvent.epoch}
+    }
+  }
+  {constructor public {default epoch:int}
+    {if epoch < 0 then
+        {throw
+            {CalculatedFieldUpdateEpochException
+                {hlmessage "Invalid negative epoch %d.", epoch}
+            }
+        }
+    }
+    set self.epoch = epoch
+  }
+
+}
+
+
+{doc-next
+    {purpose
+        An event signalling that a {docref CalculatedField} update
+        is beginning.
+    }
+}
+{define-class public open CalculatedFieldUpdateStart
+  {inherits CalculatedFieldUpdateEvent}
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter epoch,
+        See {docref-abbr CalculatedFieldUpdateEvent.epoch}
+    }
+  }
+  {constructor public {default epoch:int}
+    {construct-super epoch}
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        An event signalling that a {docref CalculatedField} update finished.
+    }
+}
+{define-class public open CalculatedFieldUpdateFinished
+  {inherits CalculatedFieldUpdateEvent}
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter epoch,
+        See {docref-abbr CalculatedFieldUpdateEvent.epoch}
+    }
+  }
+  {constructor public {default epoch:int}
+    {construct-super epoch}
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        An event signalling that a {docref CalculatedField} update aborted
+        before completing.
+    }
+}
+{define-class public open CalculatedFieldUpdateAborted
+  {inherits CalculatedFieldUpdateEvent}
+
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter epoch,
+        See {docref-abbr CalculatedFieldUpdateEvent.epoch}
+    }
+  }
+  {constructor public {default epoch:int}
+    {construct-super epoch}
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        An exception involving a {docref CalculatedField}.
+    }
+}
+{define-class public open CalculatedFieldException {inherits Exception}
+
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter message,
+        A human-readable error message.
+    }
+  }
+  {constructor public {default message:String}
+    {construct-super message}
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        An exception thrown when an operation was attempted
+        on a disconnected {docref CalculatedField}.
+    }
+}
+{define-class public open CalculatedFieldDisconnectedException
+  {inherits CalculatedFieldException}
+
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter message,
+        A human-readable error message.
+    }
+  }
+  {constructor public {default}
+    {construct-super
+        {hlmessage "Cannot perform operation on detached CalculatedField."}
+    }
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        An exception thrown when a {docref CalculatedField} update
+        encounters an incorrect epoch.
+    }
+}
+{define-class public open CalculatedFieldUpdateEpochException
+  {inherits CalculatedFieldException}
+
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter message,
+        A human-readable error message.
+    }
+  }
+  {constructor public {default message:String}
+    {construct-super message}
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        An object that updates itself when defined predecessors are changed.
+    }
+    {details
+        Each {ctext CalculatedField} has a {docref-abbr CalculatedField.value}
+        property, an {docref-abbr CalculatedField.update-proc}, and
+        a list of {docref-abbr CalculatedField.predecessors}. When the value
+        at one {ctext CalculatedField} changes, all successor
+        {ctext CalculatedField}s will be scheduled for an update of their
+        {docref-abbr CalculatedField.value}, using their respective
+        {docref-abbr CalculatedField.update-proc}. This can be used to
+        build automatic update chains like the classical example of
+        a spreadsheet cell that sums all the cells in the column above it.
+    }
+}
+{define-class public abstract open CalculatedField
+
+  || Proc to run when predecessor data changes:
+  field private _update-proc:#{proc-type {CalculatedField}:void}
+
+  || False if this node has been disconnected.
+  field private _connected?:bool = true
+  
+  || Whether prerequisites can be quietly removed when their
+  || record (fields) are deleted.
+  field private _weak-predecessors?:bool
+
+  || True if an update was requested locally (at this very node).
+  field private _update-requested?:bool
+
+  || NOTE: careful here; this is actually our container.
+  || The container reference should always be glued onto this object
+  || _immediately_ after creation, before the manager is notified.
+  field package node:{DefaultDirectedGraphNode-of CalculatedField} =
+      {uninitialized-value-for-type {DefaultDirectedGraphNode-of CalculatedField}}
+
+  || True if the update proc is being run right this moment.
+  || Used e.g. to detect whether value changes should be signaled.
+  field package in-update?:bool
+
+  || Our manager.
+  || NOTE: at present, this is a singleton, but that may change.
+  field package manager:#CalculatedFieldManager = null
+
+  || The last computed update epoch we updated in.
+  field package last-update-epoch:int
+
+  || The place of this node in the working update queue.
+  || This value is only valid when it's been stamped by the manager
+  || and is junk at all other times; leave its use to the manager.
+  field package update-sequence-position:int = -1
+  
+  || Whether the value changed since the last update.
+  field package value-changed?:bool = true
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter update-proc,
+        The proc to run when this object requires updating.
+    }
+    {parameter weak-predecessors?,
+        See {docref-abbr CalculatedField.weak-predecessors?}
+    }
+  }
+  {constructor public {default
+                          update-proc:#{proc-type {CalculatedField}:void} = null,
+                          weak-predecessors?:bool = false
+                      }
+    set self._update-proc = update-proc
+    set self._weak-predecessors? = weak-predecessors?
+
+    || FIXME: strange singleton-but-kind-of-not usage:
+    def manager = {CalculatedFieldManager}
+    
+    || Always set up the node before we do anything that could reference it.
+    def new-node = {manager.create-node self}
+    set self.node = new-node
+    
+    || Add ourself to the manager.
+    {manager.add-field self}
+  }
+
+  || ======== MISCELLANEOUS PROPERTIES ========
+
+  {doc-next
+    {purpose
+        Whether this node is connected to a valid data property and
+        can perform normal operations.
+    }
+    {details
+        By default, this property is {ctext true}. If it becomes
+        {ctext false}, which is typically only when the
+        {docref-abbr CalculatedField.disconnect} method is called,
+        this object will thereafter be unusable and performing
+        any operations upon it may result in an error. 
+    }
+  }
+  {getter public open {connected?}:bool
+    {return self._connected?}
+  }
+  
+  {doc-next
+    {purpose
+        The record set this field is associated with, if any.
+    }
+  }
+  {getter public open {record-set}:#RecordSet
+    {return null}
+  }
+
+  {doc-next
+    {purpose
+        The record this field is associated with, if any.
+    }
+  }
+  {getter public open {record}:#Record
+    {return null}
+  }
+
+  {doc-next
+    {purpose
+        The record field this field is associated with, if any.
+    }
+  }
+  {getter public open {field}:#RecordField
+    {return null}
+  }
+  
+  {doc-next
+    {purpose
+        Whether {docref-abbr CalculatedField.predecessors} can be silently
+        removed when required.
+    }
+    {details
+        Generally, attempting to {docref-abbr CalculatedField.disconnect}
+        a field that has one or more successor fields will result
+        in an error. A successor field generally depends on its
+        predecessors, so if the {docref-abbr CalculatedField.disconnect}ion
+        were allowed it might cause unexpected results downstream when the
+        next update cycle runs.
+        If that is {italic not} the case, then this property can be set
+        to {ctext true}, whereupon predecessors of this field can be
+        disconnected without error.
+
+        For example, a field that simply sums a number of other fields
+        may not need to worry about any individual predecessor's existence.
+        In this case, this property should probably be set to {ctext true}.
+        On the other hand, if the {docref-abbr CalculatedField.update-proc}
+        depends on the existence of a single predecessor field, and would
+        be unable to function properly if that field were removed, then
+        this property should be set to {ctext false}.
+        
+        When this property is {ctext false}, predecessors might not be
+        removed automatically, but they can still be removed using
+        appropriate methods like
+        {docref-abbr CalculatedField.remove-predecessor}.
+
+        Note that {italic all} successor fields must have this property
+        set to {ctext true} in order to allow silent disconnection of
+        a shared predecessor field.
+    }
+  }
+  {getter public open {weak-predecessors?}:bool
+    {return self._weak-predecessors?}
+  }
+  {setter public open {weak-predecessors? b:bool}:void
+    {if b != self._weak-predecessors? then
+        set self._weak-predecessors? = b
+    }
+  }
+
+  {doc-next
+    {purpose
+        The procedure to run whenever an update is required.
+    }
+    {details
+        The update proc takes a {ctext CalculatedField} as its argument;
+        this {docref CalculatedField} object itself is passed as that
+        argument when the proc is called.
+        If the {docref-abbr CalculatedField.value} requires
+        updating, it should be done when the update proc is called.
+    }
+    {notes
+        When this value is {ctext null} calls to, for example,
+        {docref-abbr CalculatedField.request-update}, may be ignored.
+    }
+  }
+  {getter public open {update-proc}:#{proc-type {CalculatedField}:void}
+    {return self._update-proc}
+  }
+  {setter public open {update-proc new-proc:#{proc-type {CalculatedField}:void}}
+    {if new-proc != self._update-proc then
+        set self._update-proc = new-proc
+        {if-non-null new-proc then
+            {self.request-update}
+        }
+    }
+  }
+
+  {doc-next
+    {purpose
+        The value associated with this field.
+    }
+    {notes
+        This property should generally not be set except by the
+        {docref-abbr CalculatedField.update-proc} when it runs. Changing
+        it at other times may force a running update cycle to abort,
+        leading to performance degradation or worse.
+    }
+  }
+  {getter public abstract open {value}:any}
+  {setter public open {value val:any}:void}
+
+  {doc-next
+    {purpose
+        Indicates that the {docref-abbr CalculatedField.value}
+        property has changed since the last update.
+    }
+    {details
+        This method should be called by the
+        {docref-abbr CalculatedField.value} setter when the {ctext value}
+        actually changes. It may also be called by connected fields
+        if responsibility for the value is shared with another object;
+        e.g. in the case of a calculated field connected to a {docref Record}.
+    }
+  }
+  {method public open {note-value-changed}:void
+    set self.value-changed? = true
+    {if not self.in-update? then
+        {for successor in self.node.successors do
+            {successor.data.request-update}
+        }
+    }
+  }
+
+  {doc-next
+    {purpose
+        Whether a new update has been requested for this field.
+    }
+  }
+  {getter public open {update-requested?}:bool
+    {return self._update-requested?}
+  }
+  
+  || ======== EDGE (PREDECESSOR / SUCCESSOR) OPERATIONS ========
+
+  {doc-next
+    {purpose
+        Returns one predecessor {ctext CalculatedField}.
+    }
+    {parameter index,
+        The index of the predecessor field to return.
+    }
+    {throws
+        {exception KeyNotFoundException,
+            if {param index} is out of bounds.
+        }   
+    }
+  }
+  {method public open {get index:int}:CalculatedField
+    {if index < 0 or index >= self.node.predecessors.size then
+        {throw
+            {KeyNotFoundException
+                obj = self,
+                key = index,
+                "Index out of bounds."
+            }
+        }
+    }
+    {return self.node.predecessors[index].data}
+  }
+  
+  {doc-next
+    {purpose
+        Enables iteration over counters in for loops.
+    }
+    {details
+        The count returned is the number of predecessor fields.
+    }
+  }
+  {getter public open {for-loop-count}:int
+    {return self.node.predecessors.size}
+  }
+
+  {doc-next
+    {purpose
+        Add a predecessor (prerequisite) field.
+    }
+    {parameter computed-field,
+        The field to make a predecessor.
+    }
+    {details
+        Calling {docref-abbr CalculatedField.add-predecessor} on a
+        {docref-abbr CalculatedField.disconnect}ed {ctext CalculatedField}
+        will result in an error.
+    }
+    {throws
+        {exception CalculatedFieldDisconnectedException,
+            if this field is already
+            {docref-abbr CalculatedField.disconnect}ed.
+        }   
+    }
+  }
+  {method package {add-predecessor computed-field:CalculatedField}:void
+    {if not self.connected? then
+        {throw {CalculatedFieldDisconnectedException}}
+    }
+    {computed-field.node.add-successor self.node}
+    {self.request-update}
+  }
+
+  {doc-next
+    {purpose
+        Remove a predecessor (prerequisite) field.
+    }
+    {parameter computed-field,
+        The field to remove as a predecessor.
+    }
+  }
+  {method package {remove-predecessor computed-field:CalculatedField}:void
+    {computed-field.node.remove-successor self.node}
+    {self.request-update}
+  }
+  
+  {doc-next
+    {purpose
+        Remove all predecessor (prerequisite) fields.
+    }
+  }
+  {method package {clear-predecessors}:void
+    def predecessors = self.node.predecessors
+    {for i = predecessors.size - 1 downto 0 do
+        def pnode = predecessors[i]
+        {self.remove-predecessor pnode.data}
+    }
+  }
+
+  {doc-next
+    {purpose
+        Disconnect this object from updates.
+    }
+    {parameter force?,
+        If {ctext true}, all fields that have this node as a predecessor
+        will be signaled remove it through calls to
+        {docref CalculatedField.remove-predecessor}.
+        If {ctext false}, then attempting to {ctext disconnect} a node
+        with non-weak successors will result in an error.
+    }
+    {details
+        This method should only be called on {ctext CalculatedField}s that
+        are no longer needed or have become invalid; e.g. a field whose
+        value is attached to a {docref Record} that has become
+        {ctext RecordState.detached} could no longer usefully update.
+        After this method is called, this object will become unusable,
+        and further method calls may result in an error.
+    }
+  }
+  {method public open {disconnect force?:bool = false}:void
+    {if not self.connected? then {return}}
+    
+    || Verify that we can remove successors, then do so or error out.
+    def successors = self.node.successors
+    {if not force? then
+        {for node in successors do
+            {if not node.data.weak-predecessors? then
+                {error
+                    {hlmessage Cannot remove field with nonweak successors.}
+                }
+            }
+        }
+    }
+    {for i = successors.size - 1 downto 0 do
+        def snode = successors[i]
+        {snode.data.remove-predecessor self}
+    }
+
+    || Clear our own predecessors.
+    {self.clear-predecessors}
+
+    || Remove ourself from anyone who was paying attention.
+    {self.manager.remove-field self}
+
+    || Finish clearing any remaining external links.
+    set self.manager = null
+
+    || Mark self disconnected.
+    set self._connected? = false
+  }
+
+  || ======== UPDATE OPERATIONS ========
+
+  {doc-next
+    {purpose
+        Indicate that this field requires updating.
+    }
+    {details
+        A field is typically scheduled for an update automatically if the
+        value of one of its {docref-abbr CalculatedField.predecessors} changes
+        or its {docref-abbr CalculatedField.update-proc} is changed.
+        If a field has no predecessors, or the behavior of the
+        {docref-abbr CalculatedField.update-proc} depends on state not
+        indicated by these properties, an update may be manually
+        requested by calling this method.
+
+        If an update is already scheduled for this field, calling this
+        method should have no effect. In some cases, generally when
+        the field has no connections, calling this method may induce
+        an immediate update.
+    }
+    {notes
+        If an update cycle is currently running, calling this method may
+        force the update to rerun. As may degrade performance or
+        have other negative impacts, calling {ctext request-update}
+        from inside a {docref-abbr CalculatedField.update-proc}
+        should generally be avoided.
+    }
+  }
+  {method public open {request-update}:void
+    {if not self.update-requested? then
+        {if self.update-proc != null then
+            set self._update-requested? = true
+            {if-non-null manager = self.manager then
+                {manager.request-update-for-field self}
+             else
+                {self.update}
+            }
+        }
+    }
+  }
+
+  {doc-next
+    {purpose
+        Prepare for an update.
+    }
+    {details
+        This method is called on all fields before the
+        {docref-abbr CalculatedField.update} method is call.
+        This method clears state and, if necessary,
+        manages dependencies in preparation for an update.
+        
+        Some {ctext CalculatedField}s may need to dynamically manage their
+        predecessors; e.g. a field that adds all values for a given
+        {docref RecordField} across all {docref Record}s in a
+        {docref RecordSet} (a "column sum").
+    }
+    {override
+        For reasons of performance and safety, this method should be
+        overridden with care if at all. Incautious modification of the
+        predecessor list when this method is called, or at any other time
+        during an update, may force the entire update cycle to abort
+        and rerun.
+    }
+  }
+  {method public open {prepare-for-update}:void}
+
+  || We allow a node with informal prerequisites (captured variables)
+  || to request an update. But don't expose the base update, because
+  || we might be running one already.
+  {method package {update}:void
+
+    || Only update if we demanded it, or a predecessor value changed.
+    ||
+    || FIXME: at present, this just skips our update.
+    || Ideally we should stop execution down the line as well, but
+    || that's not possible in an inexpensive enough way at present,
+    || since we do the full topological sort upfront.
+    {if-non-null p = self.update-proc then
+        let call-update-proc?:bool = self.update-requested?
+        {if not call-update-proc? then
+            {for pred in self do
+                {if pred.value-changed? then
+                    set call-update-proc? = true
+                    {break}
+                }
+            }
+        }
+        {if call-update-proc? then
+            {p self}
+        }
+    }
+    
+    || Stamp the epoch.
+    {if-non-null manager = self.manager then
+        set self.last-update-epoch = manager.epoch
+    }
+
+  }
+
+  {doc-next
+    {purpose
+        Clean up after an update has run.
+    }
+    {details
+        When this method is called, all fields requiring updates have
+        been updated. Any transient state required for an update should
+        be cleared at this time, if it wasn't already cleared during
+        the update itself.
+    }
+  }
+  {method public open {update-finished}:void
+    set self.value-changed? = false
+    set self._update-requested? = false
+    set self.update-sequence-position = -1
+  }
+
+  || ======== MISC METHODS ========
+
+  {doc-next
+    {purpose
+        Note a {docref RecordSetEvent} occurring at the associated
+        {docref RecordSet}.
+    }
+    {parameter event,
+        The {docref RecordSetEvent} that occurred.
+    }
+  }
+  {method package {note-event-at-record-set event:RecordSetEvent}:void}
+  
+}
+
+
+{doc-next
+    {purpose
+        A {docref CalculatedField} that holds its own {ctext value}.
+    }
+    {details
+        This class simply adds an internal {ctext value} property
+        to {docref CalculatedField}.
+    }
+}
+{define-class public abstract sealed BaseCalculatedValueField
+  {inherits CalculatedField}
+
+  field private _value:any
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter value,
+        The initial {docref-abbr CalculatedField.value} of this object.
+    }
+    {parameter update-proc,
+        The initial {docref-abbr CalculatedField.update-proc} to be run
+        for this object.
+    }
+    {parameter weak-predecessors?,
+        See {docref-abbr CalculatedField.weak-predecessors?}.
+    }
+  }
+  {constructor public {default
+                          value:any = null,
+                          update-proc:#{proc-type {CalculatedField}:void} = null,
+                          weak-predecessors?:bool = false
+                      }
+    set self._value = value
+    {construct-super
+        update-proc = update-proc,
+        weak-predecessors? = weak-predecessors?
+    }
+  }
+
+  {getter public open {value}:any
+    {return self._value}
+  }
+  {setter public open {value val:any}:void
+    {if val != self._value then
+        set self._value = val
+        {self.note-value-changed}
+    }
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        A {docref CalculatedField} that holds its own {ctext value}.
+    }
+    {details
+        This class can be used for intermediate calculations or values
+        not bounds to a {docref Record}. For example, if many other
+        {docref CalculatedField}s all relied on a sum across all
+        {docref Record}s in a {docref RecordSet}, it would be more
+        efficient to perform the sum operation once each update rather
+        than once for each {docref CalculatedField} for each update. This
+        could be done by performing the sum in a {ctext CalculatedValueField},
+        setting its value, and having each later {docref CalculatedField}
+        reuse that value instead.
+        
+        This call can also be used to manage values outside of a
+        {docref Record} context.
+    }
+}
+{define-class public open CalculatedValueField
+  {inherits BaseCalculatedValueField}
+
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter value,
+        The initial {docref-abbr CalculatedField.value} of this object.
+    }
+    {parameter update-proc,
+        The initial {docref-abbr CalculatedField.update-proc} to be run
+        for this object.
+    }
+    {parameter weak-predecessors?,
+        See {docref-abbr CalculatedField.weak-predecessors?}.
+    }
+  }
+  {constructor public {default
+                          value:any = null,
+                          update-proc:#{proc-type {CalculatedField}:void} = null,
+                          weak-predecessors?:bool = false
+                      }
+    {construct-super
+        value = value,
+        update-proc = update-proc,
+        weak-predecessors? = weak-predecessors?
+    }
+    def manager = {CalculatedFieldManager}
+    def new-node = {manager.create-node self}
+    set self.node = new-node
+    {manager.add-field self}
+  }
+  
+  || ======== ACCESS OVERRIDES (expose predecessor methods) ========
+  
+  {method public open {add-predecessor computed-field:CalculatedField}:void
+    {super.add-predecessor computed-field}
+  }
+
+  {method public open {remove-predecessor computed-field:CalculatedField}:void
+    {super.remove-predecessor computed-field}
+  }
+  
+  {method public open {clear-predecessors}:void
+    {super.clear-predecessors}
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        A {docref CalculatedField} that manages its predecessors through
+        use of a {docref RecordFilter}.
+    }
+    {details
+        Any {docref CalculatedField} can be thought to automatically
+        manage its {docref-abbr CalculatedField.value} property through
+        its {docref-abbr CalculatedField.update-proc} by watching for
+        value changes at their predecessors.
+        {ctext RecordFilterCalculatedField}s extend this automatic management
+        to also include the predecessors themselves, automatically
+        updating the predecessor list.
+
+        However, automatic predecessor management must be done with
+        care to avoid creating a dependency cycle, forcing updates to
+        abort prematurely, or causing other problems. In general, it
+        is safest to set filters that work only on identity (constant)
+        properties of records; e.g. a unique index.
+
+        {ctext RecordFilterCalculatedField}s updates are triggered by
+        {docref RecordSetEvent}s at their
+        {docref-abbr CalculatedField.record-set}.
+    }
+    {notes
+        {ctext RecordFilterCalculatedField} filter updates have
+        significant overhead, so these should be used sparingly with
+        source {docref RecordSet}s that are frequently updated,
+        especially large sets that experience frequent
+        {docref RecordsBulkChanges}.
+    }
+}
+{define-class public abstract open RecordFilterCalculatedField
+  {inherits BaseCalculatedValueField}
+
+  || The filter and its target.
+  field private _filter:RecordFilter
+  field private _record-set:RecordSet
+  field private _record-field:RecordField
+
+  || Whether we need to call apply-filter before the next update.
+  field package needs-refilter?:bool = true
+  
+  || Whether we should suppress the normal request-update because we are
+  || doing an operation that we know is safe.
+  field private silence-update?:bool
+  
+  || Records that passed the filter and fields attached to those records.
+  || Be very careful to keep these two arrays in sync.
+  || FIXME: could be done as one, but there are optimization issues.
+  field package valid-records:{Array-of Record} = {new {Array-of Record}}
+  field package valid-fields:{Array-of CalculatedField} =
+      {new {Array-of CalculatedField}}
+
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter record-set,
+        The {docref RecordSet} to run the filter against.
+    }
+    {parameter filter,
+        The {docref RecordFilter} to run for updates.
+    }
+    {parameter record-field,
+        The {docref RecordField} from which to take predecessor values
+        in the {docref Record}s that pass the filter.
+    }
+    {parameter update-proc,
+        See {docref-abbr CalculatedField.update-proc}.
+    }
+  }
+  {constructor public {from-record-set
+                          record-set:RecordSet,
+                          filter:RecordFilter,
+                          record-field:RecordField,
+                          update-proc:#{proc-type {CalculatedField}:void} = null
+                      }
+    set self._record-set = record-set
+    set self._filter = filter
+    set self._record-field = record-field
+    {construct-super
+        update-proc = update-proc,
+        weak-predecessors? = true
+    }
+    {if-non-null manager = self.manager then
+        {manager.watch-record-set record-set, self}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Create a new instance of this type.
+    }
+    {parameter record-set,
+        The {docref RecordSet} to run the filter against.
+    }
+    {parameter filter,
+        The {docref RecordFilter} to run for updates.
+    }
+    {parameter record-field,
+        The {docref RecordField} from which to take predecessor values
+        in the {docref Record}s that pass the filter.
+    }
+    {parameter update-proc,
+        See {docref-abbr CalculatedField.update-proc}.
+    }
+  }
+  {factory public {default
+                      record-set:RecordSet,
+                      filter:RecordFilter,
+                      record-field:RecordField,
+                      update-proc:#{proc-type {CalculatedField}:void} = null
+                  }:RecordFilterCalculatedField
+    {type-switch record-set
+     case crs:CalculatedRecordSet do
+        {return
+            {CalculatedRecordFilterCalculatedField
+                crs,
+                filter,
+                record-field,
+                update-proc = update-proc
+            }
+        }
+     else
+        {return
+            {GenericRecordFilterCalculatedField
+                record-set,
+                filter,
+                record-field,
+                update-proc = update-proc
+            }
+        }
+    }
+  }
+
+  {getter public open {record-set}:RecordSet
+    {return self._record-set}
+  }
+
+  {method public open {prepare-for-update}:void
+    {super.prepare-for-update}
+    {if self.needs-refilter? then
+        {self.apply-filter}
+        set self.needs-refilter? = false
+    }
+  }
+
+  {method public open {disconnect force?:bool = false}:void
+    {if-non-null manager = self.manager then
+        {manager.unwatch-record-set self.record-set, self}
+    }
+    {super.disconnect force? = force?}
+  }
+
+  {getter public open {filter}:RecordFilter
+    {return self._filter}
+  }
+  {setter public open {filter new-filter:RecordFilter}:void
+    {if new-filter != self._filter then
+        set self._filter = new-filter
+        set self.needs-refilter? = true
+        {self.request-update}
+    }
+  }
+
+  {getter public open {field}:RecordField
+    {return self._record-field}
+  }
+  {setter public open {field new-field:RecordField}:void
+    {if new-field != self._record-field then
+        set self._record-field = new-field
+        set self.needs-refilter? = true
+        {self.request-update}
+    }
+  }
+
+  {doc-next
+    {purpose
+        Called when the filter needs to be rerun against the entire
+        target {docref RecordSet}.
+    }
+    {notes
+        This method is called automatically from
+        {docref-abbr CalculatedField.prepare-for-update} when needed,
+        and should generally not be called outside of those times.
+    }
+  }
+  {method public open {apply-filter}:void
+    def record-set = self.record-set
+    || Get the new list of valid records.
+    def pass-records = {record-set.select filter = self.filter}
+
+    || The new Records to add, and the indices of the valid
+    || Records and CalculatedRecordFields in the existing arrays to remove.
+    def to-add = {new {Array-of Record}}
+    def to-remove = {new {Array-of int}}
+    
+    || Figure out the diff from the current, known, valid set.
+    || FIXME: this could be slow; we're looping through walking an array.
+    {for rec in pass-records do
+        {if {self.valid-records.find rec} == -1 then
+            {to-add.append rec}
+        }
+    }
+    {for rec key index in self.valid-records do
+        {if {pass-records.find rec} == -1 then
+            {to-remove.append index}
+        }
+    }
+
+    || Remove all fields that no longer pass.
+    || We recorded their Record and CF indices in increasing order above,
+    || so it's safe to loop backwards through that list for in-loop deletion.
+    {for i = to-remove.size - 1 downto 0 do
+        def remove-index = to-remove[i]
+        def pred = self.valid-fields[remove-index]
+        {with self.silence-update? = true do
+            {self.remove-predecessor pred}
+        }
+        {self.valid-fields.remove remove-index}
+        {self.valid-records.remove remove-index}
+    }
+
+    || Add new fields, trying to avoid requesting an update.
+    {for rec in to-add do
+        def pred = {self.create-computed-field rec}
+        def silence? =
+            pred.update-sequence-position < self.update-sequence-position
+        {with self.silence-update? = silence? do
+            {self.add-predecessor pred}
+        }
+        {self.valid-records.append rec}
+        {self.valid-fields.append pred}
+    }
+  }
+
+  || NOTE: this method is opened from the parent class.
+  {method public open {note-event-at-record-set event:RecordSetEvent}:void
+    || If we're already going to just run through the whole list,
+    || then skip additional processing.
+    {if self.needs-refilter? then {return}}
+    
+    || FIXME: these could be futher optimized with deep changes in
+    || CalculatedRecord. Whether that's wise is another question.
+    {type-switch event
+     case rr:RecordsReordered do
+        || We don't really care about reordering, as long as
+        || there are no identity changes. Ignore these events
+        || to avoid horrible performance when run against a RecordView.
+        
+     case ra:RecordAdded do
+        || If it passes the filter, add a new field to the list.
+        def rec = ra.record
+        {if {self.filter.includes? rec} then
+            def cf = {self.create-computed-field rec}
+            {self.add-predecessor cf}
+            {self.valid-records.append rec}
+            {self.valid-fields.append cf}
+        }
+
+     case rr:RecordRemoved do
+        || If present, remove the given field from the list.
+        def rec = rr.record
+        def index = {self.valid-records.find rec}
+        {if index >= 0 then
+            || We need to remove it.
+            def cf = self.valid-fields[index]
+            {self.remove-predecessor cf}
+            {self.valid-records.remove index}
+            {self.valid-fields.remove index}
+        }            
+        
+     case rm:RecordModified do
+        def rec = rm.record
+        def index = {self.valid-records.find rec}
+        || Rerun the filter, adding or removing as necessary.
+        {if {self.filter.includes? rec} then
+            {if index == -1 then
+                || We need to add it.
+                def cf = {self.create-computed-field rec}
+                {self.add-predecessor cf}
+                {self.valid-records.append rec}
+                {self.valid-fields.append cf}
+             else
+                || We'll need to update.
+                {self.request-update}
+            }
+            
+         else
+            {if index != -1 then
+                || We need to remove it (though the predecessor
+                || may have already been removed for us).
+                def cf = self.valid-fields[index]
+                {self.remove-predecessor cf}
+                {self.valid-records.remove index}
+                {self.valid-fields.remove index}
+            }            
+        }
+        
+     else
+        set self.needs-refilter? = true
+        {self.request-update}
+    }
+  }
+
+  {doc-next
+    {purpose
+        Create a {docref CalculatedField} associated with a given
+        {docref Record} that passed the
+        {docref-abbr RecordFilterCalculatedField.filter}.
+    }
+    {parameter record,
+        The {docref Record} that passed the filter.
+    }
+    {return-vals
+        The new field.
+    }
+  }
+  {method public abstract open {create-computed-field
+                                   record:Record
+                               }:CalculatedField
+  }
+    
+  {method public open {request-update}:void
+    {if not self.silence-update? then
+        {super.request-update}
+    }
+  }
+
+}
+
+
+{doc-next
+    {purpose
+        A {docref RecordFilterCalculatedField} associated with a
+        non-{docref CalculatedRecordSet}.
+    }
+    {notes
+        The predecessors of this node are
+        {docref OpaqueCalculatedRecordField}s. These should be
+        considered transient, and should not be used outside of the
+        {docref-abbr CalculatedField.update-proc}s of their own
+        {ctext GenericRecordFilterCalculatedField}.
+        
+        {ctext GenericRecordFilterCalculatedField} watches for
+        {docref RecordSetEvent}s and will call
+        {docref-abbr CalculatedField.request-update} on itself when required,
+        so it is not necessary to otherwise call
+        {docref-abbr CalculatedField.request-update} on value changes
+        at the source {docref CalculatedField.record-set}.
+    }
+}
+{define-class public open GenericRecordFilterCalculatedField
+  {inherits RecordFilterCalculatedField}
+
+  {doc-next
+    {purpose
+        Create a new instance of this type.
+    }
+    {parameter record-set,
+        The {docref RecordSet} to run the filter against.
+    }
+    {parameter filter,
+        The {docref RecordFilter} to run for updates.
+    }
+    {parameter record-field,
+        The {docref RecordField} from which to take predecessor values
+        in the {docref Record}s that pass the filter.
+    }
+    {parameter update-proc,
+        See {docref-abbr CalculatedField.update-proc}.
+    }
+  }
+  {constructor public {default
+                          record-set:RecordSet,
+                          filter:RecordFilter,
+                          record-field:RecordField,
+                          update-proc:#{proc-type {CalculatedField}:void} = null
+                      }
+    {construct-super.from-record-set
+        record-set,
+        filter,
+        record-field,
+        update-proc = update-proc
+    }
+  }
+
+  {method public open {create-computed-field record:Record}:CalculatedField
+    {return
+        {OpaqueCalculatedRecordField
+            self.record-set,
+            record,
+            self.field
+        }
+    }
+  }
+
+}
+
+
+{doc-next
+    {purpose
+        A {docref RecordFilterCalculatedField} associated with a
+        {docref CalculatedRecordSet}.
+    }
+}
+{define-class public open CalculatedRecordFilterCalculatedField
+  {inherits RecordFilterCalculatedField}
+
+  {doc-next
+    {purpose
+        Create a new instance of this type.
+    }
+    {parameter record-set,
+        The {docref RecordSet} to run the filter against.
+    }
+    {parameter filter,
+        The {docref RecordFilter} to run for updates.
+    }
+    {parameter record-field,
+        The {docref RecordField} from which to take predecessor values
+        in the {docref Record}s that pass the filter.
+    }
+    {parameter update-proc,
+        See {docref-abbr CalculatedField.update-proc}.
+    }
+  }
+  {constructor public {default
+                          record-set:CalculatedRecordSet,
+                          filter:RecordFilter,
+                          record-field:RecordField,
+                          update-proc:#{proc-type {CalculatedField}:void} = null
+                      }
+    {construct-super.from-record-set
+        record-set,
+        filter,
+        record-field,
+        update-proc = update-proc
+    }
+  }
+
+  {method public open {create-computed-field record:Record}:CalculatedField
+    def record-set = self.record-set asa CalculatedRecordSet
+    {return
+        {record-set.get-or-create-computed-field
+            record asa CalculatedRecord,
+            self.field
+        }
+    }
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        A {docref CalculatedField} whose {ctext value} is attached to
+        a {docref RecordField} in a {docref Record}, but can only provide
+        a readable {docref-abbr CalculatedField.value} property;
+        it cannot update, write to the {ctext value}, or add predecessors.
+    }
+    {details
+        This class is designed for use by {docref RecordFilterCalculatedField}
+        and should not generally be instantiated in other contexts.
+        
+        This class does not automatically notice value changes.
+        Updates for successor {docref CalculatedField}s must be triggered
+        manually through calls to {docref CalculatedField.note-value-changed},
+        which is done automatically when used by
+        {docref RecordFilterCalculatedField}.
+    }
+}
+{define-class public open OpaqueCalculatedRecordField
+  {inherits CalculatedField}
+
+  field private constant _record-set:RecordSet
+  field private constant _record:Record
+  field private constant _field:RecordField
+  
+  {constructor package {default
+                           record-set:RecordSet,
+                           record:Record,
+                           field:RecordField
+                       }
+    set self._record-set = record-set
+    set self._record = record
+    set self._field = field
+    
+    {construct-super weak-predecessors? = true}
+  }
+
+  {getter public open {record-set}:RecordSet
+    {return self._record-set}
+  }
+
+  {getter public open {record}:Record
+    {return self._record}
+  }
+
+  {getter public open {field}:RecordField
+    {return self._field}
+  }
+  
+  {getter public open {value}:any
+    {if not self.connected? then
+        {throw {CalculatedFieldDisconnectedException}}
+    }
+    {return {self.record.get self.field.name}}
+  }
+
+}
+
+
+{doc-next
+    {purpose
+        A {docref CalculatedField} whose {ctext value} is attached to
+        a {docref RecordField} in a {docref CalculatedRecord}.
+    }
+}
+{define-class public open CalculatedRecordField {inherits CalculatedField}
+
+  field private constant _record-set:CalculatedRecordSet
+  field private constant _record:CalculatedRecord
+  field private constant _field:RecordField
+  
+  {constructor package {default
+                           record-set:CalculatedRecordSet,
+                           record:CalculatedRecord,
+                           field:RecordField,
+                           update-proc:#{proc-type {CalculatedField}:void} =
+                               null,
+                           weak-predecessors?:bool = false
+                       }
+    set self._record-set = record-set
+    set self._record = record
+    set self._field = field
+    
+    {construct-super
+        update-proc = update-proc,
+        weak-predecessors? = weak-predecessors?
+    }
+    
+  }
+
+  {getter public open {record-set}:RecordSet
+    {return self._record-set}
+  }
+
+  {getter public open {record}:CalculatedRecord
+    {return self._record}
+  }
+
+  {getter public open {field}:RecordField
+    {return self._field}
+  }
+  
+  {getter public open {value}:any
+    {if not self.connected? then
+        {throw {CalculatedFieldDisconnectedException}}
+    }
+    {return {self.record.get self.field.name}}
+  }
+  {setter public open {value val:any}:void
+    {if not self.connected? then
+        {throw {CalculatedFieldDisconnectedException}}
+    }
+    {self.record.set self.field.name, val}
+  }
+  
+  {method public open {disconnect force?:bool = false}:void
+    {if self.connected? then
+        {super.disconnect force? = force?}
+        {self.record.note-field-disconnected self}
+    }
+  }
+
+  || ======== ACCESS OVERRIDES (expose predecessor methods) ========
+  
+  {method public open {add-predecessor computed-field:CalculatedField}:void
+    {super.add-predecessor computed-field}
+  }
+
+  {method public open {remove-predecessor computed-field:CalculatedField}:void
+    {super.remove-predecessor computed-field}
+  }
+  
+  {method public open {clear-predecessors}:void
+    {super.clear-predecessors}
+  }
+
+}
+
+
+|| The manager responsible for driving update cycles.
+{define-class package CalculatedFieldManager {inherits EventTarget}
+  
+  || FIXME: It's too much of a pain to correctly merge and unmerge managers,
+  || so we have one for the entire system at present.
+  || This is not the best way of doing things, but it's much easier.
+  || The downside is exceptions are delocalized
+  || (one bad update can take down the whole system), though I suspect
+  || this isn't an issue for the typical business application,
+  || where the loss of any part would functionally be the same
+  || as loss of the entire system.
+  || More of a theoretical issue.
+  let package default-manager:#CalculatedFieldManager = null
+  
+  || The update epoch: a monotonically increasing cycle stamp.
+  field package epoch:int = -1
+
+  || Whether we are waiting to process an update.
+  field package computation-pending?:bool
+  || Whether we're stuck waiting for a CalculatedRecordSet to become
+  || available before starting a new computation cycle.
+  field package computation-start-blocked?:bool
+  || Whether we need a new computation.
+  field package computation-needed?:bool
+  || Whether an update is running now.
+  field package in-computation?:bool
+  || Whether we need to stop an update early, probably because we need to
+  || repeat it from an earlier step.
+  field package computation-aborting?:bool
+
+  || All CalculatedRecordSets that this manager is handling nodes for.
+  field package attached-record-sets:{Set-of CalculatedRecordSet} =
+      {new {Set-of CalculatedRecordSet}}
+  
+  || All RecordSets that this manager is observing,
+  || and the fields it is observing them for.
+  field package watched-record-sets:{HashTable-of
+                                      RecordSet,
+                                      {Set-of CalculatedField}
+                                    } =
+      {new {HashTable-of RecordSet, {Set-of CalculatedField}}}
+  
+  || All nodes that have requested an update but not yet finished an update.
+  field package update-requested-at:{Set-of
+                                      {DirectedGraphNode-of CalculatedField}} =
+      {new {Set-of {DirectedGraphNode-of CalculatedField}}}
+
+  || The node update sequence.
+  field private working-update-sequence:{Array-of
+                                          {DirectedGraphNode-of
+                                              CalculatedField}} =
+      {new {Array-of {DirectedGraphNode-of CalculatedField}}}
+  field private working-sequence-valid?:bool
+  field private working-update-sets:{Set-of RecordSet} =
+      {new {Set-of RecordSet}}
+  
+  field package watcher-proc:EventHandler
+
+  field private digraph:{DefaultDirectedGraph-of CalculatedField} =
+      {new {DefaultDirectedGraph-of CalculatedField}}
+  
+  {factory package {default}:CalculatedFieldManager
+    {if-non-null m = CalculatedFieldManager.default-manager then
+        {return m}
+     else
+        def new-manager = {CalculatedFieldManager.create-new}
+        set CalculatedFieldManager.default-manager = new-manager
+        {return new-manager}
+    }
+  }
+
+  {constructor package {create-new}
+    {construct-super}
+    set self.watcher-proc =
+        {on e:RecordSetEvent at rs:RecordSet do
+            {self.note-event-at-watched-record-set e, rs}            
+        }
+  }
+
+  {method public open {handle-event event:Event}:void
+    {super.handle-event event}
+    {type-switch event
+     case e:CalculatedFieldUpdateStart do
+        set self.computation-pending? = false
+        {self.attempt-update}
+    }
+  }
+
+  || ======== ========= Updates management ======== ========
+  
+  {method package {recompute}:void
+    {if not self.computation-needed? then
+        set self.computation-needed? = true
+    }
+    {if self.in-computation? then
+        set self.computation-aborting? = true
+    }
+    {if not self.computation-pending? and
+        not self.computation-start-blocked?
+     then
+        {self.enqueue-event {CalculatedFieldUpdateStart self.epoch + 1}}
+        set self.computation-pending? = true
+    }
+  }
+  
+  || Just a simple test and with wrapper.
+  {method package {attempt-update}:void
+    {if self.in-computation? then
+        {error
+            {hlmessage
+                "Attempted to start a new update with another already running."
+            }
+        }
+    }
+    {with self.in-computation? = true do
+        {self.internal-attempt-update}
+    }
+  }
+
+  || Check to see if we can update, then launch the update cycle.
+  {method private {internal-attempt-update}:void
+    || Increment the update counter.
+    {inc self.epoch}
+
+    || Try to run an update cycle.
+    {self.perform-computation-cycle}
+
+    || Deal with the possible outcomes for perform-computation-cycle.
+    {if self.computation-start-blocked? then
+        || If we failed to acquire the required "locks",
+        || then there's nothing to be done here.
+
+     elseif not self.computation-aborting? then
+        || If we succeeded, then clear the update state.
+        set self.computation-needed? = false
+        {self.update-requested-at.clear}
+        def finish-event = {CalculatedFieldUpdateFinished self.epoch}
+        {for rs in self.working-update-sets do
+            {rs.handle-event finish-event}
+        }
+     else
+        || We aborted; let everyone know about that.
+        def abort-event = {CalculatedFieldUpdateAborted self.epoch}
+        {for rs in self.working-update-sets do
+            {rs.handle-event abort-event}
+        }        
+    }
+
+    || In any event, clear out the working update lists.
+    {self.working-update-sequence.clear}
+    {self.working-update-sets.clear}
+    set self.working-sequence-valid? = false
+
+    || We either didn't abort or we just finished aborting, so == false.
+    set self.computation-aborting? = false
+  }
+
+  || Update all nodes in the requested set, and either abort or finish.
+  {method private {perform-computation-cycle}:void
+    
+    def update-sequence = self.working-update-sequence
+    {update-sequence.clear}
+    def update-sets = self.working-update-sets
+    {update-sets.clear}
+
+    || Sort the nodes into update order.
+    || FIXME: catch any cycle error and ensure internal state is OK
+    || before throwing.
+    {{DirectedGraphNode-of CalculatedField}.topological-sort-subgraph
+        self.update-requested-at,
+        out = update-sequence
+    }
+    {for node in update-sequence do
+        || Note that we use record != null to indicate that we need
+        || to pay attention to the attached RecordSet.
+        {if-non-null rec = node.data.record,
+            rs = node.data.record-set
+         then
+            {if not {update-sets.member? rs} then
+                {update-sets.insert rs}
+                {if update-sets.size == self.attached-record-sets.size then
+                    {break}
+                }
+            }
+        }
+    }
+    set self.working-sequence-valid? = true
+
+    || Psuedo-lock each RecordSet and avoid event spam.
+    || If we can't, then abort and wait to try again.
+    {for rs in update-sets do
+        {if rs.batch-events? then
+            set self.computation-start-blocked? = true
+            {return}
+        }
+    }
+
+    set self.computation-start-blocked? = false
+
+    || Send start events to all attached RecordSets in the update list.
+    def start-event = {CalculatedFieldUpdateStart self.epoch}
+    {for rs in update-sets do
+        {rs.handle-event start-event}
+    }
+
+    || Prepare each node for updating; this may cause nodes that need to
+    || recompute their predecessors to add or remove,
+    || potentially causing us to abort.
+    {for n key i in update-sequence do
+        set n.data.update-sequence-position = i
+    }
+    {for n in update-sequence do
+        {n.data.prepare-for-update}
+    }
+    
+    {if self.computation-aborting? then {return}}
+    
+    || NOTE: we might append nodes to the sequence while we're working
+    || through it, so don't use a pre-fixed range loop.
+    let counter:int = -1
+    {while true do
+        {inc counter}
+        {if counter < update-sequence.size then
+            def data = update-sequence[counter].data
+            {with data.in-update? = true do
+                {data.update}
+            }
+            {if self.computation-aborting? then {return}}
+         else
+            {break}
+        }
+    }
+    
+    || Clear any transient state out.
+    {for n in update-sequence do
+        {n.data.update-finished}
+    }
+    
+  }
+
+  || ======== ========= RecordSet management ======== ========
+  
+  || Currently only empty record sets can be attached.
+  {method package {attach-record-set record-set:RecordSet}:void
+    {type-switch record-set
+     case crs:CalculatedRecordSet do
+        {self.attached-record-sets.insert crs}
+    }
+  }
+
+  || Currently only empty record sets should be detached.
+  {method package {detach-record-set record-set:RecordSet}:void
+    {type-switch record-set
+     case crs:CalculatedRecordSet do
+        {self.attached-record-sets.remove crs, error-if-missing? = false}
+    }
+  }
+
+  || Set an event funnel on the given RecordSet.
+  {method package {watch-record-set
+                      record-set:RecordSet,
+                      observing-field:CalculatedField
+                  }:void
+    let (cf-set:{Set-of CalculatedField}, exists?:bool) =
+        {self.watched-record-sets.get-if-exists record-set}
+    {if not exists? then
+        def new-set = {new {Set-of CalculatedField}}
+        set cf-set = new-set
+        {self.watched-record-sets.set record-set, new-set}
+        {record-set.add-event-handler self.watcher-proc}
+    }
+    {cf-set.insert observing-field}
+  }
+
+  || Remove an event funnel from the given RecordSet.
+  {method package {unwatch-record-set
+                      record-set:RecordSet,
+                      observing-field:CalculatedField
+                  }:void
+    let (cf-set:{Set-of CalculatedField}, exists?:bool) =
+        {self.watched-record-sets.get-if-exists record-set}
+    {if exists? then
+        {cf-set.remove observing-field}
+        {if cf-set.empty? then
+            {record-set.remove-event-handler self.watcher-proc}
+        }
+     else
+        {error}
+    }
+  }
+
+  {method package {note-event-at-watched-record-set
+                      event:RecordSetEvent,
+                      record-set:RecordSet
+                  }:void
+    {if self.watched-record-sets.empty? or
+        self.in-computation?
+     then
+        {return}
+    }
+    
+    def (cf-set, exists?) = {self.watched-record-sets.get-if-exists record-set}
+    {if exists? then
+        {for cf in cf-set do
+            {cf.note-event-at-record-set event}
+        }
+    }
+  }
+
+  || Note that an attached RecordSet just set its batch-events? = false.
+  {method package {batch-released-at-record-set record-set:RecordSet}:void
+    {if self.computation-start-blocked? then
+        set self.computation-start-blocked? = false
+        {self.recompute}
+    }
+  }
+  
+  || ======== ========= CalculatedField management ======== ========
+
+  {method package {create-node
+                      new-field:CalculatedField
+                  }:{DefaultDirectedGraphNode-of CalculatedField}
+    def new-node = {self.digraph.create-node new-field}
+    {return new-node asa {DefaultDirectedGraphNode-of CalculatedField}}
+  }
+  
+  {method package {add-field new-field:CalculatedField}:void
+    || Check to make sure that an unknown RecordSet didn't sneak in.
+    {if-non-null rs = new-field.record-set then
+        {type-switch rs
+         case crs:CalculatedRecordSet do
+            {if not {self.attached-record-sets.member? crs} then
+                {error
+                    {hlmessage
+                        Unattached RecordSet attempted to add CalculatedField.
+                    }
+                }
+            }
+        }
+    }
+
+    set new-field.manager = self
+    set new-field.last-update-epoch = -1
+
+    {new-field.request-update}
+  }
+
+  || Remove the CF from our known lists.
+  || This should only be called by nodes that have already broken all edges.
+  {method package {remove-field field-to-remove:CalculatedField}:void
+    def n = field-to-remove.node
+    {if not field-to-remove.manager == self then
+        {error {hlmessage Removing node from incorrect manager.}}
+    }
+
+    {if n.connected? then
+        {error
+            {hlmessage Cannot remove a CalculatedField with edges remaining.}
+        }
+    }
+    
+    || Remove the node from all our repositories.
+    {self.update-requested-at.remove n, error-if-missing? = false}
+
+    || If we're still updating, but this node isn't on the list,
+    || then we can just keep going.
+    || Any edge change would already have been triggered above.
+    {if self.in-computation? and
+        not self.computation-aborting? and
+        self.working-sequence-valid?
+     then
+        || FIXME: this is slow. OTOH, people shouldn't be removing fields
+        || schedule for update during this phase anyway, so perhaps this
+        || is fine, or perhaps we should just recompute without checking.
+        {if {self.working-update-sequence.find n} >= 0 then
+            || We don't support removing from the active update list,
+            || so we'll have to abort.
+            {self.recompute}
+        }
+    }
+
+    || We don't need to recompute here because breaking edges should
+    || already have done that above.
+  }
+  
+  {method package {request-update-for-field field:CalculatedField}:void
+    
+    || We need to record this update request in all cases, because we
+    || might later abort, so just modifying the working list is not enough.
+    def node = field.node
+    {self.update-requested-at.insert node}
+
+    {self.recompute}
+    
+    || FIXME: the following code attempts to avoid unnecessary updates,
+    || but may be too error-prone and result in little savings anyway.
+||--    {if self.in-computation? then
+||--        {if field.last-update-epoch == self.epoch then
+||--            || A field that was already updated just asked for an update.
+||--            {if node.sink? then
+||--                || If it's a terminal node, and we already updated it,
+||--                || then it's OK to just update it again from predecessors
+||--                || that we know are good.
+||--                || FIXME: should probably append to the end of the list
+||--                || instead, but right now it's probably not safe to include
+||--                || the same node twice.
+||--                {with field.in-update? = true do
+||--                    {field.update}
+||--                }
+||--             else
+||--                || If no successor has been updated yet, but all successors
+||--                || are in the update list, then it's OK
+||--                || to update immediately and the continue on as normal.
+||--                let ok-to-continue?:bool = true
+||--                {for succ in node.successors do
+||--                    {if succ.data.last-update-epoch == self.epoch or
+||--                        || FIXME: this is an array scan, not a set lookup,
+||--                        || and may make this operation too expensive.
+||--                        {self.working-update-sequence.find succ} == -1
+||--                     then
+||--                        set ok-to-continue? = false
+||--                        {break}
+||--                    }
+||--                }
+||--                {if ok-to-continue? then
+||--                    {with field.in-update? = true do
+||--                        {field.update}
+||--                    }
+||--                 else
+||--                    || Have to abort.
+||--                    {self.recompute}
+||--                }
+||--            }
+||--            
+||--         elseif field.last-update-epoch < self.epoch then
+||--            let ok-to-continue?:bool = false
+||--            || Check to see if this node is already due to be updated.
+||--            {if {self.working-update-sequence.find node} == -1 then
+||--                || If we're not going to update it, but it's a sink, we
+||--                || can just append it to the end up the update list.
+||--                {if node.sink? then
+||--                    {self.working-update-sequence.append node}
+||--                    set ok-to-continue? = true
+||--                }
+||--             else
+||--                set ok-to-continue? = true
+||--            }
+||--            {if not ok-to-continue? then
+||--                {self.recompute}
+||--            }
+||--            
+||--         else
+||--            {error
+||--                {hlmessage "CalculatedField epoch is too large."}
+||--            }
+||--        }
+||--        
+||--     else
+||--        {self.recompute}
+||--    }
+  }
+
+}
+
+
+{doc-next 
+    {purpose 
+        A {docref LocalRecordSet} that can have its field attached to
+        {docref CalculatedRecordField}s for automatic updates.
+    }
+    {details
+        {ctext CalculatedRecordSet} adds to {docref LocalRecordSet}
+        the ability to generate automatic
+        updates to given record fields through, for example, the
+        {docref-abbr CalculatedRecordSet.set-computed-field} method.
+        Automatic updates are performed through
+        {docref CalculatedRecordField} objects, which can declare
+        other {docref CalculatedField}s as predecessors, thus allowing
+        updates to propagate along a series of fields, updating each field
+        as necessary from even a single change at the beginning of the series.
+        
+        Automatic update fields can be queried normally, but should only
+        be set from within their {docref-abbr CalculatedField.update-proc}s;
+        the actual value in the {docref CalculatedRecord} can still be
+        {docref-abbr Record.revert}ed or {docref-abbr Record.commit}ted
+        as normal.
+        
+        Automatic updates seldom happen immediately; due to the chains of
+        predecessors and successors, many updates may be required due to a
+        single value change, and all updates must be done in the proper order.
+        For this reason, updates are triggered by enqueued {docref Event}s,
+        specifically {docref CalculatedFieldEvent}s, so the event loop
+        must be allowed to run before an update can occur.
+    }
+}
+{define-class public open CalculatedRecordSet {inherits LocalRecordSet}
+
+  || Whether a computation cycle is running right now.
+  field package in-computation?:bool = false
+
+  field package last-update-epoch:int = -1
+  
+  || The computation cycle manager.
+  field private _manager:#CalculatedFieldManager = null
+  
+  {constructor public {default
+                          fields:RecordFields,
+                          modifiable?:bool = true,
+                          ...:Object
+                      }
+    {construct-super
+        fields,
+        modifiable? = modifiable?,
+        ...
+    }
+  }
+
+  || ======== LocalRecordSet overrides =========
+  
+  {method protected open {allocate-record}:CalculatedRecord
+    {return {CalculatedRecord self}}
+  }
+
+  {method public open {new-record}:CalculatedRecord
+    {self.ensure-modifiable}
+    {return {self.allocate-record}}
+  }
+
+  || ======== event handling ========
+
+  {setter public open {batch-events? b:bool}:void
+    || Can't set batch-events? when we're in a computation cycle.
+    {if self.in-computation? then
+        {throw
+            {CalculatedFieldException
+                {hlmessage Cannot set batch-events? during field update.}
+            }
+        }
+     else
+        set super.batch-events? = b
+        {if not b then
+            {self.manager.batch-released-at-record-set self}
+        }
+    }
+  }
+
+  {method public open {handle-event event:Event}:void
+    {super.handle-event event}
+    {type-switch event
+     case cfe:CalculatedFieldUpdateEvent do
+        {self.handle-computed-field-event cfe}
+    }
+  }
+  
+  {method private {handle-computed-field-event e:CalculatedFieldUpdateEvent}:void
+    {type-switch e
+
+     case e:CalculatedFieldUpdateStart do
+        {if self.in-computation? then
+            {throw
+                {CalculatedFieldException
+                    {hlmessage
+                        "CalculatedFieldUpdateStart received while updating."
+                    }
+                }
+            }
+         elseif self.batch-events? then
+            {throw
+                {CalculatedFieldException
+                    {hlmessage "Cannot begin field update with batch-events?."}
+                }
+            }
+         else
+            set self.batch-events? = true
+            set self.in-computation? = true
+            set self.last-update-epoch = e.epoch
+        }
+
+     case e:CalculatedFieldUpdateAborted do
+        {if e.epoch != self.last-update-epoch then
+            {throw
+                {CalculatedFieldUpdateEpochException
+                    {hlmessage
+                        "Invalid event epoch %d (expected %d).",
+                        e.epoch,
+                        self.last-update-epoch
+                    }
+                }
+            }
+        }
+        set self.in-computation? = false
+        set self.batch-events? = false
+        
+     case e:CalculatedFieldUpdateFinished do
+        {if e.epoch != self.last-update-epoch then
+            {throw
+                {CalculatedFieldUpdateEpochException
+                    {hlmessage
+                        "Invalid event epoch %d (expected %d).",
+                        e.epoch,
+                        self.last-update-epoch
+                    }
+                }
+            }
+        }
+        set self.in-computation? = false
+        set self.batch-events? = false
+
+    }
+  }
+  
+  || ======== computed field management ========
+
+  || Get the CalculatedFieldManager, setting it if necessary.
+  || Note this it's currently a singleton, despite being a field as well.
+  {getter package {manager}:CalculatedFieldManager
+    {if-non-null manager = self._manager then
+        {return manager}
+     else
+        def new-manager = {CalculatedFieldManager}
+        {new-manager.attach-record-set self}
+        set self._manager = new-manager
+        {return new-manager}
+    }
+  }
+
+  {doc-next
+    {purpose
+        Set a computed field, creating one if necessary, or altering an
+        existing one.
+    }
+    {parameter record,
+        The record on which to set automatic updates.
+    }
+    {parameter record-field,
+        The {docref RecordField} in the {param record} on which to
+        set automatic updates.
+    }
+    {parameter update-proc,
+        See {docref CalculatedField.update-proc}.
+    }
+    {parameter weak-predecessors?,
+        See {docref CalculatedField.weak-predecessors?}.
+    }
+    {parameter ...,
+        Predecessors to the new or overwritten {docref CalculatedRecordField}.
+    }
+    {return-vals
+        The {docref CalculatedRecordField} modified or generated.
+    }
+  }
+  {method public open {set-computed-field
+                          record:CalculatedRecord,
+                          record-field:RecordField,
+                          update-proc:#{proc-type {CalculatedField}:void} =
+                              null,
+                          weak-predecessors?:bool = false,
+                          ...:CalculatedField
+                      }:CalculatedRecordField
+    {self.ensure-modifiable}
+    {self.ensure-attached record}
+    def field-index = {self.fields.get-index record-field.name} 
+    def ret-field =
+        {record.set-computed-field-by-index
+            field-index,
+            update-proc = update-proc,
+            weak-predecessors? = weak-predecessors?,
+            ...
+        }
+    {return ret-field}
+  }
+
+  {doc-next
+    {purpose
+        Get the {docref CalculatedRecordField} associated with the given
+        record and field.
+    }
+    {parameter record,
+        The record of interest.
+    }
+    {parameter record-field,
+        The {docref RecordField} in the {param record} of interest.
+    }
+    {return-vals
+        The {docref CalculatedRecordField} at the given intersection,
+        or {ctext null} if none exists.
+    }
+  }
+  {method public open {get-computed-field
+                          record:CalculatedRecord,
+                          record-field:RecordField
+                      }:#CalculatedRecordField
+    {self.ensure-attached record}
+    def field-index = {self.fields.get-index record-field.name}
+    {if field-index >= 0 then
+        {return {record.get-computed-field-by-index field-index}}
+     else
+        {error {hlmessage "RecordField %s not found."}, record-field.name}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Get the {docref CalculatedRecordField} associated with the given
+        record and field, or create one if none currently exists.
+    }
+    {parameter record,
+        The record of interest.
+    }
+    {parameter record-field,
+        The {docref RecordField} in the {param record} of interest.
+    }
+    {details
+        If a new {docref CalculatedRecordField} is created, it will have
+        default properties: no {docref-abbr CalculatedField.predecessors},
+        a null {docref-abbr CalculatedField.update-proc}, etc.
+    }
+    {return-vals
+        The {docref CalculatedRecordField} found or created, and
+        a {docref bool} indicating whether it was created.
+    }
+  }
+  {method public open {get-or-create-computed-field
+                          record:CalculatedRecord,
+                          record-field:RecordField
+                      }:(computed-field:CalculatedRecordField, created?:bool)
+    {self.ensure-attached record}
+    def field-index = {self.fields.get-index record-field.name}
+    {if field-index >= 0 then
+        def (cf, created?) =
+            {record.get-or-create-computed-field-by-index field-index}
+        {return cf, created?}
+     else
+        {error {hlmessage "RecordField %s not found."}, record-field.name}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Request an update for all {docref CalculatedRecordField}s attached
+        to this record set.
+    }
+    {notes
+        It should not generally be necessary to call this method.
+        See {docref ComputedField.request-update}.
+    }
+  }
+  {method public open {request-calculated-fields-update}:void
+    {for rec in self do
+        {(rec asa CalculatedRecord).request-calculated-fields-update}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Disconnect all {docref CalculatedRecordField}s attached to records
+        within this set.
+    }
+    {details
+        This method will call {docref CalculatedField.disconnect} on all
+        associated {docref CalculatedRecordField}s. The record set itself
+        can still be used, and new {docref CalculatedRecordField}s created,
+        but existing {docref CalculatedField}s will be rendered useless.
+    }
+  }
+  {method public open {disconnect-all-fields}:void
+    {for rec in self do
+        {(rec asa CalculatedRecord).remove-all-computed-fields force? = true}
+    }
+    {if-non-null manager = self._manager then
+        {manager.detach-record-set self}
+    }
+    set self._manager = null
+    
+    || FIXME: unwatch all filter computed fields that point to this RS?
+  }
+}
+
+
+{doc-next 
+    {purpose 
+        A {docref Record} that can have its values attached to
+        {docref CalculatedRecordField}s for automatic updates.
+    }
+}
+{define-class public open CalculatedRecord {inherits BasicRecord}
+
+  || The nodes (with CalculatedFields) present in self.
+  field private _computed-fields:#{FastArray-of #CalculatedRecordField}
+  
+  {doc-next 
+    {purpose 
+        Construct a new {ctext CalculatedRecord}.
+    }
+    {parameter record-set,
+        The {docref CalculatedRecordSet} this record is to be used with.
+    }
+    {details
+        Should not be called directly by applications.
+        Call {docref RecordSet.new-record} instead.
+        
+        This constructor will allocate the initial 
+        storage needed for the record, setting all 
+        fields to their default values.
+    }
+  }
+  {constructor public {default record-set:CalculatedRecordSet}
+    {construct-super record-set}
+  }
+
+  || ======== COMPUTEDFIELD MANAGEMENT ========
+  
+  || Return the node array, creating it if necessary.
+  {getter private {non-null-computed-fields}:{FastArray-of
+                                                 #CalculatedRecordField}
+    {if self._computed-fields == null then
+        || FIXME: It would be nice to avoid checking the RecordSet on the
+        || required array size but we can't access ._data.
+        || This could be removed if this code were migrated into
+        || the data-access package itself.
+        {if-non-null rs = self.record-set then
+            set self._computed-fields =
+                {{FastArray-of #CalculatedRecordField}.from-size
+                    rs.fields.size,
+                    null
+                }
+         else
+            {error
+                {hlmessage
+                    "Attempted to perform operation on detached Record."  
+                }
+            }
+        }
+    }
+    {return {non-null self._computed-fields}}
+  }
+
+  {doc-next
+    {purpose
+        Returns the {docref CalculatedRecordField} attached at the given
+        {docref RecordField} index, or {ctext null}.
+    }
+    {parameter field-index,
+        The index of the {docref RecordField} of interest.
+    }
+  }
+  {method public open {get-computed-field-by-index
+                          field-index:int
+                      }:#CalculatedRecordField
+    {if-non-null computed-fields = self._computed-fields then
+        {return computed-fields[field-index]}
+    }
+    {return null}
+  }
+
+  || Get the node for field X, or if non exists, create a new one there.
+  {doc-next
+    {purpose
+        Returns the {docref CalculatedRecordField} attached at the given
+        {docref RecordField} index, or creates and attaches a new one
+        if none currently exists.
+    }
+    {parameter field-index,
+        The index of the {docref RecordField} of interest.
+    }
+    {return-vals
+        The {docref CalculatedRecordField} found or created, and
+        a {docref bool} indicating whether it was created.
+    }    
+  }
+  {method public open {get-or-create-computed-field-by-index
+                          field-index:int
+                      }:(computed-field:CalculatedRecordField, created?:bool)
+    {if-non-null cf = {self.get-computed-field-by-index field-index} then
+        {return cf, false}
+    }
+    {if-non-null rs = self.record-set asa #CalculatedRecordSet then
+        || HACK: attach parent RS:
+        def manager = rs.manager
+        def new-field =
+            {CalculatedRecordField
+                rs,
+                self,
+                {rs.fields.get-by-index field-index}
+            }
+        
+        set self.non-null-computed-fields[field-index] = new-field
+        {return new-field, true}
+     else
+        {error
+            {hlmessage
+                "Attempted to perform operation on detached Record."
+            }
+        }
+    }
+  }
+
+  || Create or update a node in our tracking array.
+  {doc-next
+    {purpose
+        Set a computed field, creating one if necessary, or altering an
+        existing one.
+    }
+    {parameter field-index,
+        The index of the {docref RecordField} of interest.
+    }
+    {parameter update-proc,
+        See {docref CalculatedField.update-proc}.
+    }
+    {parameter weak-predecessors?,
+        See {docref CalculatedField.weak-predecessors?}.
+    }
+    {parameter ...,
+        Predecessors to the new or overwritten {docref CalculatedRecordField}.
+    }
+    {return-vals
+        The {docref CalculatedRecordField} modified or generated.
+    }
+  }
+  {method public open {set-computed-field-by-index
+                          field-index:int,
+                          update-proc:#{proc-type {CalculatedField}:void} =
+                              null,
+                          weak-predecessors?:bool = false,
+                          ...:CalculatedField
+                      }:CalculatedRecordField
+
+    def rs = 
+        {if-non-null rs = self.record-set asa #CalculatedRecordSet then
+            rs
+         else
+            {error
+                {hlmessage
+                    "Attempted to perform operation on detached Record."  
+                }
+            }
+        }
+    
+    let return-field:#CalculatedRecordField = null
+    let update-preds?:bool = false
+    
+    {if-non-null cf = {self.get-computed-field-by-index field-index} then
+        || If we have an existing node, update it with the new properties.
+        {cf.clear-predecessors}
+        {for pred-field in ... do
+            {cf.add-predecessor pred-field}
+        }
+
+        || Replace the various parts of the existing data.
+        set cf.update-proc = update-proc
+        set cf.weak-predecessors? = weak-predecessors?
+        set return-field = cf
+        
+     else
+        || We didn't have an existing node, so create and set a new node.
+        def computed-fields = self.non-null-computed-fields
+        || HACK: attach parent RS:
+        def manager = rs.manager
+        def new-field =
+            {CalculatedRecordField
+                rs,
+                self,
+                {rs.fields.get-by-index field-index},
+                update-proc = update-proc,
+                weak-predecessors? = weak-predecessors?
+            }
+        {for pred-field in ... do
+            {new-field.add-predecessor pred-field}
+        }
+        set computed-fields[field-index] = new-field
+        set return-field = new-field
+    }
+
+    {if-non-null return-field then
+        {return return-field}
+    }
+
+    {unreachable}
+    
+  }
+
+  || Disconnect a node in self, which will have side effect of removing
+  || the node from our tracking array.
+  || Calls here are probably in response to a Record deletion,
+  || so don't query our RecordSet here, as it may have already become null.
+  ||
+  || force? == skip has-successor/weak-predecessor? checks.
+  {method package {remove-computed-field-by-index
+                      field-index:int,
+                      force?:bool = false
+                  }:void
+    {if-non-null computed-fields = self._computed-fields then
+        {if-non-null cf = computed-fields[field-index] then
+            {cf.disconnect force? = force?}
+        }
+    }
+  }
+
+  || Disconnect all nodes in self.
+  {method package {remove-all-computed-fields force?:bool = false}:void
+    {if-non-null computed-fields = self._computed-fields then
+        {for field-index = 0 below computed-fields.size do
+            {if-non-null cf = computed-fields[field-index] then
+                {cf.disconnect force? = force?}
+            }
+        }
+    }
+  }
+
+  || Called from an attached CalculatedField itself to signal a disconnect.
+  || The CF is probably already dead, so don't call any of its methods,
+  || even to query the RecordField, just look for it and remove it.
+  {method package {note-field-disconnected cf:CalculatedRecordField}:void
+    {if-non-null computed-fields = self._computed-fields then
+        def index = {computed-fields.find cf}
+        {if index >= 0 then
+            set computed-fields[index] = null
+        }
+    }
+  }
+
+  {doc-next
+    {purpose
+        Request an update for all {docref CalculatedRecordField}s attached
+        to this record.
+    }
+    {notes
+        It should not generally be necessary to call this method.
+        See {docref ComputedField.request-update}.
+    }
+  }
+  {method public open {request-calculated-fields-update}:void
+    {if-non-null computed-fields = self._computed-fields then
+        {for field-index = 0 below computed-fields.size do
+            {if-non-null cf = computed-fields[field-index] then
+                {cf.request-update}
+            }
+        }
+    }    
+  }
+  
+  || ======== BasicRecord OVERRIDES ========
+  
+  {method public open {internal-revert}:void
+    || Note that this method is only called when the Record is actually
+    || reverted, so we don't need to check RecordState here.
+    ||
+    || TODO: we could potentially reduce the number of updates required in
+    || the case of a Record with nodes that don't actually change value
+    || because of this, but it may be rare enough that we don't need to.
+    {super.internal-revert}
+    {if-non-null computed-fields = self._computed-fields then
+        {for cf in computed-fields do
+            {if-non-null cf then
+                {cf.note-value-changed}
+            }
+        }
+    }
+  }
+
+  {method public open {internal-set-value 
+                          field-index:int,
+                          value:any,
+                          for-init?:bool = false
+                      }:void
+    {super.internal-set-value field-index, value, for-init? = for-init?}
+    || Notify any attached CalculatedField that its base value changed.
+    {if-non-null cf = {self.get-computed-field-by-index field-index} then
+        {cf.note-value-changed}
+    }
+  }
+
+  {method public open {internal-set-state state:RecordState}:void
+    {super.internal-set-state state}
+    || When we detach, disconnect all attached CalculatedFields.
+    {if state == RecordState.detached then
+        {if-non-null computed-fields = self._computed-fields then
+            {for cf in computed-fields do
+                {if-non-null cf then
+                    let force?:bool = true
+                    {for succ in cf.node.successors do
+                        def sdata = succ.data
+                        {if not sdata.weak-predecessors? and
+                            sdata.record != self
+                         then
+                            set force? = false
+                            {break}
+                        }
+                    }
+                    || TODO: if we KNOW we're about to blow up, then maybe
+                    || we should error out here before doing any work, to
+                    || avoid leaving the node partially disconnected.
+                    || But it's cheaper/easier to just call out as below.
+                    {cf.disconnect force? = force?}
+                }
+            }
+        }
+    }
+  }
+
+}
+
