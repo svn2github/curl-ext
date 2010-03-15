@@ -74,7 +74,7 @@ Fields
         1}. On any record, the difference between _ln and _rn divided by
         two and rounded down gives the number of nodes below that node
         in the hierarchy. You can select a node and it's children by
-        selecting for ln greater than the node's _ln and _rn less than
+        selecting for _ln greater than the node's _ln and _rn less than
         the nodes _rn.
 
         The {param _expand?} column indicates if a node is expanded or
@@ -86,12 +86,19 @@ Fields
 {define-class public open RecordSetTreeModel {inherits Observable}
 
   {doc-next
-    {purpose The name of the unique id field in {docref
+    {purpose 
+        The name of the unique id field in {docref
         RecordSetTreeModel.source}.
     }
   }
   field public-get protected-set id-field:String = "_id"
 
+  {doc-next
+    {purpose
+        The fields used to support display and manipulatoin of the
+        tree.
+    }
+  }
   def public tree-fields =
       {new {Array-of RecordField},
         {RecordField "_pid", ||""
@@ -131,6 +138,8 @@ Fields
       }
 
 
+  ||FIXME: Can't use application id-field yet because don't know how to get
+  || a new one.
   {doc-next
     {purpose The fields in the a {docref RecordSet} used to store the tree.}
     {details
@@ -142,23 +151,22 @@ Fields
         application.
 
         In the simplest case, pass in the fields required by the
-        application (including the id-field, if it already exists in
-        your data model). This will result in a list of fields that
-        includes standard tree fields, followed by the application
-        specific fields. If {param id-field} is not found in the rest
-        args, it will be the first field.
+        application. This will result in a list of fields that
+        includes the the standard tree fields followed by application
+        specific fields.
+
+        If the application already contains a unique id field,
+        and you give the name of this field as {param id-field} then
+        the {docref RecordSetTreeModel} will not add another id field.
 
         If you need complete control over the order of the fields,
         pass in a complete set of fields, including the standard tree
         fields and a field with a name that matches {param id-field}.
-
-        If you have an id field but want the other standard fields,
-        just be sure {param id-field} exists in the rest args. In this
-        case, the custom fields are first and the standard fields
-        appear at the end.
-
     }
-    {parameter id-field, The name of the unique id field.}
+    {parameter id-field,
+        The name of the unique id field in the record. Use this if the 
+        application already contains a unique id field.
+    }
     {parameter ..., additional field definitions for the {docref RecordSet}
         that stores the tree data.
     }
@@ -198,8 +206,8 @@ Fields
          else
             || User has id-field but wants the other standard fields
             {RecordFields
-                {splice ...},
-                {splice RecordSetTreeModel.tree-fields}
+                {splice RecordSetTreeModel.tree-fields},
+                {splice ...}
             }
         }
       }
@@ -222,17 +230,19 @@ Fields
   field private hidden-nodes:{Set-of int} = {new {Set-of int}}
 
   {doc-next
-    {purpose The unfiltered tree records in canonical order, used
-        for implementing commands that rearrange the tree nodes.
+    {purpose
+        The unfiltered tree records in canonical order, used for
+        implementing commands that rearrange the tree nodes.
     }
   }
   field public-get protected-set ordered-records:RecordView =
       {uninitialized-value-for-type RecordView}
 
   {doc-next
-    {purpose The tree records with hidden nodes filtered out. These
-        are the records visible in the {docref TreeGrid} used to
-        display the tree.
+    {purpose 
+        The tree records with hidden nodes filtered out. These are the
+        records visible in the {docref TreeGrid} used to display the
+        tree.
     }
   }
   field public-get protected-set  display-records:RecordView =
@@ -247,13 +257,18 @@ Fields
   field protected _refresh-requested?:bool = false
 
   {doc-next
-    {purpose Initialize a {docref RecordSetTreeModel} with data from
+    {purpose
+        Initialize a {docref RecordSetTreeModel} with data from
         a {docref RecordSet}.
     }
     {details
         The {param source} records must have at least the fields given
         by {docref RecordSetTreeModel.tree-fields}. Any number of
         additional fields can be present.
+    }
+    {parameter id-field,
+        The name of the unique id field in the record. Use this if the 
+        application already contains a unique id field.
     }
     {parameter source, The {docref RecordSet} containing the data representing
         the tree.
@@ -269,6 +284,38 @@ Fields
     {self.init-views}
   }
 
+  {doc-next
+    {purpose
+        Construct a {docref RecordSetTreeModel} given the application
+        fielda and an optional location.
+    }
+    {details
+        This constructor will use a {docref CsvRecordSetB} to store
+        the tree records. If {param url} is not null, the data will be
+        read from the specified location. If it is null, the tree data
+        will be in-memory only.
+    }
+    {parameter url, The location where the tree data is stored.}
+    {parameter id-field,
+        The name of the unique id field in the record. Use this if the 
+        application already contains a unique id field.
+    }
+    {parameter character-encoding, The character encoding used for the
+        data file.
+    }
+    {parameter backup?, If true a backup of the csv file will be made
+        the first time the data is committed to disk.
+    }    
+    {parameter ..., Any number of {docref EventHandler} and/or
+        {docref RecordField}s.
+
+        Event handlers are for {docref RecordSetEvent}s that are fired
+        at the {docref RecordSet} used to store the tree model.
+
+        Record fields are used to construct the underlying {docref 
+        RecordSet}.
+    }
+  }
   {constructor public {from-fields
                           url:#Url,
                           id-field:String = "_id",
@@ -310,6 +357,32 @@ Fields
     {self.init-views}
   }
 
+  {doc-next
+    {purpose
+        Construct a {docref RecordSetTreeModel} given the application
+        fielda and an optional location.
+    }
+    {details
+        This constructor will use a {docref CsvRecordSetB} to store
+        the tree records. If {param url} is not null, the data will be
+        read from the specified location. If it is null, the tree data
+        will be in-memory only.
+    }
+    {parameter url, The location where the tree data is stored.}
+    {parameter id-field,
+        The name of the unique id field in the record. Use this if the 
+        application already contains a unique id field.
+    }
+    {parameter ..., Any number of {docref EventHandler} and/or
+        {docref RecordField}s.
+
+        Event handlers are for {docref RecordSetEvent}s that are fired
+        at the {docref RecordSet} used to store the tree model.
+
+        Record fields are used to construct the underlying {docref 
+        RecordSet}.
+    }
+  }
   {constructor public {from-RecordSet
                           rs:RecordSet,
                           groups:StringArray,
@@ -386,10 +459,15 @@ Fields
   }
 
   {doc-next
-    {purpose Initialize a {docref RecordSetTreeModel} using a 
+    {purpose
+        Initialize a {docref RecordSetTreeModel} using a
         {docref CsvRecordSetB} read from a file.
     }
     {parameter url, The location of the file of tree data, in CSV format.
+    }
+    {parameter id-field,
+        The name of the unique id field in the record. Use this if the 
+        application already contains a unique id field.
     }
     {parameter fields, The fields in the data file.
     }
@@ -451,12 +529,18 @@ Fields
   }
 
   {doc-next
-    {purpose Save the underlying data to the specified location. All
-        future reading and writing will be to this location.
+    {purpose
+        Save the underlying data to the specified location. All future
+        reading and writing will be to this location.
+    }
+    {details
+        This will throw a {docref CastException} if {docref
+        RecordSetTreeModel.source} is not a {docref CsvRecordSetB}.
     }
   }
   {method public open {save-as location:Url}:void
     ||FIXME: Will this work with any EventManagingRecordSet?
+    || maybe this does not belong here.
     {(self.source asa CsvRecordSetB).save-as location}
   }
 
@@ -465,8 +549,9 @@ Fields
   }
 
   {doc-next
-    {purpose Return the depth of the node represented by {param r}.
-        Top level nodes have depth 0.
+    {purpose
+        Return the depth of the node represented by {param r}.  Top
+        level nodes have depth 0.
     }
   }
   {method public open {get-depth r:Record}:int
@@ -512,8 +597,9 @@ Fields
   }
 
   {doc-next
-    {purpose Request a refresh, which will recompute the data columns
-        used to represent the tree structure.
+    {purpose
+        Request a refresh, which will recompute the data columns used
+        to represent the tree structure.
     }
     {details 
         The calculations run after the current event has been handled,
@@ -535,8 +621,9 @@ Fields
   }
 
   {doc-next
-    {purpose Given a node, return the number of records that encompass
-        all of its subsidiary nodes.
+    {purpose
+        Given a node, return the number of records that encompass all
+        of its subsidiary nodes.
     }
     {parameter r, The record that represents a tree node.}
   }
@@ -546,7 +633,8 @@ Fields
   }
 
   {doc-next
-    {purpose Recalculate the columns that are derived from the hierarchy
+    {purpose
+        Recalculate the columns that are derived from the hierarchy
         defined by the parent relation.
     }
   }
@@ -604,8 +692,9 @@ Fields
   }
 
   {doc-next
-    {purpose Given a record {param r} that represents a tree node,
-        return the records that are beneath it in the heirarchy.
+    {purpose
+        Given a record {param r} that represents a tree node, return
+        the records that are beneath it in the heirarchy.
     }
   }
   {method public open {node-and-children r:Record}:{Array-of Record}
@@ -624,6 +713,18 @@ Fields
 
 }
 
+{doc-next
+    {purpose
+        A specialized sort for use in a {docref TreeGrid}.
+    }
+    {details
+        A tree sort when all sibling nodes are sorted, at every
+        level of the tree. This means that comparing two records
+        may require comparing parent records, at least up to a
+        common parent.
+    }
+}
+||FIXME: add doc strings once this settles down
 {define-class public open TreeRecordSort {inherits RecordSort}
 
   field public-get protected-set sort-field:String
@@ -690,7 +791,7 @@ Fields
     }
     {with src.batch-events? = true do
         {for r:Record key ri in recs do
-            set r["_ord"] = ri + 1000
+            set r["_ord"] = ri + 1000 ||DEBUG: add 1000 to make it obvious
         }
     }
     set self.busy? = false
@@ -788,24 +889,36 @@ Fields
 || TreeGrid Commands
 || ------------------
 
+{doc-next
+    {purpose Base class for commands that operate on a {docref TreeGrid}.}
+}
 {define-class abstract public open TreeGridCommand
   {inherits RecordSetDisplayCommand}
 
   {doc-next
-    {purpose The {docref TreeGrid} that contains this {docref Command}
-        in it's {docref CommandContext}.
+    {purpose
+        The {docref TreeGrid} that contains this {docref Command} in
+        it's {docref CommandContext}.
     }
   }
   field public-get protected-set grid:TreeGrid
 
+  {doc-next
+    {purpose
+        A getter to return the {docref RecordSetTreeModel} associated
+        with this command.
+    }
+  }
   {getter public open {model}:RecordSetTreeModel
     {return self.grid.model}
   }
 
-  {setter public open {sort value:#RecordSort}:void
-    set super.sort = value
+  {doc-next
+    {purpose
+        Construct a {docref TreeGridCommand} by giving it a name
+        and a {docref TreeGrid} to operate on.
+    }
   }
-
   {constructor public {default
                           name:String,
                           grid:TreeGrid
@@ -814,7 +927,12 @@ Fields
     {construct-super name, grid}
   }
 
-  field public constant pos-field:String = "ord" ||""
+  {doc-next
+    {purpose The field that determines the order of records in a {docref
+        TreeGrid}.
+    }
+  }
+  field public constant pos-field:String = "_ord" ||""
 
   {doc-next
     {purpose The insertion point of the selection in the current cell.}
@@ -865,6 +983,15 @@ Fields
     }
   }
 
+  {doc-next
+    {purpose Restore the focus to the current cell.}
+    {details
+        This method will attempt to restore keyboard focus to the current
+        cell, with the same selection as before, after one or several nodes
+        have been moved by a command.
+    }
+    {parameter crid, The id of the current record.}
+  }
   {method public open {refocus-current-cell crid:int}:void
     || If the cell to focus on is new, don't try to restore selection
     {if-non-null cr = self.current-record then
@@ -917,6 +1044,11 @@ Fields
     }
   }
 
+  {doc-next
+    {purpose
+        Change the current record to the record with the specified {param id}.
+    }
+  }
   {method public open {focus-record id:int}:void
 
     {after 0s do
@@ -929,10 +1061,23 @@ Fields
     }
   }
 
+  {doc-next
+    {purpose
+        Return the current record from the {docref TreeGrid}
+        associated with this command.
+    }
+  }
   {getter public open {current-record}:#Record
     {return self.record-display.current-record}
   }
 
+  {doc-next
+    {purpose
+        Given an "ordered record index", that is an index in {docref
+        TreeGrid.ordered-records}, return the physical record index
+        (an index into the source RecordSet).
+    }
+  }
   {method public open {map-ori-to-cri ori:int}:int
     def id = self.ordered-records[ori][self.model.id-field] asa int ||""
     {for r:Record key ri in self.record-display.records do
@@ -943,6 +1088,13 @@ Fields
     {return -1}
   }
 
+  {doc-next
+    {purpose
+        Given a physical record index (an index into the source
+        RecordSet), return an "ordered record index", that is an index
+        in {docref TreeGrid.ordered-records}.
+    }
+  }
   {method public open {map-cri-to-ori cri:int}:int
     def id = self.record-display.records[cri][self.model.id-field] asa int ||""
     {for r:Record key ri in self.model.ordered-records do
@@ -970,11 +1122,22 @@ Fields
 ||--    {return (trv.source asa RecordSetTreeModel).source}
 ||--  }
 
+  {doc-next
+    {purpose
+        Return the {docref RecordSetTreeModel.ordered-records} from the
+        {docref TreeGrid} that this command is operating on.
+    }
+  }
   {getter public open {ordered-records}:RecordView
     {return self.model.ordered-records}
   }
 
-  || Count the number of records that represent the node at ni and its children
+  {doc-next
+    {purpose
+        Count the number of records that represent the node at ni and
+        its children.
+    }
+  }
   {method public open {count-node-and-children ni:int}:int
     def orecs = self.ordered-records
     def count = 
@@ -982,7 +1145,11 @@ Fields
     {return count}
   }
 
-  || Find the parent of the specified dept of the node at node-index
+  {doc-next
+    {purpose
+        Find the parent of the specified dept of the node at node-index.
+    }
+  }
   {method public open {find-parent-node ni:int, level:int}:int
     def orecs = self.ordered-records
     {if ni < orecs.size and ni >= 0 then
@@ -1003,16 +1170,29 @@ Fields
 
 }
 
-|| Indent: Make the parent of the current node the node above
+{doc-next
+    {purpose
+        A {docref TreeGridCommand} that will indent the current node by
+        one level. This command is disabled if the node above is not
+        a sibling in the tree.
+    }
+}
 {define-class public open IndentNodeCommand {inherits TreeGridCommand}
 
   {doc-next
-    {purpose Construct an {ctext IndentNodeCommand}}
+    {purpose Construct an {ctext IndentNodeCommand} with the name
+        {ctext "Tree.indent-node"}.
+    }
   }
   {constructor public {default grid:TreeGrid}
     {construct-super "Tree.indent-node", grid} ||""
   }
   
+  {doc-next
+    {purpose
+        The command is enabled if the current node has a prior sibling.
+    }
+  }
   {getter public open {enabled?}:bool
     || You can indent as long as there is a sibling above you
     {if-non-null cr = self.current-record then
@@ -1027,6 +1207,11 @@ Fields
     {return false}
   }
 
+  {doc-next
+    {purpose
+        Indent the current node by one level.
+    }
+  }
   {method protected open {execute}:void
     {if-non-null cr = self.record-display.current-record then
         def cri = self.record-display.current-index
@@ -1055,16 +1240,29 @@ Fields
   }
 }
 
-|| Undent: Make the parent of the current node the same as the grandparent
+{doc-next
+    {purpose
+        A {docref TreeGridCommand} that will un-indent the current
+        node by one level. This command is disabled if the node is
+        a root node.
+    }
+}
 {define-class public open UndentNodeCommand {inherits TreeGridCommand}
 
   {doc-next
-    {purpose Construct an {ctext UndentNodeCommand}}
+    {purpose Construct an {ctext UndentNodeCommand} with the name
+        {ctext "Tree.unindent-node"}.
+    }
   }
   {constructor public {default grid:TreeGrid}
     {construct-super "Tree.unindent-node", grid} ||""
   }
   
+  {doc-next
+    {purpose
+        The command is enabled as long as the current node has a parent.
+    }
+  }
   {getter public open {enabled?}:bool
     || You can unindent as long as you have a parent
     {if-non-null cr = self.record-display.current-record then
@@ -1101,18 +1299,30 @@ Fields
   }
 }
 
-|| Delete the current node, including children
+{doc-next
+    {purpose
+        Delete the current node, including children.
+    }
+}
 {define-class public open DeleteNodeCommand {inherits TreeGridCommand}
 
   field public warn?:bool = false
 
   {doc-next
-    {purpose Construct an {ctext DeleteNodeCommand}}
+    {purpose Construct an {ctext DeleteNodeCommand} with the name
+        {ctext "Tree.delete-node"}.
+    }
   }
   {constructor public {default grid:TreeGrid}
     {construct-super "Tree.delete-node", grid} ||""
   }
   
+  {doc-next
+    {purpose
+        The current node can always be deleted, so return true if
+        there is a current node.
+    }
+  }
   {getter public open {enabled?}:bool
     || You can indent as long there is a current node.
     {if-non-null cr = self.record-display.current-record then
@@ -1121,6 +1331,11 @@ Fields
     {return false}
   }
 
+  {doc-next
+    {purpose
+        Delete the current node (and children).
+    }
+  }
   {method protected open {execute}:void
     {if-non-null cr = self.current-record then
         def cri = self.record-display.current-index
@@ -1159,11 +1374,18 @@ Fields
 }
 
 
-|| Create a new node as a sibling to the current node.
+{doc-next
+    {purpose
+        A {docref TreeGridCommand} that will create a new node as a sibling
+        of the current node.
+    }
+}
 {define-class public open AddNodeCommand {inherits TreeGridCommand}
 
   {doc-next
-    {purpose Construct an {ctext AddNodeCommand}}
+    {purpose Construct an {ctext AddNodeCommand} with the name
+        {ctext "Tree.add-node"}.
+    }
   }
   {constructor public {default
                           grid:TreeGrid,
@@ -1172,14 +1394,19 @@ Fields
     {construct-super name, grid}
   }
   
+  {doc-next
+    {purpose Return true if there is a current node. }
+  }
   {getter public open {enabled?}:bool
-    || You can indent as long as you have a parent
     {if-non-null cr = self.record-display.current-record then
         {return true}
     }
     {return true}
   }
 
+  {doc-next
+    {purpose Add a sibling to the current node.}
+  }
   {method protected open {execute}:void
     {if self.model.ordered-records.size == 0 then
         || First node
@@ -1212,11 +1439,17 @@ Fields
   }
 }
 
-|| Create a new node with current node as it's parent
+{doc-next
+    {purpose
+        Create a new node with current node as it's parent
+    }
+}
 {define-class public open AddChildNodeCommand {inherits TreeGridCommand}
 
   {doc-next
-    {purpose Construct an {ctext AddChildNodeCommand}}
+    {purpose Construct an {ctext AddChildNodeCommand} with the name
+        {ctext "Tree.add-child-node"}
+    }
   }
   {constructor public {default 
                           grid:TreeGrid,
@@ -1225,6 +1458,11 @@ Fields
     {construct-super name, grid}
   }
   
+  {doc-next
+    {purpose
+        The command is enabled as long as there is a current node.
+    }
+  }
   {getter public open {enabled?}:bool
     || You can do this as long as there is a current node.
     {if-non-null cr = self.record-display.current-record then
@@ -1233,6 +1471,11 @@ Fields
     {return false}
   }
 
+  {doc-next
+    {purpose
+        Create a new node with current node as it's parent
+    }
+  }
   {method protected open {execute}:void
     {if-non-null cr = self.record-display.current-record then
         def ocri = {self.map-cri-to-ori self.record-display.current-index}
@@ -1254,17 +1497,26 @@ Fields
   }
 }
 
-|| MoveUp: Move the current node up
+{doc-next
+    {purpose Exchange this node with it's prior sibling, if any.}
+}
 {define-class public open MoveNodeUpCommand {inherits TreeGridCommand}
 
   {doc-next
-    {purpose Construct a {ctext MoveNodeUpCommand}}
-    {details The name of this command is "Tree.move-node-up"} ||""
+    {purpose Construct a {ctext MoveNodeUpCommand} with the name
+        {ctext "Tree.move-node-up"}.
+    }
   }
   {constructor public {default grid:TreeGrid}
     {construct-super "Tree.move-node-up", grid} ||""
   }
   
+  {doc-next
+    {purpose
+        The command is enabled as long as the current node has a sibling
+        before it.
+    }
+  }
   {getter public open {enabled?}:bool
     || You can move up as long as there is a sibling above
     {if-non-null cr = self.current-record then
@@ -1278,6 +1530,9 @@ Fields
     {return false}
   }
  
+  {doc-next
+    {purpose Exchange this node with it's prior sibling.}
+  }
   {method protected open {execute}:void
     {if-non-null cr = self.current-record then
         def ocri = {self.map-cri-to-ori self.record-display.current-index}
@@ -1306,17 +1561,26 @@ Fields
   }
 }
 
-|| MoveDown: Move the current node down
+{doc-next
+    {purpose Exchange this node with it's next sibling, if any.}
+}
 {define-class public open MoveNodeDownCommand {inherits TreeGridCommand}
 
   {doc-next
-    {purpose Construct a {ctext MoveNodeDownCommand}}
-    {details The name of this command is "Tree.move-node-down"} ||""
+    {purpose Construct a {ctext MoveNodeDownCommand} with the name
+        {ctext "Tree.move-node-doen"}.
+    }
   }
   {constructor public {default grid:TreeGrid}
     {construct-super "Tree.move-node-down", grid} ||""
   }
   
+  {doc-next
+    {purpose
+        The command is enabled as long as the current node has a sibling
+        below it.
+    }
+  }
   {getter public open {enabled?}:bool
     || You can move down as long as there is a sibling below
     {if-non-null cr = self.current-record then
@@ -1330,6 +1594,9 @@ Fields
     {return false}
   }
  
+  {doc-next
+    {purpose Exchange this node with it's next sibling.}
+  }
   {method protected open {execute}:void
     {if-non-null cr = self.current-record then
         def ocri = {self.map-cri-to-ori self.record-display.current-index}
@@ -1354,22 +1621,35 @@ Fields
   }
 }
 
-|| Command for moving via drag and drop
+{doc-next
+    {purpose Command for moving nodes using drag and drop.}
+}
 {define-class public open MoveNodeCommand 
   {inherits TreeGridCommand, MoveRecordParams}
 
+  ||FIXME: should be Tree.dragdrop?
   {doc-next
-    {purpose Construct a {ctext MoveNodeDownCommand}}
-    {details The name of this command is "dragdrop"} ||""
+    {purpose Construct a {ctext MoveNodeDownCommand} with the name
+        {ctext "dragdrop"}.
+    }
   }
   {constructor public {default grid:TreeGrid}
     {construct-super.TreeGridCommand "dragdrop", grid} ||""
   }
   
+  {doc-next
+    {purpose
+        The command is enabled if a node is about to be dropped
+        onto another.
+    }
+  }
+  ||FIXME: You can drop onto a different treegrid! At least make sure the
+  || fields are the same.
   {getter public open {enabled?}:bool
     {return self.from-rec != null and self.to-rec != null}
   }
  
+  ||DEBUG
   {method private {show-recs name:String, recs:{Array-of Record}}:void
     def ords:StringBuf = {StringBuf}
     {for r key ri in recs do
@@ -1379,6 +1659,9 @@ Fields
     {dump name, ords}
   }
 
+  {doc-next
+    {purpose Move a node.}
+  }
   {method protected open {execute}:void
 
     || Find the primary RecordSet to suppress events
@@ -1437,7 +1720,9 @@ Fields
             def from-ln = from-rec["_ln"] asa int ||""
             def from-rn = from-rec["_rn"] asa int ||""
             def fixed =
-                {if target != null and target[self.model.id-field] == from-rec[self.model.id-field] then ||""
+                {if target != null and
+                    target[self.model.id-field] == from-rec[self.model.id-field]
+                 then
                     {new {Array-of Record}}
                  else
                     {orecs.select
@@ -1454,7 +1739,7 @@ Fields
             let nord:int = 1
             let fri:int = 0
             {while fri < fixed.size do
-                {if fixed[fri][self.model.id-field] == tid then ||""
+                {if fixed[fri][self.model.id-field] == tid then
                     {break}
                 }
                 set fixed[fri][self.pos-field] = nord
@@ -1486,17 +1771,26 @@ Fields
 
 }
 
-|| Save the data
+{doc-next
+    {purpose Command for saving the state of the tree.}
+}
 {define-class public open TreeSaveCommand {inherits TreeGridCommand}
 
   {doc-next
-    {purpose Construct a {ctext TreeSaveCommand}}
-    {details The name of this command is "Tree.save"} ||""
+    {purpose Construct a {ctext TreeSaveCommand} with the name
+        {ctext "Tree.save"}.
+    }
   }
   {constructor public {default grid:TreeGrid}
     {construct-super "Tree.save", grid} ||""
   }
   
+  {doc-next
+    {purpose
+        Return true if there has been a change to the model since it
+        was last saved.
+    }
+  }
   {getter public open {enabled?}:bool
     {return
         super.enabled? and
@@ -1504,9 +1798,12 @@ Fields
     }
   }
  
+  {doc-next
+    {purpose Save the model.}
+  }
   {method protected open {execute}:void
     {if-non-null cr = self.current-record then
-        def crid = cr[self.model.id-field] asa int ||""
+        def crid = cr[self.model.id-field] asa int
         {self.commit-current-cell}
         {self.record-display.records.commit}
         {self.refocus-current-cell crid}
@@ -1514,6 +1811,11 @@ Fields
   }
 }
 
+{doc-next
+    {purpose
+        Add the standard tree commands to a {docref TreeGrid}.
+    }
+}
 {define-proc  public {add-tree-commands context:TreeGrid}:void
     {context.add-command {IndentNodeCommand context}}
     {context.add-command {UndentNodeCommand context}}
@@ -1526,6 +1828,12 @@ Fields
     {context.add-command {TreeSaveCommand context}}
 }
 
+{doc-next
+    {purpose
+        Return an array of standard menu items for manipulating a
+        {docref TreeGrid}.
+    }
+}
 {define-proc public {get-treegrid-menu-items tree-grid:TreeGrid}:{Array-of any}
     {return 
         {new {Array-of any},
@@ -1572,6 +1880,11 @@ Fields
 }
 
 
+{doc-next
+    {purpose
+        Display data in a {docref RecordSet} as a tree with many columns.
+    }
+}
 {define-class public open TreeGrid {inherits RecordGrid}
 
   ||FIXME: The sort-spec should sort records grouped by parent node.
@@ -1585,25 +1898,60 @@ Fields
   }
   field protected _model:RecordSetTreeModel
 
+  {doc-next
+    {purpose Supply the data to be displayed in this {docref TreeGrid}.}
+  }
   {setter public open {model v:RecordSetTreeModel}:void
     set self._model = v
     set self.record-source = v.display-records
   }
 
+  {doc-next
+    {purpose
+        Return the {docref RecordSetTreeModel} associated with this
+        {docref TreeGrid}.
+    }
+  }
   {getter public open {model}:RecordSetTreeModel
     {return self._model}
   }
 
+  {doc-next
+    {purpose
+        The procedure that should be called to create an icon for a cell.
+    }
+  }
   field protected icon-proc:#{proc-type 
                                {cell:RecordGridCell,
                                 state:DisclosureState
                                }:Pixmap
                              }
-
+  {doc-next
+    {purpose
+        The procedure that should be called to create the label for a cell.
+    }
+  }
   field protected item-proc:#{proc-type
                                {cell:RecordGridCell}:Graphic
                              }
 
+  {doc-next
+    {purpose
+        Create a {docref TreeGrid}.
+    }
+    {parameter model,
+    }
+    {parameter filter,
+    }
+    {parameter header-options,
+    }
+    {parameter ui-object,
+    }
+    {parameter icon-proc,
+    }
+    {parameter item-proc,
+    }
+  }
   {constructor public {default
                           model:RecordSetTreeModel,
                           filter:#RecordFilter = null,

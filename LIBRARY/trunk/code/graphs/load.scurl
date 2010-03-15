@@ -49,9 +49,10 @@
 }
 {define-alias public Digraph-of = DefaultDirectedGraph-of}
 
-{doc-next
-    {purpose
-        A shortened synonym for {docref DefaultDirectedGraphNode-of}.
-    }
-}
+||FIXME: deploy says: graphs/load.scurl:52[9]: Two doc-nexts in a row
+||--{doc-next
+||--    {purpose
+||--        A shortened synonym for {docref DefaultDirectedGraphNode-of}.
+||--    }
+||--}
 {define-alias public DigraphNode-of = DefaultDirectedGraphNode-of}

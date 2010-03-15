@@ -351,7 +351,7 @@
         in depth-first fashion onto the successors of the working node.
         If it returns false, it will not recurse.
     }
-    {parameter safe?
+    {parameter safe?,
         If {ctext true}, any node will be visited at most once,
         preventing infinite recursion due to graph cycles, but
         performance may be reduced.
@@ -412,7 +412,7 @@
         in depth-first fashion onto the predecessors of the working node.
         If it returns false, it will not recurse.
     }
-    {parameter safe?
+    {parameter safe?,
         If {ctext true}, any node will be visited at most once,
         preventing infinite recursion due to graph cycles, but
         performance may be reduced.

@@ -18,7 +18,7 @@
 {curl 7.0 package}
 {curl-file-attributes character-encoding = "utf8"}
 
-{doc type = package, COM.CURL.EXT.DATA-ACCESS.CALCULATED
+{doc type = package, COM.CURL.EXT.CALCULATED-RECORDSET
     {purpose
         This package provides calculated record functionality;
         e.g. equation support in spreadsheet-like data grids.
