@@ -1,8 +1,0 @@
-{curl 7.0 manifest}
-{manifest COM.CURL.EXT.SAMPLES}
-
-|| libraries
-|| --------------------
-{delegate-to COM.CURL.EXT,
-    location = "../../manifest.mcurl"
-}
