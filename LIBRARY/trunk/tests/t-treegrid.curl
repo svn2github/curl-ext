@@ -80,7 +80,7 @@ id,pid,ord,expand?,depth,ln,rn,data
         {TreeGrid
             model,
             width = 7.5in,
-            height = 4in,
+            height = 3in,
             display-navigation-panel? = false,
             display-filler-column? = true,
             background = "#eeeeee",
@@ -258,81 +258,19 @@ hierarchal To Do list}.
 {CommandButton
     label = "Sort",
     {on Action do
-
         set tree-grid.sort = {TreeRecordSort "status"}
-||--        {if-non-null tgrs = tree-grid.record-source then
-||--            def recs = {tgrs.select}
-||--||--            def id-rv = {RecordView tgrs, sort = "_id"}
-||--            def comp =
-||--                {proc {a:Record, b:Record}:int
-||--                    def a-pid = a["pid"] asa int
-||--                    def b-pid = b["pid"] asa int
-||--                    def a-status = a["status"] asa String
-||--                    def b-status = b["status"] asa String
-||--                    {if a-pid == b-pid then
-||--                        {return {a-status.compare b-status}}
-||--                    }
-||--                    def ap = {tgrs.select-one
-||--                                 filter = {RecordData id = a-pid}}
-||--                    def bp = {tgrs.select-one
-||--                                 filter = {RecordData id = b-pid}}
-||--                    {if-non-null ap, bp then
-||--                        {dump ap["id"], bp["id"]}
-||--                        {return {comp ap, bp}}
-||--                     else
-||--                        {return 0}
-||--                    }
-||--                }
-||--            {recs.sort
-||--                comparison-proc = {proc {p:Record, q:Record}:bool
-||--                                      {return {comp p, q} <= 0}
-||--                                  }
-||--            }
-||--            {for r:Record key ri in recs do
-||--                set r["ord"] = ri + 1
-||--            }
-||--        }
-||--    }
-
-||--        set tree-grid.sort =
-||--            {proc {a:Record, b:Record}:int
-||--                def a-depth = a["depth"] asa int
-||--                def b-depth = b["depth"] asa int
-||--                def a-pid = a["pid"] asa int
-||--                def b-pid = b["pid"] asa int
-||--                def a-status = a["status"] asa String
-||--                def b-status = b["status"] asa String
-||--                {if a-pid == b-pid then
-||--                    {return {a-status.compare b-status}}
-||--                }
-||--                {return a-pid - b-pid}
-||--            }
-
-||--            {proc {a:Record, b:Record}:int
-||--                def comp =
-||--                    {proc {a:Record, b:Record}:int
-||--                        def a-pid = a["pid"] asa int
-||--                        def b-pid = b["pid"] asa int
-||--                        def a-status = a["status"] asa String
-||--                        def b-status = b["status"] asa String
-||--                        {if a-pid == b-pid then
-||--                            {return {a-status.compare b-status}}
-||--                        }
-||--                        def ap = {a.record-set.select-one
-||--                                     filter = {RecordData id = a-pid}}
-||--                        def bp =
-||--                            {b.record-set.select-one
-||--                                filter = {RecordData id = b-pid}}
-||--                        {dump a["id"], b["id"]}
-||--                        {if-non-null ap, bp then
-||--                            {return {comp ap, bp}}
-||--                         else
-||--                            {return 0}
-||--||--                            {return {if a-pid == 0 then -1 else 1}}
-||--                        }
-||--                    }
-||--                {return {comp a, b}}
-||--            }
+    }
+}
+{CommandButton
+    label = "Filter",
+    {on Action do
+        set tree-grid.filter = {RecordData status = "Later"}
+    }
+}
+{CommandButton
+    label = "UnFilter",
+    {on Action do
+        set tree-grid.filter = null
     }
 }
 
@@ -364,17 +302,16 @@ hierarchal To Do list}.
 ||--                    {append-nodes nr[rstm.id-field] asa int, nr["_val"]}
 ||--                }
 
-{define-proc public {make-TreeModel ds:DataStore}:RecordSetTreeModel
+{define-proc public {TreeModel-from-Json json:JsonValue}:RecordSetTreeModel
 
     def rstm =
         {RecordSetTreeModel.from-fields
-            null,
+            null, || no file (in memory only)
             id-field = "xid",
             {RecordField "name", caption = "Name", domain = any},
             {RecordField "value", caption = "Value", domain = any}
         }
 
-    {rstm.source.delete-all}
     def append-nodes =
         {proc {pid:int, v:JsonValue}:void
             {type-switch v
@@ -401,7 +338,8 @@ hierarchal To Do list}.
                 }
             }
         }
-    {append-nodes 0, ds.source}
+    {append-nodes 0, json}
+    {rstm.reorder}
     {return rstm}
 }
 
@@ -429,7 +367,11 @@ hierarchal To Do list}.
     }
 }
 
-{make-treegrid {make-TreeModel settings}, "name", show-all? = true,
+{make-treegrid
+    {TreeModel-from-Json settings.source},
+    "name",
+    show-all? = true,
+    draggable-items? = false,
     {RecordGridColumn  width=3in, "value"},
     height = 1.5in
 }
@@ -535,3 +477,69 @@ hierarchal To Do list}.
     {RecordGridColumn  width=48pt, "rank"},
     {RecordGridColumn  width=48pt, "City"}
 }
+
+{def json-display = {Frame}}
+{def url-tf = 
+    {TextField
+        width = 7in,
+        {on e:ValueFinished at tf:TextField do
+            {json-display.add replace? = true, {make-json-grid tf.value}}
+        }
+    }
+}
+{define-proc public {make-json-grid src:String}:Graphic
+
+    def src-url = {url {src.trim-clone}}
+    def json-text:StringBuf = {StringBuf}
+
+    || May throw an HttpException
+    let tis:TextInputStream =
+        {({src-url.instantiate-File} asa HttpFile).http-read-open
+            request-method = HttpRequestMethod.get,
+            character-encoding = CharEncoding.utf8
+        }
+    {try
+        {tis.read-one-string buf = json-text}
+     catch e:HttpException do
+        {return {text {bold Error:} e.message}}
+     finally
+        || close the stream, since we read everything in
+        {tis.close}
+    }
+
+    let begin:int = 0
+    {if json-text.size > 0 then
+        {if {CharClass.letter-chars.member? json-text[0]} then
+            {for i = 1 below {min 64, json-text.size} do
+                {if json-text[i] == '\(' then
+                    set begin = i + 1
+                    {break}
+                }
+            }
+        }
+        {try
+            def jdata = {JsonValue-parse {json-text.tail begin}}
+            {return
+                {make-treegrid
+                    {TreeModel-from-Json jdata},
+                    "name",
+                    show-all? = true,
+                    draggable-items? = false,
+                    {RecordGridColumn  width=3in, "value"},
+                    height = 3.5in
+                }
+            }
+         catch e:Exception do
+            {return {text {bold JSON parse error}: {value e.message}}}
+        }
+     else
+        {return {bold Result is empty}}
+    }
+
+}
+
+Type in a url that returns json (such as {text font-family = "monospace",
+ http://feeds.delicious.com/v2/json/}){br}
+{value url-tf}
+
+{value json-display}

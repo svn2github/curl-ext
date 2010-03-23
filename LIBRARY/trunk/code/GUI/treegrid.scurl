@@ -19,6 +19,8 @@
 
   To Do
 
+  o Filtering. If a node passes, all parent nodes also pass
+
   o Pluggable de/serialize. For example to/from HTML, OPML, TreeNode, etc.
   o Proper tree sorting (sort siblings at every level)
 
@@ -84,6 +86,16 @@ Fields
     }
 }
 {define-class public open RecordSetTreeModel {inherits Observable}
+
+  {doc-next
+    {purpose
+        The name of the field that determines the order in which
+        records are displayed.
+    }
+  }
+  let public constant pos-field:String = "_ord"
+  let public constant parent-id-field:String = "_pid"
+  let public constant depth-field:String = "_depth"
 
   {doc-next
     {purpose 
@@ -181,7 +193,7 @@ Fields
         {if rf.name == id-field then
             set need-id? = false
         }
-        {if rf.name == "_pid" then
+        {if rf.name == RecordSetTreeModel.parent-id-field then
             set need-standard? = false
         }
     }
@@ -217,6 +229,15 @@ Fields
     {purpose The {docref RecordSet} used to store the tree nodes.}
   }
   field public-get protected-set source:EventManagingRecordSet
+
+  {doc-next
+    {purpose
+        This counter is incremented any time the model is changed.
+        Use it to determine if cache or other dependent data needs to be
+        recomputed.
+    }
+  }
+  field public-get protected-set source-change-count:int
 
   {doc-next
     {purpose Set of ids of nodes (records) that should be hidden because the
@@ -438,7 +459,7 @@ Fields
                         {break}
                     }
                 }
-                set nr["_pid"] = pids[gl - 1]
+                set nr[RecordSetTreeModel.parent-id-field] = pids[gl - 1]
                 set nr["_expand?"] = true
                 {self.source.append nr}
                 set level = gl
@@ -446,16 +467,18 @@ Fields
             }
         }
         def nr = {self.source.new-record}
-        set nr["_pid"] = pids[level]
+        set nr[RecordSetTreeModel.parent-id-field] = pids[level]
         set nr["_expand?"] = true
-        {self.source.append nr}
         {for rf:RecordField in rs.fields do
             {if rf.name != self.id-field then
                 set nr[rf.name] = r[rf.name]
             }
         }
+        {self.source.append nr}
     }
-    {self.schedule-refresh}
+||--    {self.schedule-refresh}
+    {self.refresh}
+    {self.reorder}
   }
 
   {doc-next
@@ -609,6 +632,7 @@ Fields
     }
   }
   {method public open {schedule-refresh}:void
+    {inc self.source-change-count}
     {if not self._refresh-requested? then
         set self._refresh-requested? = true
         {after 0.0s do
@@ -639,9 +663,8 @@ Fields
     }
   }
   {method public open {refresh}:void
-    || Use the parent relation to Comput depth, ln, rn for the tree
+    || Use the parent relation to Compute depth, ln, rn for the tree
     let n:int = 0
-    let nord:int = 1
     let rstm:RecordSetTreeModel = self
 
     || Compute the attribute that are derived from the parent/child relation
@@ -651,12 +674,11 @@ Fields
             {proc {parent:Record, children:{Array-of Record}}:void
                 {inc n}
                 set parent["_ln"] = n ||""
-                {if parent["_pid"] == 0 then set parent["_depth"] = 0} ||""
+                {if parent[RecordSetTreeModel.parent-id-field] == 0 then
+                    set parent["_depth"] = 0} ||""
                 {for c:Record in children do
                     set c["_depth"] = parent["_depth"] asa int + 1 ||""
                 }
-||--                set parent["_ord"] = nord ||""
-||--                {inc nord, 1 + {rstm.count-subordinates parent}}
             },
         post = 
             {proc {parent:Record, children:{Array-of Record}}:void
@@ -667,6 +689,7 @@ Fields
 
     || Determine which nodes should be hidden, and hide them
     {self.hidden-nodes.clear}
+
     {walk-record-tree 
         id-field = self.id-field,
         self.source,
@@ -687,7 +710,6 @@ Fields
         set r["_hide"] = ||""
             {self.hidden-nodes.member? r[self.id-field] asa int}
     }
-
     set self._refresh-requested? = false
   }
 
@@ -711,6 +733,32 @@ Fields
     }
   }
 
+
+  || This is currently done within the refresh method:
+  {doc-next
+    {purpose
+        Assign the ordinal values to fix the nodes in the current order.
+    }
+    {details
+        Logically all nodes that have the same parent are unordered.
+        The "_ord" field is used to impose an order. When a tree is
+        first created, this method can be called to assign the ordinal
+        positions. From then on, the position is maintained just like
+        any other data.
+    }
+  }
+  {method public open {reorder}:void
+    let n:int = 1
+    let rstm:RecordSetTreeModel = self
+    {walk-record-tree self.source,
+        id-field = self.id-field,
+        pre =
+            {proc {parent:Record, children:{Array-of Record}}:void
+                set parent[RecordSetTreeModel.pos-field] = n
+                {inc n, 1}
+            }
+    }
+  }
 }
 
 {doc-next
@@ -791,15 +839,16 @@ Fields
     }
     {with src.batch-events? = true do
         {for r:Record key ri in recs do
-            set r["_ord"] = ri + 1000 ||DEBUG: add 1000 to make it obvious
+            set r[RecordSetTreeModel.pos-field] =
+                ri + 1000 ||DEBUG: add 1000 to make it obvious
         }
     }
     set self.busy? = false
   }
 
   {method private {tree-compare record-set:RecordSet, a:Record, b:Record}:int
-    def a-pid = a["_pid"] asa int
-    def b-pid = b["_pid"] asa int
+    def a-pid = a[RecordSetTreeModel.parent-id-field] asa int
+    def b-pid = b[RecordSetTreeModel.parent-id-field] asa int
     {if a-pid == b-pid then
         {return {self.sort.compare a, b}}
     }
@@ -831,8 +880,8 @@ Fields
 ||--    {for r in recs do {dump r[self.id-field]}}
     def comp =
         {proc {a:Record, b:Record}:int
-            def a-pid = a["_pid"] asa int
-            def b-pid = b["_pid"] asa int
+            def a-pid = a[RecordSetTreeModel.parent-id-field] asa int
+            def b-pid = b[RecordSetTreeModel.parent-id-field] asa int
 ||--            {dump a[self.id-field], a-pid, b[self.id-field], b-pid}
             def aval = a[self.sort-field]
             def bval = b[self.sort-field]
@@ -881,6 +930,114 @@ Fields
 ||--    {for r in recs do {dump r[self.id-field]}}
     {self.adjust-ord recs, record-set}
   }
+}
+
+
+||FIXME: add doc strings once this settles down
+{doc-next
+    {purpose
+        A {docref RecordFilter} that takes the tree structure of a
+        {docref TreeGrid} into account.
+    }
+    {details
+        This filter delegates to an ordinary {docref RecordFilter} to
+        determine if a record should be included. If it passes, then
+        all records that represent an ancestor node also pass.
+    }
+}
+{define-class public open TreeRecordFilter {inherits RecordFilter}
+
+  {doc-next
+    {purpose The filter that determines if the current record passes.}
+  }
+  field protected record-filter:RecordFilter
+
+  {doc-next
+    {purpose The grid that this filter is attached to.}
+  }
+  field protected treegrid:TreeGrid
+
+  {doc-next
+    {purpose An array indexed by the "_ln" number from a record. The
+        value of {ctext filter-cache[_ln]} is true if the record passed
+        the filter.
+    }
+  }
+  field protected filter-cache:{Array-of bool}
+
+  {doc-next
+    {purpose
+        Count changes to avoid recomputing the {docref
+        TreeRecordFilter} unless something has changed.
+    }
+  }
+  field protected filter-change-count:int = -1
+
+  ||-----------------------------------------
+  || Constructors
+  ||-----------------------------------------
+
+  {doc-next
+    {purpose
+        Construct a {docref TreeRecordFilter} from a {docref RecordFilter}.
+    }
+  }
+  {constructor public {default treegrid:TreeGrid, filter:RecordFilter}
+    set self.record-filter = filter
+    set self.treegrid = treegrid
+    set self.filter-cache = {new {Array-of bool}}
+  }
+  
+
+  {doc-next
+    {purpose Does the filter include a record?}
+    {details
+        This method should return {ctext false} if and only if  
+        the input record should be discarded by any 
+        {docref RecordView} with this filter applied. 
+    }
+  }
+  {method public open {includes? r:Record}:bool
+    {self.refresh}
+    {return self.filter-cache[r["_ln"] asa int]}
+  }   
+
+  {method protected open {refresh}:void
+    {if self.filter-change-count != self.treegrid.model.source-change-count then
+        let max-ln:int = 0
+        {for r:Record in self.treegrid.model.source do
+            def ln = r["_ln"] asa int
+            {if ln > max-ln then
+                set max-ln = ln
+            }
+        }
+        set self.filter-cache =
+            {new {Array-of bool}.from-size, max-ln + 1, false}
+
+        {for r:Record in self.treegrid.model.source do
+            def ln = r["_ln"] asa int
+            def rn = r["_rn"] asa int
+            {if ln + 1 == rn then
+                set self.filter-cache[ln] = {self.record-filter.includes? r}
+            }
+        }
+        {walk-record-tree self.treegrid.model.source,
+            id-field = self.treegrid.model.id-field,
+            post =
+                {proc {parent:Record, children:{Array-of Record}}:void
+                    def ln = parent["_ln"] asa int
+                    {for cr:Record in children do
+                        def cln = cr["_ln"] asa int
+                        {if self.filter-cache[cln] then
+                            set self.filter-cache[ln]  = true
+                            {break}
+                        }
+                    }
+                }
+        }
+        set self.filter-change-count = self.treegrid.model.source-change-count
+    }
+  }
 
 }
 
@@ -888,6 +1045,8 @@ Fields
 || ------------------
 || TreeGrid Commands
 || ------------------
+
+||FIXME: get the id field and store it as in int to save lookups later
 
 {doc-next
     {purpose Base class for commands that operate on a {docref TreeGrid}.}
@@ -932,7 +1091,9 @@ Fields
         TreeGrid}.
     }
   }
-  field public constant pos-field:String = "_ord" ||""
+  {getter public open {pos-field}:String
+    {return RecordSetTreeModel.pos-field}
+  }
 
   {doc-next
     {purpose The insertion point of the selection in the current cell.}
@@ -1199,7 +1360,7 @@ Fields
         def pri = self.record-display.current-index - 1
         {if pri >= 0 then
             def pr = self.record-display.records[pri]
-            {return pr["_pid"] == cr["_pid"] ||""
+            {return pr[RecordSetTreeModel.parent-id-field] == cr[RecordSetTreeModel.parent-id-field]
                 or pr["_depth"] == cr["_depth"] asa int + 1 ||""
             }
         }
@@ -1218,14 +1379,17 @@ Fields
         def crid = cr[self.model.id-field] asa int ||""
         {self.commit-current-cell}
         {if cri > 0 then
+            set self.grid.filter = null
             {with self.model.source.batch-events? = true do
                 def pri = cri - 1
                 def pr = self.record-display.records[pri]
                 set pr["_expand?"] = true ||""
                 {if pr["_depth"] == cr["_depth"] asa int + 1 then ||""
-                    set cr["_pid"] = pr["_pid"] ||""
+                    set cr[RecordSetTreeModel.parent-id-field] =
+                        pr[RecordSetTreeModel.parent-id-field]
                  else
-                    set cr["_pid"] = pr[self.model.id-field] ||""
+                    set cr[RecordSetTreeModel.parent-id-field] =
+                        pr[self.model.id-field]
                 }
             }
         }
@@ -1273,6 +1437,7 @@ Fields
 
   {method protected open {execute}:void
     {if-non-null cr = self.record-display.current-record then
+        set self.grid.filter = null
         def ocri = {self.map-cri-to-ori self.record-display.current-index}
         def orecs = self.ordered-records
         def crid = cr[self.model.id-field] asa int ||""
@@ -1283,15 +1448,19 @@ Fields
         {with self.model.source.batch-events? = true do
             {self.commit-current-cell}
             def pr = orecs[pi]
-            set cr["_pid"] = pr["_pid"] || make it a sibling of it's parent ||""
+            || make it a sibling of it's parent
+            set cr[RecordSetTreeModel.parent-id-field] =
+                pr[RecordSetTreeModel.parent-id-field]
             || Move other siblings up
             {for i = ocri + nc below pi + np do
-                set orecs[i]["_ord"] = orecs[i]["_ord"] asa int - nc ||""
+                set orecs[i][self.pos-field] = 
+                    orecs[i][self.pos-field] asa int - nc
             }
             || Move current and children below parent and children
             def nb = (pi + np) - (ocri + nc)
             {for i = ocri below ocri + nc do
-                set orecs[i]["_ord"] = orecs[i]["_ord"] asa int + nb ||""
+                set orecs[i][self.pos-field] =
+                    orecs[i][self.pos-field] asa int + nb
             }
         }
         {self.refocus-current-cell crid}
@@ -1306,6 +1475,12 @@ Fields
 }
 {define-class public open DeleteNodeCommand {inherits TreeGridCommand}
 
+  {doc-next
+    {purpose
+        If true, display a confirmation dialog before deleting a node
+        and its children.
+    }
+  }
   field public warn?:bool = false
 
   {doc-next
@@ -1338,6 +1513,7 @@ Fields
   }
   {method protected open {execute}:void
     {if-non-null cr = self.current-record then
+        || Seems OK to keep filter, if any
         def cri = self.record-display.current-index
         def ocri = {self.map-cri-to-ori cri}
         def orecs = self.ordered-records
@@ -1356,7 +1532,8 @@ Fields
         {with self.model.source.batch-events? = true do
             || No need to commit pending change, since it will be deleted
             {for i = ocri + nd below orecs.size do
-                set orecs[i]["_ord"] = (orecs[i]["_ord"] asa int) - nd ||""
+                set orecs[i][self.pos-field] =
+                    (orecs[i][self.pos-field] asa int) - nd
             }
             {for i = 0 below nd do
                 {orecs[ocri + i].delete}
@@ -1408,12 +1585,13 @@ Fields
     {purpose Add a sibling to the current node.}
   }
   {method protected open {execute}:void
+    set self.grid.filter = null
     {if self.model.ordered-records.size == 0 then
         || First node
         {with self.model.source.batch-events? = true do
             def nr = {self.model.source.new-record}
-            set nr["_pid"] = 0
-            set nr["_ord"] = 1
+            set nr[RecordSetTreeModel.parent-id-field] = 0
+            set nr[self.pos-field] = 1
             {self.model.source.append nr}
             {self.refocus-current-cell nr[self.model.id-field] asa int} ||""
         }
@@ -1427,13 +1605,15 @@ Fields
         {with self.model.source.batch-events? = true do
             {self.commit-current-cell}
             {for i = ocri + nc below orecs.size do
-                set orecs[i]["_ord"] = (orecs[i]["_ord"] asa int) + 1 ||""
+                set orecs[i][self.pos-field] =
+                    (orecs[i][self.pos-field] asa int) + 1
             }
             def nr = {self.model.source.new-record}
-            set nr["_pid"] = cr["_pid"] ||""
-            set nr["_ord"] = cr["_ord"] asa int + nc ||""
+            set nr[RecordSetTreeModel.parent-id-field] =
+                cr[RecordSetTreeModel.parent-id-field]
+            set nr[self.pos-field] = cr[self.pos-field] asa int + nc
             {self.model.source.append nr}
-            {self.refocus-current-cell nr[self.model.id-field] asa int} ||""
+            {self.refocus-current-cell nr[self.model.id-field] asa int}
         }
     }
   }
@@ -1478,20 +1658,23 @@ Fields
   }
   {method protected open {execute}:void
     {if-non-null cr = self.record-display.current-record then
+        set self.grid.filter = null
         def ocri = {self.map-cri-to-ori self.record-display.current-index}
         def orecs = self.ordered-records
         let crid:int = cr[self.model.id-field] asa int ||""
         {with self.model.source.batch-events? = true do
             {self.commit-current-cell}
             {for i = ocri + 1 below orecs.size do
-                set orecs[i]["_ord"] = (orecs[i]["_ord"] asa int) + 1 ||""
+                set orecs[i][self.pos-field] =
+                    (orecs[i][self.pos-field] asa int) + 1
             }
             def nr = {self.model.source.new-record}
-            set nr["_pid"] = cr[self.model.id-field] ||""
-            set nr["_ord"] = cr["_ord"] asa int + 1 ||""
+            set nr[RecordSetTreeModel.parent-id-field] =
+                cr[self.model.id-field]
+            set nr[self.pos-field] = cr[self.pos-field] asa int + 1
             set cr["_expand?"] = true ||""
             {self.model.source.append nr}
-            {self.refocus-current-cell nr[self.model.id-field] asa int} ||""
+            {self.refocus-current-cell nr[self.model.id-field] asa int}
         }
     }
   }
@@ -1520,6 +1703,7 @@ Fields
   {getter public open {enabled?}:bool
     || You can move up as long as there is a sibling above
     {if-non-null cr = self.current-record then
+        set self.grid.filter = null
         def ocri = {self.map-cri-to-ori self.record-display.current-index}
         {if ocri > 0 then
             def orecs = self.ordered-records
@@ -1535,6 +1719,7 @@ Fields
   }
   {method protected open {execute}:void
     {if-non-null cr = self.current-record then
+        set self.grid.filter = null
         def ocri = {self.map-cri-to-ori self.record-display.current-index}
         def orecs = self.ordered-records
         def crid = cr[self.model.id-field] asa int ||""
@@ -1547,12 +1732,14 @@ Fields
                 || Move current node and children up
                 {for i = 0 below nu do
                     def ni = ocri + i
-                    set orecs[ni]["_ord"] = orecs[ni]["_ord"] asa int - nd ||""
+                    set orecs[ni][self.pos-field] =
+                        orecs[ni][self.pos-field] asa int - nd
                 }
                 || Move previous node and children down
                 {for i = 0 below nd do
                     def ni = nai + i
-                    set orecs[ni]["_ord"] = orecs[ni]["_ord"] asa int + nu ||""
+                    set orecs[ni][self.pos-field] =
+                        orecs[ni][self.pos-field] asa int + nu
                 }
                 {self.refocus-current-cell crid}
             }
@@ -1588,7 +1775,7 @@ Fields
         def orecs = self.ordered-records
         def nd = {self.count-node-and-children ocri}
         {if ocri + nd < orecs.size then
-            {return orecs[ocri]["_pid"] == orecs[ocri + nd]["_pid"]} ||""
+            {return orecs[ocri][RecordSetTreeModel.parent-id-field] == orecs[ocri + nd][RecordSetTreeModel.parent-id-field]}
         }
     }
     {return false}
@@ -1599,6 +1786,7 @@ Fields
   }
   {method protected open {execute}:void
     {if-non-null cr = self.current-record then
+        set self.grid.filter = null
         def ocri = {self.map-cri-to-ori self.record-display.current-index}
         def orecs = self.ordered-records
         def crid = cr[self.model.id-field] asa int ||""
@@ -1609,11 +1797,12 @@ Fields
             let nu:int = {self.count-node-and-children ocri + nd}
             {for i = 0 below nu do
                 def ni = ocri + nd + i
-                set orecs[ni]["_ord"] = orecs[ni]["_ord"] asa int - nd ||""
+                set orecs[ni][self.pos-field] =
+                    orecs[ni][self.pos-field] asa int - nd
             }
             {for i = 0 below nd do
-                set orecs[ocri + i]["_ord"] =  ||""
-                    orecs[ocri + i]["_ord"] asa int + nu ||""
+                set orecs[ocri + i][self.pos-field] =
+                    orecs[ocri + i][self.pos-field] asa int + nu
             }
             {self.refocus-current-cell crid}
         }
@@ -1654,7 +1843,7 @@ Fields
     def ords:StringBuf = {StringBuf}
     {for r key ri in recs do
         {if ri > 0 then {ords.concat ", "}} ||""
-        {ords.concat {format "%d", r["_ord"]}} ||""
+        {ords.concat {format "%d", r[RecordSetTreeModel.pos-field]}} ||""
     }
     {dump name, ords}
   }
@@ -1685,7 +1874,7 @@ Fields
             || Select the records to be moved
             let target:#Record = to-rec
             let tid:int = to-rec[self.model.id-field] asa int ||""
-            let pid:int = target["_pid"] asa int ||""
+            let pid:int = target[RecordSetTreeModel.parent-id-field] asa int
 ||--            {dump tid, pid, self.before?}
             {if not self.before? then
                 {if to-rec["_expand?"] == false then ||""
@@ -1698,18 +1887,21 @@ Fields
                         {if ri < orecs.size - 1 then
                             set target = orecs[ri + 1]
                             set tid = target[self.model.id-field] asa int ||""
-                            set pid = target["_pid"] asa int ||""
+                            set pid =
+                                target[RecordSetTreeModel.parent-id-field] asa int
                             || When dropped after last sibling, use sib's pid
                             {if ri >= 0
                                 and orecs[ri]["_depth"] asa int ||""
                                 > target["_depth"] asa int ||""
                              then
-                                set pid = orecs[ri]["_pid"] asa int ||""
+                                set pid =
+                                    orecs[ri][RecordSetTreeModel.parent-id-field] asa int
                             }
                          else
                             set target = null
                             set tid = 0
-                            set pid = orecs[orecs.size - 1]["_pid"] asa int ||""
+                            set pid =
+                                orecs[orecs.size - 1][RecordSetTreeModel.parent-id-field] asa int
                         }
                         {break}
                     }
@@ -1748,7 +1940,7 @@ Fields
             }
             {for r:Record key ri in moving do
                 {if ri == 0 then
-                    set r["_pid"] = pid ||""
+                    set r[RecordSetTreeModel.parent-id-field] = pid
                 }
                 {if fixed.size > 0 then
                     set r[self.pos-field] = nord
@@ -1937,19 +2129,44 @@ Fields
 
   {doc-next
     {purpose
+        Indicates whether or not the tree can be rearranged using
+        drag and drop.
+    }
+  }
+  field public-get protected-set draggable-items?:bool = true
+
+  field protected _base-filter:#RecordFilter = null
+
+  {setter public open {filter value:#RecordFilter}:void
+    set self._base-filter = value
+    {if-non-null value then
+        set super.filter = {TreeRecordFilter self, value}
+     else
+        set super.filter = null
+    }
+  }
+
+  {doc-next
+    {purpose
         Create a {docref TreeGrid}.
     }
-    {parameter model,
+    {parameter model, The data model. Provides the tree structure and
+        information to be displayed in the {docref TreeGrid}.
     }
-    {parameter filter,
+    {parameter filter, Provides the initial value for {docref TreeGrid.filter}.
     }
     {parameter header-options,
+        Options for the header row. See {docref-abbr
+        RecordGrid.header-options}.
     }
-    {parameter ui-object,
+    {parameter ui-object, An alternative
+        The UI delegate that handles drawing and events.
     }
     {parameter icon-proc,
+        Provides the initial value for {docref TreeGrid.icon-proc}.
     }
     {parameter item-proc,
+        Provides the initial value for {docref TreeGrid.item-proc}.
     }
   }
   {constructor public {default
@@ -1958,6 +2175,7 @@ Fields
                           header-options:RecordGridRowOptions =
                               {RecordGridRowOptions},
                           ui-object:#RecordGridUI = null,
+                          draggable-items?:bool = true,
                           icon-proc:#{proc-type 
                                          {cell:RecordGridCell,
                                           state:DisclosureState
@@ -1969,6 +2187,7 @@ Fields
                           ...
                       }
     set self._model = model
+    set self.draggable-items? = draggable-items?
     set self.icon-proc = icon-proc
     set self.item-proc = item-proc
     {construct-super
@@ -1979,8 +2198,8 @@ Fields
         display-navigation-panel? = false,
         display-filler-column? = true,
         {splice ...},
-        sort = "_ord", ||""
-        key-spec = "_ord" ||""
+        sort = RecordSetTreeModel.pos-field,
+        key-spec = RecordSetTreeModel.pos-field
     }
     {add-tree-commands self}
   }

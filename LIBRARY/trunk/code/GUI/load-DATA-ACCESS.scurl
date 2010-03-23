@@ -89,14 +89,10 @@
     }
   }
 
-  {getter public open {default-value}:any
-    {return 0s}
-  }
-  
   {method public open {parse x:String}:any
     let str:String = {x.trim-clone}
     {if str.empty? then
-        {return 0s}
+        {return self.default-value}
     }
     let r:any = null
     let ok?:bool = true
@@ -145,6 +141,12 @@
   }  
 }
 
+{doc-next
+    {purpose
+        An instance of {docref DurationDomain} usually used for defining
+        a {docref RecordField}.
+    }
+}
 {def public duration-domain = {DurationDomain}}
 
 || ------------------------------------------------------------------------
@@ -250,12 +252,14 @@
 }
 
 {doc-next
-    {purpose A domain for double values that formats numbers as strings 
+    {purpose
+        A domain for double values that formats numbers as strings
         with 5 digits after the decimal point. Useful for specifying
         the domain for a {docref RecordField}.
     }
 }
 {let public constant double-domain:DoubleDomain = {DoubleDomain}}
+
 {doc-next
     {purpose A domain for double values that formats numbers as strings 
         with 2 digits after the decimal point. Useful for specifying
@@ -263,6 +267,7 @@
     }
 }
 {let public constant d2-domain:DoubleDomain = {DoubleDomain precision = -2}}
+
 {doc-next
     {purpose A domain for double values that formats numbers as strings 
         with 3 digits after the decimal point. Useful for specifying
@@ -270,6 +275,7 @@
     }
 }
 {let public constant d3-domain:DoubleDomain = {DoubleDomain precision = -3}}
+
 {doc-next
     {purpose A domain for double values that formats numbers as strings 
         with 4 digits after the decimal point. Useful for specifying
@@ -283,7 +289,7 @@
     {purpose A {docref Domain} for a foreign key field.}
     {details 
         This {docref Domain} refers to another {docref RecordSet}
-        (qor {docref RecordView}) for parsing and formatting the
+        (or {docref RecordView}) for parsing and formatting the
         values. The value stored in a field is the integer key into
         the foreign table.
 
@@ -307,13 +313,49 @@
 {define-class public open ForeignFieldDomain
   {inherits {StandardDomain-of int}}
 
+  {doc-next
+    {purpose
+        The foreign {docref RecordSet} to which this field refers.
+    }
+  }
   field public rs:#RecordSet
+
+  {doc-next
+    {purpose
+        The key field in the foreign {docref RecordSet} to which this
+        field refers.
+    }
+  }
   field public key-field:String = "id" ||""
+
+  {doc-next
+    {purpose
+        The field in the foreign {docref RecordSet} that provides a label
+        to use when displaying the foreign field value.
+    }
+  }
   field public label-field:String = "name" ||""
 
   {doc-next 
     {purpose Initialize the {docref ForeignFieldDomain} with
         the information it needs to parse and format values.
+    }
+    {parameter rs, Initial value of {docref ForeignFieldDomain.rs},
+        the foreign record set referenced by this object.
+    }
+    {parameter key-field,
+        Initial value of {docref ForeignFieldDomain.key-field},
+        the key field in the foreign {docref RecordSet}.
+    }
+    {parameter label-field,
+        Initial value of {docref ForeignFieldDomain.label-field}, the
+        field in the foreign {docref RecordSet} that provides a label.
+    }
+    {parameter default-value,
+        Initial value of {docref ForeignFieldDomain.default-value}.
+    }
+    {parameter allowable-values,
+        Initial value of {docref ForeignFieldDomain.allowable-values}.
     }
   }
   {constructor public {default
@@ -460,10 +502,31 @@
 }
 
 
+{doc-next
+    {purpose The information needed to move a record using drag and drop.}
+}
 {define-class public open MoveRecordParams
+  {doc-next
+    {purpose The record being moved.}
+  }
   field public from-rec:#Record
+
+  {doc-next
+    {purpose The record being displaced.}
+  }
   field public to-rec:#Record
+
+  {doc-next
+    {purpose
+        Indicates that the moved record is to be inserted before (above)
+        the destination record. If false, it is inserted below.
+    }
+  }
   field public before?:bool
+
+  {doc-next
+    {purpose Initialize a new {docref MoveRecordParams}.}
+  }
   {constructor public {default}
   }
 }
@@ -472,14 +535,43 @@
     {purpose A Graphic that can be inserted into a custom {docref 
         RecordGridCell} to support rearranging records via drag and drop.
     }
+    {details
+        This class was designed for use in {docref TreeGrid}.  It
+        requires that the records being moved have an integer field
+        that determines the order in which the records appear in
+        the {docref RecordGrid} or {docref TreeGrid}.
+    }
 }
 {define-class public open RecordMover {inherits Frame}
 
+  {doc-next
+    {purpose
+        The {docref RecordGridCell} that contains this {docref RecordMover}.
+    }
+  }
   field public constant cell:RecordGridCell
 
+  {doc-next
+    {purpose A small graphic displayed to the left of the item title.}
+  }
   field public-get protected-set marker:Graphic
 
+  {doc-next
+    {purpose Specify if the items can be rearranged using drag and drop.}
+  }
+  field public-get protected-set draggable?:bool = true
+
+  {doc-next
+    {purpose
+        The name of the field where the ordinal position of the tree
+        items is stored.
+    }
+    {details The value of this field is the {docref RecordGrid.key-spec}
+        form the associated {docref RecordGrid} (or  {docref Treerid}).
+    }
+  }
   field protected pos-field:String
+
   field protected drag-graphic:Graphic
 
   {nonlocal-option public font-size:any
@@ -498,23 +590,50 @@
   }
 
 
+  {doc-next
+    {purpose
+        Initialize a {docref RecordMover}.
+    }
+    {parameter cell,
+        The initial value for {docref RecordMover.cell}.
+    }
+    {parameter draggable?,
+        The initial value for {docref RecordMover.draggable?}.
+    }
+    {parameter drag-graphic,
+        The initial value for {docref RecordMover.drag-graphic}
+    }
+    {parameter marker,
+        The initial value for {docref RecordMover.marker}
+    }
+    {parameter pos-field,
+        The initial value for {docref RecordMover.pos-field}
+    }
+    {parameter ...,
+        Option settings and event handlers.
+    }
+  }
   {constructor public {default 
                           cell:RecordGridCell,
+                          draggable?:bool = true,
                           drag-graphic:#Graphic = null,
                           marker:#Graphic = null,
+                          pos-field:String = "",
                           ...
                       }
 
     set self.cell = cell
-    set self.pos-field = "ordinal" ||""
-    {type-switch self.cell.grid.key-spec
-     case ks:String do
-        set self.pos-field = ks
+    set self.draggable? = draggable?
+    {if pos-field == "" then
+        {type-switch self.cell.grid.key-spec
+         case ks:String do
+            set pos-field = ks
+        }
     }
+    set self.pos-field = pos-field
 
     {if-non-null drag-graphic then
         set self.drag-graphic = drag-graphic
-        set self.dragee = {ImageDragee drag-graphic = drag-graphic}
      else
         set self.drag-graphic = 
             {Frame
@@ -522,6 +641,10 @@
                 margin = 1px, background = "beige", ||""
                 {self.cell.get-data}
             }
+    }
+
+    || In some cases we want the graphic but drag/drop is not allowed
+    {if self.draggable? then
         set self.dragee = {ImageDragee drag-graphic = self.drag-graphic}
     }
 
@@ -742,6 +865,12 @@
   field protected string-frame:Frame  || for string or editor
   field protected movable-editor:#TextField   || the editor, if any
 
+  {doc-next
+    {purpose
+        The {docref RecordMover} provides a graphic that the user
+        can click on and drag.
+    }
+  }
   field public-get protected-set mover:#RecordMover
 
   {nonlocal-option public control-color:FillPattern
@@ -750,6 +879,9 @@
     }
   }
   
+  {doc-next
+    {purpose Initialize a {docref MovableCell}.}
+  }
   {constructor public {default}
     {construct-super}
     set self.context-menu-for-text-field = null
@@ -763,6 +895,9 @@
     {self.add-internal self._cell-box}
   }
 
+  {doc-next
+    {purpose Create the {docref RecordMover} for this cell.}
+  }
   {method protected open {make-mover}:RecordMover
     {return
         {RecordMover
@@ -833,8 +968,19 @@
 
 }
 
+{doc-next
+    {purpose
+        A {docref DefaultDiscloser} designed to be used in a
+        {docref RecordGridCell}.
+    }
+}
 {define-class public open RecordDiscloser {inherits DefaultDiscloser}
 
+  {doc-next
+    {purpose A procedure that can be called to obtain the image that
+        reflects the current state of the discloser.
+    }
+  }
   field protected icon-proc:{proc-type 
                               {cell:RecordGridCell,
                                state:DisclosureState
@@ -843,6 +989,12 @@
   {doc-next
     {purpose Initialize this object. The rest args are any options
         that can be applied to a {docref Graphic}.
+    }
+    {parameter cell,
+        The {docref RecordGridCell} that this discloer belongs to.
+    }
+    {parameter icon-proc,
+        Invoked to create an icon when needed.
     }
   }
   {constructor public {default
@@ -862,6 +1014,11 @@
 ||--    {self.refresh-icon}
 ||--  }
 
+  {doc-next
+    {purpose
+        Returns an image that reflects the current state of the discloser.
+    }
+  }
   {method protected open {get-pixmap 
                              state:DisclosureState
                          }:#Pixmap
@@ -924,11 +1081,15 @@
   }
   
   {method protected open {make-mover}:RecordMover
+    let draggable?:bool = true
+    let pos-field:String = RecordSetTreeModel.pos-field
     {if-non-null grid = self.grid, record = self.record then
         {type-switch grid
          case tg:TreeGrid do
+            set draggable? = tg.draggable-items?
             {if-non-null p = tg.icon-proc then
-                set self.discloser = {RecordDiscloser self, p}
+                set self.discloser =
+                    {RecordDiscloser self, p}
             }
         }
     }
@@ -938,7 +1099,9 @@
     {return
         {RecordMover
             self,
+            draggable? = draggable?,
             border-color = "transparent", ||""
+            pos-field = pos-field,
             marker = self.discloser
         }
     }
@@ -1390,10 +1553,10 @@ How this evolved:
         data using its standard string representation.
     }
 }
-{define-class public open MultilineStringCell 
+{define-class public open MultilineStringCell
   {inherits StandardBaseEditableStringCell}
   
-  {doc-next {purpose Construct this object.}}
+  {doc-next {purpose Construct this {docref MultilineStringCell}.}}
   {constructor public {default}
     {construct-super}
     set self.display-graphic = 
@@ -1496,14 +1659,18 @@ How this evolved:
 
 || ---------------------------------------------------------------------------
 
-|| A RecordGridCell with a dynamic list of choices.
-|| Override create-list-value-array to compute the choices.
+{doc-next
+    {purpose A {docref RecordGridCell} with a dynamic list of choices.}
+    {override
+        Override create-list-value-array to compute the choices.
+    }
+}
 {define-class abstract public open ChooseValueCell
   {inherits StandardBaseEditableStringCell}
 
   {doc-next
     {purpose
-        Construct this object.
+        Construct this {docref ChooseValueCell}.
     }
   }
   {constructor public {default}
@@ -1696,11 +1863,24 @@ How this evolved:
 
 || ----------------------------------------------------------------------
 
+{doc-next
+    {purpose
+        A {docref RecordGridCell} designed to be used to display (and
+        change) a foreign key field specified by a
+        {docref ForeignFieldDomain}.
+    }
+}
 {define-class public open {ForeignKeyCell-for 
                             rs:any, id-field:String, label-field:String
                           }
   {inherits ChooseValueCell}
 
+  {doc-next
+    {purpose
+        Return the {docref RecordSet} provided when this generic class
+        was instantiated.
+    }
+  }
   {getter public open {rs}:RecordSet
     {type-switch rs
      case rs:RecordSet do
@@ -1726,6 +1906,14 @@ How this evolved:
     {construct-super}
   }
 
+  {doc-next
+    {purpose
+        Override to create the list of choices.
+    }
+    {details
+        The chioces consist of all of the values from the foreign table.
+    }
+  }
   {method protected open {create-list-value-array}:{Array-of ListValueItem}
     let constant lm:{Array-of ListValueItem} = {{Array-of ListValueItem}}
     {for r:Record in {self.rs.select} do
@@ -1736,7 +1924,11 @@ How this evolved:
             }
         }
     }
-    {lm.append {ListValueItem 0, label = " "}}
+    {if self.field.nullable? then
+        {lm.append {ListValueItem null, label = " "}}
+     else
+        {lm.append {ListValueItem 0, label = " "}}
+    }
     {return lm}
   }
   
@@ -1776,7 +1968,9 @@ How this evolved:
 
 || ---------------------------------------------------------------------------
 
-|| A DateField for use with a StandardDateCell.
+{doc-next
+    {purpose A DateField for use with a StandardDateCell.}
+}
 {define-class public open SRGDateField {inherits DateField}
   
   {getter private {cell}:#StandardDateCell
@@ -1786,6 +1980,11 @@ How this evolved:
     {return null}
   }
   
+  {doc-next
+    {purpose
+        Construct a {docref SRGDateField}.
+    }
+  }
   {constructor public {default}
     {construct-super
         active-traversal-container = null,
@@ -1807,9 +2006,17 @@ How this evolved:
 }
 
 
-|| A DateFieldUI for use with a SRGDateField (and thus a StandardDateCell).
+{doc-next
+    {purpose
+        A {docref DateFieldUI} for use with a {docref SRGDateField}
+        (and thus a {docref StandardDateCell}).
+    }
+}
 {define-class public open SRGDateFieldUI {inherits StandardDateFieldUI}
   
+  {doc-next
+    {purpose Initialize a new {docref SRGDateFieldUI}.}
+  }
   {constructor public {default ...}
     {construct-super {splice ...}}
   }
@@ -1857,12 +2064,16 @@ How this evolved:
   
 }
 
-|| An editable RecordGridCell for StandardDateDomain.
-{define-class public open StandardDateCell 
+{doc-next
+    {purpose
+        An editable {docref RecordGridCell} for {docref StandardDateDomain}.
+    }
+}
+{define-class public open StandardDateCell
   {inherits StandardBaseEditableStringCell}
 
   {doc-next
-    {purpose Create a new {docref DateCell}.}
+    {purpose Create a new {docref StandardDateCell}.}
   }
   {constructor public {default}
     {construct-super}
@@ -1916,18 +2127,40 @@ How this evolved:
 
 || ---------------------------------------------------------------------------
 
+{doc-next
+    {purpose
+        Perform a depth first treewalk on the tree nodes stored
+        in {param rs}, applying {param pre} before visiting each node,
+        and {param post} afterwards.
+    }
+    {parameter id-field, The name of the field that uniquely identifies each
+        record.
+    }
+    {parameter rs, A {docref RecordSet} containing a tree where each
+        child points to its parent via the field given by {param
+        pid-field}, as described for {docref TreeGrid}.
+    }
+    {parameter pre, A procedure that is called on a record before visiting
+        it's children. The procedure is passed the record and it's
+        children in an array.
+    }
+    {parameter post, A procedure that is called on a record immediately after
+        visiting all of it's children. The procedure is passed the
+        record and it's children in an array.
+    }
+}
 {define-proc public {walk-record-tree
                         rs:RecordSet,
                         id-field:String = "_id", ||""
                         pid-field:String = "_pid", ||""
                         pre:#{proc-type {
                                          parent:Record,
-                                         records:{Array-of Record}
+                                         child-records:{Array-of Record}
                                         }:void
                              } = null,
                         post:#{proc-type {
                                           parent:Record,
-                                          records:{Array-of Record}
+                                          child-records:{Array-of Record}
                                          }:void
                               } = null,
                         parent-id:int = 0
@@ -1994,12 +2227,45 @@ How this evolved:
 }
 
 
+{doc-next
+    {purpose An enhanced version of {docref CsvRecordSet}.}
+    {details
+        A {ctext CsvRecordSetB} implements the following enhancements
+        {itemize
+            {item
+                A csv file is automatically created if no file exists
+            }
+            {item
+                Automatically re-reads the disk file if it is
+                modified.  If there are unsaved changes, a dialog is
+                presented to the user. The modifications on the disk
+                file can be ignored (and possibly overwritten later),
+                or the changes that have not yet been committed can be
+                discarded.
+            }
+            {item
+                Optionally maintains a unique id column and provides a
+                new unique upon request and when a new record is
+                created ({docref CsvRecordSetB.new-record}).
+            }
+        }
+    }
+}
 {define-class public open CsvRecordSetB {inherits CsvRecordSet}
 
   field protected when-last-modified:#DateTime
   field protected timer:Timer
 
+  {doc-next
+    {purpose The field that uniquely identifies each record, if any.}
+    {details
+        If this field is non blank, the method {docref
+        CsvRecordSetB.new-id} will return an id value that is higher
+        than any other among the records contained in this recordset.
+    }
+  }
   field public-get protected-set id-field:String = "" ||""
+
   field private ids:{Array-of bool} = {new {Array-of bool}}
 
   field private id-filter:RecordData = {RecordData}
@@ -2021,10 +2287,40 @@ How this evolved:
     {return self.change-count}
   }
 
+  {doc-next
+    {purpose
+        Return true if this recordset was created with a null {param
+        url} and consequently is not stored on disk.
+    }
+  }
   {getter public open {temporary?}:bool
     {return self.url == {get-base-url}}
   }
 
+  {doc-next
+    {purpose Initialize a new {docref CsvRecordSetB}.}
+    {parameter url,
+        The location where this recordset is stored, of null if it
+        is intended to be temporary.
+    }
+    {parameter fields,
+        The {docref RecordFields} that define the structure of this
+        recordset.
+    }
+    {parameter modifiable?, If true, modification of the data will be
+        allowed, provided that it is legal to write to the {param url}.        
+    }
+    {parameter character-encoding, The encoding to be used when reading
+        and writing the data.
+    }
+    {parameter backup?, Provides the initial value for {docref
+        CsvRecordSet.backup?}.
+    }
+    {parameter autoupdate-interval, The
+    }
+    {parameter ..., Event handlers for {docref RecordSetEvent}s.
+    }
+  }
   {constructor public {default
                           url:#Url,
                           fields:RecordFields,
@@ -2032,7 +2328,7 @@ How this evolved:
                           modifiable?:bool = true,
                           character-encoding:CharEncoding = "utf8", ||""
                           backup?:bool = false,
-                          autoupdate-interval:Time = 2s,
+                          autoupdate-interval:Time = 5s,
                           ...:EventHandler
                       }
     ||FIXME: support http in read-only mode
@@ -2093,6 +2389,12 @@ How this evolved:
     set self.id-field = id-field
   }
 
+  {doc-next
+    {purpose
+        Return true if the disk file has been changed since last read
+        or written.
+    }
+  }
   {getter public open {file-changed?}:bool
 
     let last-modified:#DateTime = null
@@ -2119,8 +2421,17 @@ How this evolved:
     }
   }
 
+  {doc-next
+    {purpose Return true if there have been changes sinde the data file was
+        last read or written.
+    }
+    {details
+        This is always true for a temporary recordset, that is,
+        if {docref CsvRecordSet.temporary} is true.
+    }
+  }
   {getter public open {records-changed?}:bool
-    {return self.change-count != self.change-count-at-commit}
+    {return self.temporary? or self.change-count != self.change-count-at-commit}
   }
 
   {method public open {load}:void
@@ -2188,6 +2499,11 @@ How this evolved:
     }
   }
 
+  {doc-next
+    {purpose
+        Reload the data from the associated file ({docref CsvRecordSetB.url}).
+    }
+  }
   {method public open {refresh-from-file}:void
     || Refresh if file has changed but not if there are unsaved changes
     {if not self.records-changed? then
@@ -2210,6 +2526,9 @@ How this evolved:
   ||FIXME: This is not very efficient but maybe it doesn't matter
   || since it is only called when a new record is added, which is
   || relatively rare.
+  {doc-next
+    {purpose Return a new unique id value.}
+  }
   {method public open {new-id}:int
 
     || Find the highest ID currently in use
@@ -2265,14 +2584,34 @@ How this evolved:
     {return nr}
   }
 
+  {doc-next
+    {purpose Return the {docref Record} identified by {param id}.}
+  }
   {method public open {get-by-id id:int}:#Record
-    ||FIXME: More efficient to iterate until a match is found?
     {self.id-filter.clear}
     set self.id-filter[self.id-field] = id
     {return {self.select-one filter = self.id-filter}}
   }
 
-  {method public open {unique-values-in-columns 
+  {doc-next
+    {purpose Return the unique values in one or more columns.}
+    {for-example
+        {curl-code
+            def choices = {rs.unique-values-in-columns "first", "last"}
+        }
+    }
+    {details
+        In this example, choices will be a sorted array of all values
+        found in the "first" and "last" columns, with duplicates
+        removed and no blank values.
+    }
+    {parameter sort?, If true, the result will be sorted.}
+    {parameter remove-blank?,
+        If true, an empty string in a column is ignored.
+    }
+    {parameter ..., Names of the fields (columns) to be examined.}
+  }
+  {method public open {unique-values-in-columns
                           sort?:bool = true,
                           remove-blank?:bool = true,
                           ...:String || field names
@@ -2300,6 +2639,7 @@ How this evolved:
     {return value-list}
   }
 
+  ||FIXME: Shouldn't this watch for changes?
   {method public open {list-model-from-columns ...:String}:DefaultListModel
     {return {DefaultListModel {splice {self.unique-values-in-columns ...}}}}
   }
@@ -2333,6 +2673,9 @@ How this evolved:
 || ---------------------------------------------------------------------------
 
 ||FIXME: Need to find a way to localize these... hlmessage isn't const
+{doc-next
+    {purpose Describes how often an event repeats.}
+}
 {define-enum public RepeatPeriod
     none = "None",
     day = "Daily",
@@ -2346,6 +2689,12 @@ How this evolved:
     year-month-day = "Yearly, same day and week"
 }
 
+{doc-next
+    {purpose
+        An instance of a domain to be used for defining a {docref
+        RecordField} for {docref RepeatPeriod}.
+    }
+}
 {def public RepeatPeriod-domain =
     {new {EnumDomain-of RepeatPeriod}}
 }
@@ -2719,5 +3068,108 @@ How this evolved:
         }
     }
     {return {uninitialized-value-for-type DateTime}, true}
+  }
+}
+
+{doc-next
+    {purpose  
+        An implementation of the {docref Record} class 
+        for use by {docref DefaultRecordView}.
+    }
+    {details
+        After a check on the modifiability of the
+        containing {docref RecordView}, all method calls 
+        and properties are simply redirected to the corresponding
+        methods and properties on the {docref DelegatingRecord.source-record}. 
+    }
+}
+{define-class public open TreeRecord {inherits Record}
+
+  {doc-next
+    {purpose 
+        The {docref DefaultRecordView} which contains this record.
+    }
+  }
+  field public-get protected-set record-view:DefaultRecordView 
+
+  {doc-next
+    {purpose 
+        The record in the containing view's {ctext source}
+        which this record delegates to.
+    }
+  }
+  field public-get protected-set source-record:Record 
+ 
+
+  {doc-next 
+    {purpose 
+        Construct a new {ctext DelegatingRecord}.
+    }
+  }
+  {constructor public {default 
+                          record-view:DefaultRecordView,
+                          source-record:Record
+                      }
+    
+    set self.record-view = record-view
+    set self.source-record = source-record
+  }
+
+  ||--------------------------------
+  || Methods to implement Record
+  ||--------------------------------
+  {getter public open {record-set}:#RecordSet
+    {return self.record-view}
+  }
+   
+  {getter public open {state}:RecordState
+    {return self.source-record.state}
+  }
+ 
+    
+  {method public open {get
+                          name:String,
+                          pending?:bool=true
+                      }:any
+    {return {self.source-record.get name, pending?=pending?}}
+  }
+  
+  {method public open {get-by-index
+                          field-index:int, 
+                          pending?:bool = true
+                      }:any
+    {return {self.source-record.get-by-index field-index, pending? = pending?}}
+  }
+
+  {method public open {set 
+                          name:String, 
+                          val:any
+                      }:void  
+||--    {self.record-view.ensure-modifiable}
+    {self.source-record.set name, val}
+  }
+
+  {method public open {validate-value
+                          name:String, 
+                          val:any
+                      }:#ValidationException
+    {return
+        {self.source-record.validate-value name, val}
+    }
+  }
+  
+  {method public open {commit}:void
+||--    {self.record-view.ensure-modifiable}
+    {self.source-record.commit}
+  }
+ 
+  {method public open {revert}:void
+||--    {self.record-view.ensure-modifiable}
+    {self.source-record.revert}
+  }
+  
+  {method public open {delete}:void
+||--    {self.record-view.ensure-modifiable}
+    {self.source-record.delete}
   }
 }
