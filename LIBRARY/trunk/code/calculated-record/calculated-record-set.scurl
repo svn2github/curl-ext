@@ -59,6 +59,9 @@
 
 || TODO: seems like we should be able to do more with the epoch.
 
+|| TODO: can we better guard against users leaving links around and
+|| unknowingly leaking memory?
+
 {doc-next
     {purpose
         An event relating to the operation of a {docref CalculatedField}.
@@ -134,7 +137,7 @@
 
 {doc-next
     {purpose
-        An event signalling that a {docref CalculatedField} update finished.
+        An event signaling that a {docref CalculatedField} update finished.
     }
 }
 {define-class public open CalculatedFieldUpdateFinished
@@ -672,14 +675,13 @@
     }
   }
   {method public open {request-update}:void
-    {if not self.update-requested? then
-        {if self.update-proc != null then
+    {if self.update-proc != null then
+        {if-non-null manager = self.manager then
             set self._update-requested? = true
-            {if-non-null manager = self.manager then
-                {manager.request-update-for-field self}
-             else
-                {self.update}
-            }
+            {manager.request-update-for-field self}
+         else
+            {self.update}
+            set self._update-requested? = false
         }
     }
   }
@@ -1142,7 +1144,7 @@
     || then skip additional processing.
     {if self.needs-refilter? then {return}}
     
-    || FIXME: these could be futher optimized with deep changes in
+    || FIXME: these could be further optimized with deep changes in
     || CalculatedRecord. Whether that's wise is another question.
     {type-switch event
      case rr:RecordsReordered do
@@ -2040,16 +2042,8 @@
   }
 
   {method public open {handle-event event:Event}:void
-    {super.handle-event event}
     {type-switch event
-     case cfe:CalculatedFieldUpdateEvent do
-        {self.handle-computed-field-event cfe}
-    }
-  }
-  
-  {method private {handle-computed-field-event e:CalculatedFieldUpdateEvent}:void
-    {type-switch e
-
+        
      case e:CalculatedFieldUpdateStart do
         {if self.in-computation? then
             {throw
@@ -2066,11 +2060,13 @@
                 }
             }
          else
+            || Have to handle-event first or batch will block it.
+            {super.handle-event event}        
             set self.batch-events? = true
             set self.in-computation? = true
             set self.last-update-epoch = e.epoch
         }
-
+        
      case e:CalculatedFieldUpdateAborted do
         {if e.epoch != self.last-update-epoch then
             {throw
@@ -2085,6 +2081,8 @@
         }
         set self.in-computation? = false
         set self.batch-events? = false
+        || Call super.handle-event after we release the batch lock.
+        {super.handle-event event}        
         
      case e:CalculatedFieldUpdateFinished do
         {if e.epoch != self.last-update-epoch then
@@ -2100,10 +2098,14 @@
         }
         set self.in-computation? = false
         set self.batch-events? = false
-
+        || Call super.handle-event after we release the batch lock.
+        {super.handle-event event}        
+        
+     else
+        {super.handle-event event}        
     }
   }
-  
+    
   || ======== computed field management ========
 
   || Get the CalculatedFieldManager, setting it if necessary.
