@@ -22,6 +22,18 @@
         {url "curlext-overview.curl"}
     },
     {node
+        |"Data Access APIs"|,
+        {url "data-access-apis.curl"}
+    },
+    {node
+        |"GUI APIs"|,
+        {url "gui-apis.curl"}
+    },
+    {node
+        |"Writing Automated GUI Tests"|,
+        {url "writing-guiauto-tests.curl"}
+    },
+    {node
         |"AutocompleteTextField"|,
         {url "autocomplete-fields.curl"}
     }

@@ -544,10 +544,7 @@
                 },
                 {RecordGridColumn
                     width=48pt, "owner", ||""
-                    cell-spec =
-                        {ForeignKeyCell-for
-                            get-resource-rs, "id", "name" ||""
-                        }
+                    cell-spec = ForeignKeyCell
                 },
                 {RecordGridColumn  width=36pt, "effort"}, ||""
                 {RecordGridColumn  width=48pt, "status"}, ||""
@@ -754,10 +751,7 @@
                     format-spec = locale-date-format
                 },
                 {RecordGridColumn  width=36pt, "who",
-                    cell-spec =
-                        {ForeignKeyCell-for
-                            get-resource-rs, "id", "name" ||""
-                        }
+                    cell-spec = ForeignKeyCell
                 },
                 {RecordGridColumn  width=72pt, "repeat"}
             }

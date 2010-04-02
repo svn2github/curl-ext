@@ -29,9 +29,15 @@
         non-null value.
     }
     {details
-        Use {docref ok-button} for the buttons. Add an {docref Action}
-        event handler to do what you need to do and the {ctext
-        ok-button} will take care of closing the dialog.
+        Use {docref ok-button} for the action choices. Add an {docref
+        Action} event handler to take the appropriate
+        action. The {ctext ok-button} will take care of closing the
+        dialog. In this case the result from {ctext choose-action-dialog}
+        is true.
+
+        You can use {docref cancel-button} to add a button that will
+        cancel the dialog and return false from the call to
+        {ctext choose-action-dialog}.
     }
 }
 {define-proc public {choose-action-dialog

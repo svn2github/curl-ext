@@ -606,8 +606,8 @@ How to handle foreign key fields?
   {method public open {add-dependency r:Record}:void
     def dr = {DependencyRecord r}
     {try
-        def tra = {self.tasks.get-TaskRecord dr.ida}
-        def trb = {self.tasks.get-TaskRecord dr.idb}
+        def tra = {self.tasks.get-TaskRecord-by-id dr.ida}
+        def trb = {self.tasks.get-TaskRecord-by-id dr.idb}
         {trb.depnode.add-successor tra.depnode}
      catch ignored:Exception do
     }
@@ -624,7 +624,7 @@ How to handle foreign key fields?
     {for r:Record in
         {self.tasks.rs.select filter = {RecordData owner = owner}}
      do
-        def tr = {self.tasks.get-TaskRecord r["id"] asa int} ||""
+        def tr = {self.tasks.get-TaskRecord r} ||""
         {if tr.status == TaskStatus.hold then
             {continue}
          elseif {self.scheduled.member? tr} then
@@ -820,11 +820,11 @@ How to handle foreign key fields?
 
         def task-records = {self.tasks.rs.select}
         {if id != 0 then
-            def tr = {self.tasks.get-TaskRecord id}
+            def tr = {self.tasks.get-TaskRecord-by-id id}
             {self.schedule tr.depnode}
          else
             {for r:Record key ri in task-records do
-                def tr = {TaskRecord r}
+                def tr = {self.tasks.get-TaskRecord r}
                 {if tr.status == TaskStatus.started then
                     set tr.end = null
                  elseif tr.status == TaskStatus.none then
@@ -866,14 +866,14 @@ How to handle foreign key fields?
         {self.tasks.compute
             post =
                 {proc {p:Record, children:{Array-of Record}, v:any = null}:void
-                    def ptr = {self.tasks.get-TaskRecord p["id"] asa int} ||""
+                    def ptr = {self.tasks.get-TaskRecord p} ||""
                     {if children.size > 0 then
                         let begin:DateTime = {DateTime.date "2030-01-01"} ||""
                         let end:DateTime = {DateTime.date "1980-01-01"}   ||""
                         let effort:Time = 0d
                         {for cr:Record in children do
                             def tr =
-                                {self.tasks.get-TaskRecord cr["id"] asa int} ||""
+                                {self.tasks.get-TaskRecord cr} ||""
                             {if tr.critical? then
                                 {inc effort, tr.effort}
                             }
@@ -974,13 +974,13 @@ How to handle foreign key fields?
     || FIXME: probably a bad idea to rebuild dependencies unnecessarily
     {with self.tasks.rs.batch-events? = true do
         {for r:Record in self.tasks.rs do
-            set r["depnode"] = null ||""
-            def tr = {TaskRecord r}
+            def tr = {self.tasks.get-TaskRecord r}
             {if tr.status == TaskStatus.none then
                 set tr.begin = null
                 set tr.end = null
             }
         }
+        {self.graph.clear}
         {for r:Record in self.dependencies.rs do
             {self.add-dependency r}
         }
@@ -1422,13 +1422,6 @@ INSERT INTO resource VALUES (1,Fred,Programmer,"FP","Dev","http://www.curl.com",
     set self.record["depnode"] = v ||""
   }
   {getter public open {depnode}:TaskDinode
-    {if self.record["depnode"] == null then ||""
-        set self.record["depnode"] = ||""
-            {TaskDinode
-                self,
-                (self.record.record-set asa ProjectDataTable).project.graph
-            }
-    }
     {return self.record["depnode"] asa TaskDinode} ||""
   }
 
@@ -1632,7 +1625,41 @@ INSERT INTO task VALUES (1,0,0,0,0,'Sample Task 1','JP','',1.0,0.0,0.0);
         file-name,
         {splice ...}
     }
+    {self.rs.add-event-handler
+        {on e:RecordsBulkChanges do
+            {self.rebuild}
+        }
+    }
+    {self.rs.add-event-handler
+        {on e:RecordRemoved do
+            def tr = {self.get-TaskRecord e.record}
+            {self.task-record-map.remove tr.id}
+        }
+    }
+    {self.rs.add-event-handler
+        {on e:RecordAdded do
+            def tr = {self.get-TaskRecord e.record}
+        }
+    }
+  }
 
+  {method public open {rebuild}:void
+    || This can happen for relatively minor changes, such as expanding
+    || or contracting a node. So just verify that everything is
+    || internally consistent, and add missing items if needed
+    def ids = {new {Set-of int}}
+    {for r:Record in self.rs do
+        def id = r["id"] asa int
+        def (tr, found?) = {self.task-record-map.get-if-exists id}
+        {if not found? then
+            {dump "not found after bulk changes", id}
+            def nr = {self.get-TaskRecord-by-id id}
+        }
+        {ids.insert id}
+    }
+    || If this assert fails, it means a task was deleted and not
+    || removed from the map. Perhaps that should be done here.
+    {assert ids.size == self.rs.size}
   }
 
   {method public open {new-task}:int
@@ -1642,37 +1669,57 @@ INSERT INTO task VALUES (1,0,0,0,0,'Sample Task 1','JP','',1.0,0.0,0.0);
     set r["id"] = id
     set r["name"] = ""
     set r["effort"] = 1d
+    set r["depnode"] = {TaskDinode {TaskRecord r}, self.project.graph}
     ||"" ))
+    def ntr = {self.get-TaskRecord-by-id r["id"] asa int}
     {self.rs.append r}
     {return id}
   }
 
   {method public open {refresh}:void
-    {self.task-record-map.clear}
+    ||FIXME: could there be spurious entries in the map?
+||--    {self.task-record-map.clear}
   }
 
-  {method public open {note-record-added r:Record}:void
-    def tr = {self.get-TaskRecord r["id"] asa int} ||""
-  }
+||--  {method public open {note-record-added r:Record}:void
+||--    def tr = {self.get-TaskRecord r["id"] asa int} ||""
+||--  }
 
-  {method public open {get-TaskRecord id:int}:TaskRecord
+  {method public open {get-TaskRecord-by-id id:int}:TaskRecord
     def (tr, found?) = {self.task-record-map.get-if-exists id}
     {if found? then
         {return tr}
     }
     {if-non-null r = {self.rs.get-by-id id} then
-        def tr = {TaskRecord r}
-        set self.task-record-map[id] = tr
-        {return tr}
+        {return {self.get-TaskRecord r}}
     }
     {error {hlformat "Unable to locate task id=%s", id}}
+  }
+  
+  || r is from the TaskTable (self.rs)
+  {method public open {get-TaskRecord r:Record}:TaskRecord
+    def (tr, found?) = {self.task-record-map.get-if-exists r["id"] asa int}
+    {if found? then
+        {return tr}
+    }
+
+    def ntr = {TaskRecord r}
+    {if r["depnode"] == null then
+        set r["depnode"] = {TaskDinode ntr, self.project.graph}
+     else
+        {error
+            {hlmessage Internal error: Task not in task-record-map}
+        }
+    }
+    set self.task-record-map[ntr.id] = ntr
+    {return ntr}
   }
 
   || You can only sort the successors, so you need the initial tasks to start
   {getter public open {initial-tasks}:{Array-of TaskDinode}
     def tasks = {new {Array-of TaskDinode}}
     {for r in self.rs do
-        def tn = {self.get-TaskRecord r["id"] asa int} ||""
+        def tn = {self.get-TaskRecord r}
         {if tn.depnode.source? then
             {tasks.append tn.depnode}
         }
@@ -1683,7 +1730,7 @@ INSERT INTO task VALUES (1,0,0,0,0,'Sample Task 1','JP','',1.0,0.0,0.0);
   {getter public open {final-tasks}:{Array-of TaskDinode}
     def tasks = {new {Array-of TaskDinode}}
     {for r in self.rs do
-        def tn = {self.get-TaskRecord r["id"] asa int} ||""
+        def tn = {self.get-TaskRecord r}
         {if tn.depnode.sink? then
             {tasks.append tn.depnode}
         }

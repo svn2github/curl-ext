@@ -273,6 +273,10 @@ hierarchal To Do list}.
         set tree-grid.filter = null
     }
 }
+{ListBox
+    height = 54pt, vorigin = .27,
+    data-model = {(tree-model.source asa CsvRecordSetB).get-list-model "data"}
+}
 
 {value tg}
 

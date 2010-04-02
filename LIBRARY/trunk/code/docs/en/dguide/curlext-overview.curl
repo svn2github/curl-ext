@@ -58,6 +58,8 @@ navigate to the {ctext manifest.mcurl} file in the library.
     }
 }
 
+{privilege-note}
+
 {heading level=2,
     What's Included in the Curl Extensions Library
 }

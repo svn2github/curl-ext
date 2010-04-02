@@ -33,6 +33,7 @@
     {compiler-directives stringent? = true}
 }
 
+{import * from CURL.LANGUAGE.FORMAT}
 {import * from CURL.GUI.STANDARD}
 {import * from CURL.DATA-ACCESS.BASE}
 {import * from CURL.DATA-ACCESS.CONNECTED} || for TransientAnyDomain
@@ -57,6 +58,13 @@
     }
 }
 {def public transient-domain = {TransientAnyDomain}}
+
+{doc-next
+    {purpose A domain that can be used on a {docref RecordField}
+        that represents a date.
+    }
+}
+{def public date-domain = {StandardDateDomain}}
 
 
 {doc-next 
@@ -151,6 +159,44 @@
 
 || ------------------------------------------------------------------------
 
+{define-class public open LocaleDateDomain {inherits StandardDateDomain}
+
+  {doc-next
+    {purpose Construct this object.}
+    {parameter
+        default-value, A default value for this domain or {ctext null}.
+        If {ctext null}, the default value of this domain will be
+        a proc which dynamically generates the current date.
+        See {docref Domain.default-value} for more information.
+    }
+    {parameter
+        allowable-values, See {docref Domain.allowable-values}.
+    } 
+  }
+  {constructor public {default
+                          default-value:any = null,
+                          min-allowable:any = null,
+                          max-allowable:any = null,
+                          allowable-values:#{Array-of DateTime} = null
+                      }
+    {construct-super 
+        default-value = default-value,
+        min-allowable = min-allowable,
+        max-allowable = max-allowable, 
+        allowable-values = allowable-values
+    }
+  }
+  
+  {method public open {format x:any}:String 
+    {return (x asa DateTime).info.locale-date}
+  }
+  
+}
+
+{let public constant locale-date-domain:LocaleDateDomain = {LocaleDateDomain}}
+
+|| ------------------------------------------------------------------------
+
 {doc-next
     {purpose A domain for {ctext double} values where the precision used
         to format the value as a String can be specified.
@@ -166,7 +212,7 @@
         respectively.
     }
 }
-{define-class public open DoubleDomain 
+{define-class public open DoubleDomain
   {inherits {StandardDomain-of double}}
   
   {doc-next
@@ -285,6 +331,28 @@
 {let public constant d4-domain:DoubleDomain = {DoubleDomain precision = -4}}
 
 
+|| Note
+|| Is it ever useful to change the RecordSet? If so, some code like
+|| the following is needed to make sure that any RecordGridCells that
+|| reference a ForeignFieldDomain are updated:
+||--
+||--    {CommandButton
+||--        label = "New Foreign Table",
+||--        {on Action do
+||--            def rs = {make-sample-record-set}
+||--            {for r:Record in rs do
+||--                set r["name"] = {(r["name"] asa String).to-upper-clone}
+||--            }
+||--            def fdrs = foreign-domain.rs
+||--            set foreign-domain.rs = rs
+||--            set rg.record-source = rs
+||--            {for r:Record in {non-null fdrs} do
+||--                {fdrs.handle-event {RecordModified r}}
+||--                {break}
+||--            }
+||--        }
+||--    }
+
 {doc-next 
     {purpose A {docref Domain} for a foreign key field.}
     {details 
@@ -318,7 +386,7 @@
         The foreign {docref RecordSet} to which this field refers.
     }
   }
-  field public rs:#RecordSet
+  field public-get protected-set rs:#RecordSet
 
   {doc-next
     {purpose
@@ -1548,6 +1616,77 @@ How this evolved:
 
 
 {doc-next
+    {purpose A {docref RecordGridCell} for values that are currency
+        amounts stored as pennies.
+    }
+}
+{define-class public open CurrencyCell 
+  {inherits StandardStringCell}
+  
+  let public constant formatter:NumberFormatter =
+      {NumberFormatter.create-currency-formatter
+        locale = {get-working-locale}
+      }
+
+  let public constant parser:NumberParser =
+      {NumberParser 
+        allow-grouping? = true,
+        allow-exponent? = false,
+        whitespace-char-class = {CharClass " $\\\t"}
+      }
+
+  {define-proc public {format-value v:int}:String
+    {return {CurrencyCell.formatter.format v / 100.0}}
+  }
+
+  {doc-next
+    {purpose Construct this a {docref CurrencyCell}.}
+  }
+  {constructor public {default}
+    {construct-super}
+    set self._style-element = "CurrencyCell"
+    set self.halign = "right"
+  }
+
+  {method public open {parse val:String}:any
+   
+    let ret:any = null
+    let field:RecordField = {unchecked-non-null self.field}
+    {if val.empty? and field.nullable? then
+        let (data:any, valid?:bool) = {self.get-data}
+        {if valid? and data == null then
+            set ret = null
+         else
+            {try
+                set ret = 
+                    {round ({CurrencyCell.parser.parse-double val} * 100.0)}
+             catch e:Exception do
+                set ret = null
+            }
+        }
+     else
+        {try
+            set ret = 
+                {round ({CurrencyCell.parser.parse-double val} * 100.0)}
+         catch e:Exception do
+            set ret = e
+        }   
+    }
+    {return ret}
+  }
+
+  {method public open {format data:any}:String
+    {if-non-null field = self.field then
+        {if-non-null data then
+            {return {CurrencyCell.format-value data asa int}}
+        }
+    }
+    {return ""}
+  }
+
+}
+
+{doc-next
     {purpose 
         {ctext RecordGridCell} for displaying and editing 
         data using its standard string representation.
@@ -1698,6 +1837,7 @@ How this evolved:
         let (val:any, valid?:bool) = {self.get-data}
         {if valid? then
             set editor.value = val
+            {self.refresh-list}
          else
             set editor.prompt =  "" 
             {editor.unset-value}
@@ -1708,10 +1848,29 @@ How this evolved:
     }
   }
 
+  {doc-next
+    {purpose Rebuild the list of choices.}
+  }
+  {method public open {refresh-list}:void
+    {if-non-null editor = self.current-editor then
+        def v = editor.value
+        let list:{Array-of ListValueItem} = {self.create-list-value-array}
+        def lm = editor.data-model
+        {lm.clear}
+        {for lva in list do
+            {editor.append lva}
+        }
+        set editor.value = v
+     else
+        {self.refresh-data}
+    }
+  }
+
   {method public open {become-active forward?:bool = true}:bool
     let ret:bool = {super.become-active forward? = forward?}
     {if ret then
         {if-non-null editor = self.current-editor then
+            {self.refresh-list}
             {editor.become-active forward? = forward?}
         }
     }
@@ -1721,6 +1880,7 @@ How this evolved:
   {method public open {note-grid-focus-in}:void
     {super.note-grid-focus-in}
     {if-non-null editor = self.current-editor then
+        {self.refresh-list}
         {type-switch editor
          case ddl:DropdownList do
             set ddl.halign = self.halign
@@ -1863,39 +2023,99 @@ How this evolved:
 
 || ----------------------------------------------------------------------
 
+||--{doc-next
+||--    {purpose
+||--        A {docref RecordGridCell} designed to be used to display (and
+||--        change) a foreign key field specified by a
+||--        {docref ForeignFieldDomain}.
+||--    }
+||--}
+||--{define-class public open {ForeignKeyCell-for
+||--                            rs:any, id-field:String, label-field:String
+||--                          }
+||--  {inherits ChooseValueCell}
+||--
+||--  {doc-next
+||--    {purpose
+||--        Return the {docref RecordSet} provided when this generic class
+||--        was instantiated.
+||--    }
+||--  }
+||--  {getter public open {rs}:RecordSet
+||--    {type-switch rs
+||--     case rs:RecordSet do
+||--        {return rs}
+||--     case rsp:{proc-type {}:RecordSet} do
+||--        {return {rsp}}
+||--     else
+||--        {error 
+||--            {hlmessage 
+||--                Parameter rs must be a RecordSet or a proc that 
+||--                returns a RecordSet.
+||--            }
+||--        }
+||--    }
+||--  }
+||--
+||--  {doc-next
+||--    {purpose
+||--        Construct this object.
+||--    }
+||--  }
+||--  {constructor public {default}
+||--    {construct-super}
+||--  }
+||--
+||--  {doc-next
+||--    {purpose
+||--        This override will create the list of choices from values in the
+||--        foreign table.
+||--    }
+||--    {details
+||--        The chioces consist of all of the values from the foreign table.
+||--    }
+||--  }
+||--  {method protected open {create-list-value-array}:{Array-of ListValueItem}
+||--    let constant lm:{Array-of ListValueItem} = {{Array-of ListValueItem}}
+||--    {for r:Record in {self.rs.select} do
+||--        {lm.append
+||--            {ListValueItem 
+||--                r[id-field],
+||--                label = {url-decode-string r[label-field] asa String}
+||--            }
+||--        }
+||--    }
+||--    {if self.field.nullable? then
+||--        {lm.append {ListValueItem null, label = " "}}
+||--     else
+||--        {lm.append {ListValueItem 0, label = " "}}
+||--    }
+||--    {return lm}
+||--  }
+||--  
+||--  {method public open {format data:any}:String
+||--    let (data:any, valid?:bool) = {self.get-data}
+||--
+||--    let s:String = {super.format data}
+||--    {if {s.find '#'} > -1 then
+||--        let parts:StringArray = {s.split split-chars = "#"} ||""
+||--        set s = parts[0]
+||--    }
+||--    {return {url-decode-string s}}
+||--  }
+||--
+||--}
+
 {doc-next
     {purpose
-        A {docref RecordGridCell} designed to be used to display (and
-        change) a foreign key field specified by a
-        {docref ForeignFieldDomain}.
+        A {docref RecordGridCell} designed to be used to display and
+        edit a foreign key field specified by a {docref ForeignFieldDomain}.
     }
 }
-{define-class public open {ForeignKeyCell-for 
-                            rs:any, id-field:String, label-field:String
-                          }
-  {inherits ChooseValueCell}
+{define-class public open ForeignKeyCell {inherits ChooseValueCell}
 
-  {doc-next
-    {purpose
-        Return the {docref RecordSet} provided when this generic class
-        was instantiated.
-    }
-  }
-  {getter public open {rs}:RecordSet
-    {type-switch rs
-     case rs:RecordSet do
-        {return rs}
-     case rsp:{proc-type {}:RecordSet} do
-        {return {rsp}}
-     else
-        {error 
-            {hlmessage 
-                Parameter rs must be a RecordSet or a proc that 
-                returns a RecordSet.
-            }
-        }
-    }
-  }
+  field private updater:#EventHandler = null
+  field private updater-rs:#RecordSet = null
 
   {doc-next
     {purpose
@@ -1906,30 +2126,71 @@ How this evolved:
     {construct-super}
   }
 
+  {method public open {get-data}:(data:any, valid?:bool)
+    {type-switch self.field.domain
+     case ffd:ForeignFieldDomain do
+        def rs = ffd.rs
+        {if self.updater-rs != rs then
+            {if-non-null updater = self.updater, urs = self.updater-rs then
+                {if {urs.event-handler-present? updater} then
+                    {dump "removing", updater, urs}
+                    {urs.remove-event-handler updater}
+                    set self.updater = null
+                    set self.updater-rs = null
+                }
+            }
+        }
+        {if self.updater == null then
+            set self.updater-rs = rs
+            set self.updater =
+                {on e:RecordsChanged at frs:RecordSet do
+                    {self.refresh-list}
+                }
+            {rs.add-event-handler {non-null self.updater}}
+        }
+    }
+    {return {super.get-data}}
+  }
+
   {doc-next
     {purpose
-        Override to create the list of choices.
+        This override will create the list of choices from values in the
+        foreign table.
     }
     {details
         The chioces consist of all of the values from the foreign table.
     }
   }
   {method protected open {create-list-value-array}:{Array-of ListValueItem}
-    let constant lm:{Array-of ListValueItem} = {{Array-of ListValueItem}}
-    {for r:Record in {self.rs.select} do
-        {lm.append
-            {ListValueItem 
-                r[id-field],
-                label = {url-decode-string r[label-field] asa String}
+    {type-switch self.field.domain
+     case ffd:ForeignFieldDomain do
+        def rs = ffd.rs
+        def key-field = ffd.key-field
+        def label-field = ffd.label-field
+
+        let constant lm:{Array-of ListValueItem} = {{Array-of ListValueItem}}
+        {for r:Record in {rs.select} do
+            {lm.append
+                {ListValueItem 
+                    r[key-field],
+                    label = {url-decode-string r[label-field] asa String}
+                }
+            }
+        }
+        {if self.field.nullable? then
+            {lm.append {ListValueItem null, label = " "}}
+         else
+            {lm.append {ListValueItem 0, label = " "}}
+        }
+        {return lm}
+     else
+        {error 
+            {hlmessage 
+                The domain for the column where ForeignFieldCell is used
+                must be a ForeignFieldDomain.
             }
         }
     }
-    {if self.field.nullable? then
-        {lm.append {ListValueItem null, label = " "}}
-     else
-        {lm.append {ListValueItem 0, label = " "}}
-    }
-    {return lm}
   }
   
   {method public open {format data:any}:String
@@ -1991,7 +2252,7 @@ How this evolved:
         ui-object = {SRGDateFieldUI},
         value = {DateTime},
         test-visible? = false,
-        date-format-spec = DateFieldFormatSpec.iso,
+||--        date-format-spec = DateFieldFormatSpec.iso,
         {on vf:ValueFinished at df:SRGDateField do
             {dump df, vf, df.value}
             {if-non-null cell = df.cell then
@@ -2066,8 +2327,17 @@ How this evolved:
 
 {doc-next
     {purpose
-        An editable {docref RecordGridCell} for {docref StandardDateDomain}.
+        An editable {docref RecordGridCell} for a field that uses a
+        {docref DateTime} to represent a date.
     }
+    {details
+        The editor for this cell is a {docref DateField}. If the
+        domain for the column containing this cell is a {docref
+        LocaleDateDomain} then the {docref DateField.date-format-spec}
+        is {docref DateFieldFormatSpec}.local. Otherwise it is
+        {docref DateFieldFormatSpec.iso}, which matches the formatting
+        used by {docref StandardDateDomain}.
+    }        
 }
 {define-class public open StandardDateCell
   {inherits StandardBaseEditableStringCell}
@@ -2101,6 +2371,11 @@ How this evolved:
             {if-non-null editor = self.current-editor then 
                 set editor.value = dt
                 set data-set? = true
+                {if self.field.domain isa LocaleDateDomain then
+                    set editor.date-format-spec = DateFieldFormatSpec.local
+                 else
+                    set editor.date-format-spec = DateFieldFormatSpec.iso
+                }
             }
         }
     }
@@ -2266,7 +2541,6 @@ How this evolved:
   }
   field public-get protected-set id-field:String = "" ||""
 
-  field private ids:{Array-of bool} = {new {Array-of bool}}
 
   field private id-filter:RecordData = {RecordData}
 
@@ -2539,41 +2813,9 @@ How this evolved:
             set last-id = recid
         }
     }
-    || Go past the last one used
-    {inc last-id}
-
-    || Reset the bits
-    {self.ids.clear}
-    {for i:int = 0 to last-id do
-        {self.ids.append false}
-    }
-
-    || Set a bit for each id currently in use 
-    {for r:Record in self do
-        let recid:int = r[self.id-field] asa int
-        set self.ids[recid] = true
-    }
-
-    || Finally, pick out an unused id
-    {for used?:bool key idi in self.ids do
-        {if not used? and idi > 0 then
-            set last-id = idi
-            {break}
-        }
-    }
-    {return last-id}
+    || Return the next unused id
+    {return last-id + 1}
   }
-
-||FIXME: maybe new-record takes care of this...
-||--  {method public open {append-with-new-id val:any}:void
-||--    {type-switch val
-||--     case rd:RecordData do
-||--        set rd[self.id-field] = {self.new-id}
-||--     case r:Record do
-||--        set r[self.id-field] = {self.new-id}
-||--    }
-||--    {self.append val}
-||--  }
 
   || Allocate a new record with a unique id
   {method public open {new-record}:BasicRecord
@@ -2639,35 +2881,68 @@ How this evolved:
     {return value-list}
   }
 
-  ||FIXME: Shouldn't this watch for changes?
-  {method public open {list-model-from-columns ...:String}:DefaultListModel
-    {return {DefaultListModel {splice {self.unique-values-in-columns ...}}}}
-  }
+  {doc-next
+    {purpose
+        Return a {docref DefaultListModel} for the values in a column.
+    }
+    {details
+        The returned list model will contain the values in the column
+        identified by {param field} in alphabetical order (reversed if
+        {param reverse?} is true), with duplicates removed.
 
-  {method public open {compute
-                          pre:#{proc-type {
-                                           parent:Record,
-                                           records:{Array-of Record}
-                                          }:void
-                               } = null,
-                          post:#{proc-type {
-                                           parent:Record,
-                                           records:{Array-of Record}
-                                          }:void
-                               } = null,
-                          parent-id:int = 0,
-                          pid-field:String = "pid" ||""
-                      }:void
-    {walk-record-tree 
-        self, 
-        id-field = self.id-field, pid-field = pid-field,
-        parent-id = parent-id,
-        pre = pre,
-        post = post
+        An event handler is added to this recordset so that if a
+        record is added or changed, the list model will be updated.
+
+        The values in the model will be values from the column. If
+        you need to convert the value to a string for display in a
+        {docref ListBox} or other control that uses the result, you
+        can supply a {ctext list-item-creation-proc} when you create
+        the {ctext ListBox}.
     }
   }
+  {method public open {get-list-model
+                          field:String,
+                          include-blank?:bool = false,
+                          reverse?:bool = false
+          }:DefaultListModel
 
+    let dlm:DefaultListModel = {DefaultListModel}
+    let rf:RecordField = self.fields[field]
 
+    let update-proc:{proc-type {}:void} =
+        {proc {}:void 
+            let values:Set = {Set}
+            {dlm.clear}
+            {for r:Record in self do
+                def fval = {rf.domain.format r[field]}
+                let include?:bool = fval != "" or include-blank?
+                let fv:any = r[field]
+                {if include? and not {values.member? fv} then
+                    {dlm.append-quietly fv}
+                    {values.insert fv}
+                }
+            }
+            {dlm.sort comparison-proc = 
+                {proc {a:any, b:any}:bool
+                    {return
+                        {if reverse? then
+                            {rf.domain.compare a, b} > 0
+                         else
+                            {rf.domain.compare a, b} <= 0
+                        }
+                    }
+                }
+            }
+        }
+
+    {self.add-event-handler
+        {on e:RecordModified at rs:RecordSet do
+            {update-proc}
+        }
+    }
+    {update-proc}
+    {return dlm}
+  }
 }
 
 || ---------------------------------------------------------------------------
@@ -3071,6 +3346,7 @@ How this evolved:
   }
 }
 
+||FIXME: this is an experiment... not used yet
 {doc-next
     {purpose  
         An implementation of the {docref Record} class 

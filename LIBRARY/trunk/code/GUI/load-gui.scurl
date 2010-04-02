@@ -194,7 +194,7 @@
 
 {doc-next
     {purpose
-        Event fired when a click is recognized.
+        Event fired when a click is recognized (see {docref click-recognizer}).
     }
 }
 {define-class public open Click {inherits PointerButtonEvent}
@@ -209,6 +209,20 @@
 
 }
 
+{doc-next
+    {purpose
+        Recognize a "click" on any {docref Visual} object.
+    }
+    {details
+        This procedure returns an event handler that can be added to any
+        {docref Visual}. The event handler will pay attention to mouse moves
+        and button presses. If the left button is pressed and released
+        one or more times within the object, a {docref Click} event is
+        fired. The {docref-abbr PointerButtonEvent.click-count} field
+        of the event indicates how many times the mouse was pressed
+        and released.
+    }
+}
 {define-proc public {click-recognizer consume?:bool = true}:EventHandler
     let pressed?:bool = false
     let entered?:bool = false

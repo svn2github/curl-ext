@@ -19,16 +19,20 @@
 
   To Do
 
-  o Filtering. If a node passes, all parent nodes also pass
-
   o Pluggable de/serialize. For example to/from HTML, OPML, TreeNode, etc.
   o Proper tree sorting (sort siblings at every level)
 
+  o Put depth, ln, rn, and hide into a separate object that takes
+    one column in the model. (TreeGridNodeInfo)
+    - ExpanderCell already assumes it is in a TreeGrid
 
-Fields
-  - Likely to be different for every application
-  - id field is the only one that might already exist
-  - 
+    o Use a TreeNodeDomain to parse and format. Only needs to
+      serialize _ord and _expand. _id and _pid would be in the user's
+      record. Others can be computed.
+
+    o RecordSet supplied by caller. Needs id and pid fields to define
+      the tree structure. Also one column for TreeGridNodeInfo.
+
 
 
 #|||-----------------------------------------------------------------------
@@ -150,8 +154,8 @@ Fields
       }
 
 
-  ||FIXME: Can't use application id-field yet because don't know how to get
-  || a new one.
+  ||FIXME: If we want to share an id field, we need a way to allow the
+  ||application to assign the id to a new record.
   {doc-next
     {purpose The fields in the a {docref RecordSet} used to store the tree.}
     {details
@@ -706,7 +710,7 @@ Fields
                 }
             }
     }
-    {for r:Record in {self.source.select} do
+    {for r:Record in self.source do
         set r["_hide"] = ||""
             {self.hidden-nodes.member? r[self.id-field] asa int}
     }
@@ -878,8 +882,34 @@ Fields
     set self._reverse? = reverse?
 ||--    {dump "Before:"}
 ||--    {for r in recs do {dump r[self.id-field]}}
+
+    def find-parent-at-depth =
+        {proc {r:Record, depth:int}:Record
+            let rd:int = r[RecordSetTreeModel.depth-field] asa int
+            {while rd > depth do
+                def pid = r[RecordSetTreeModel.parent-id-field] asa int
+                def pr = {record-set.select-one filter = {RecordData id = pid}}
+                set rd = pr[RecordSetTreeModel.depth-field] asa int
+                {if rd == depth then
+                    {return {non-null pr}}
+                }
+            }
+            {return r}
+        }
+
+    || FIXME: probably need a hash for child -> parent, to avoid select-one
     def comp =
         {proc {a:Record, b:Record}:int
+            || Only compare records at the same depth within the tree
+            def a-depth = a[RecordSetTreeModel.depth-field] asa int
+            def b-depth = b[RecordSetTreeModel.depth-field] asa int
+            {if a-depth > b-depth then
+                set a = {find-parent-at-depth a, b-depth}
+            }
+            {if b-depth > a-depth then
+                set b = {find-parent-at-depth b, a-depth}
+            }
+
             def a-pid = a[RecordSetTreeModel.parent-id-field] asa int
             def b-pid = b[RecordSetTreeModel.parent-id-field] asa int
 ||--            {dump a[self.id-field], a-pid, b[self.id-field], b-pid}
@@ -933,7 +963,6 @@ Fields
 }
 
 
-||FIXME: add doc strings once this settles down
 {doc-next
     {purpose
         A {docref RecordFilter} that takes the tree structure of a
@@ -972,10 +1001,6 @@ Fields
     }
   }
   field protected filter-change-count:int = -1
-
-  ||-----------------------------------------
-  || Constructors
-  ||-----------------------------------------
 
   {doc-next
     {purpose
@@ -2005,23 +2030,6 @@ Fields
 
 {doc-next
     {purpose
-        Add the standard tree commands to a {docref TreeGrid}.
-    }
-}
-{define-proc  public {add-tree-commands context:TreeGrid}:void
-    {context.add-command {IndentNodeCommand context}}
-    {context.add-command {UndentNodeCommand context}}
-    {context.add-command {MoveNodeDownCommand context}}
-    {context.add-command {MoveNodeUpCommand context}}
-    {context.add-command {AddNodeCommand context}}
-    {context.add-command {AddChildNodeCommand context}}
-    {context.add-command {DeleteNodeCommand context}}
-    {context.add-command {MoveNodeCommand context}}
-    {context.add-command {TreeSaveCommand context}}
-}
-
-{doc-next
-    {purpose
         Return an array of standard menu items for manipulating a
         {docref TreeGrid}.
     }
@@ -2201,6 +2209,34 @@ Fields
         sort = RecordSetTreeModel.pos-field,
         key-spec = RecordSetTreeModel.pos-field
     }
-    {add-tree-commands self}
   }
+
+  {method public open {create-command name:String}:#Command
+    || Create one of the tree commands if requested
+    {return
+        {switch name
+         case "Tree.indent-node" do
+            {IndentNodeCommand self}
+         case "Tree.unindent-node" do
+            {UndentNodeCommand self}
+         case "Tree.move-node-down" do
+            {MoveNodeDownCommand self}
+         case "Tree.move-node-up" do
+            {MoveNodeUpCommand self}
+         case "Tree.add-node" do
+            {AddNodeCommand self}
+         case "Tree.add-child-node" do
+            {AddChildNodeCommand self}
+         case "Tree.delete-node" do
+            {DeleteNodeCommand self}
+         case "Tree.move-node-up" do
+            {MoveNodeCommand self}
+         case "Tree.save" do
+            {TreeSaveCommand self}
+         else
+            {super.create-command name}
+        }
+    }
+  }
+
 }

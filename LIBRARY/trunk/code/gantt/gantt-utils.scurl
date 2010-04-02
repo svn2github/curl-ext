@@ -345,7 +345,7 @@
                         {return {ListSeparator}}
                      else
                         def tr = 
-                            {self.project-model.tasks.get-TaskRecord
+                            {self.project-model.tasks.get-TaskRecord-by-id
                                 val asa int
                             }
                         {return {ListValueItem val, label = tr.name}}
@@ -477,7 +477,7 @@
     let task-list:{Array-of TaskRecord} =    || Those without subtasks (yet)
         {new {Array-of TaskRecord}}
     {for r:Record in self.records do
-        def tr = {self.project-model.tasks.get-TaskRecord r["id"] asa int} ||""
+        def tr = {self.project-model.tasks.get-TaskRecord r}
         {if tr.has-subtasks? then
             {parent-list.append tr}
          else

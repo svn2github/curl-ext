@@ -53,7 +53,8 @@
 }
 {define-proc {privilege-note}:Visual
     {return
-        {Frame background = "#DDD",
+        {Frame background = "#fff",
+            border-width = 1in/300, border-color = "black", margin = 6pt,
             {paragraph
                 {bold Note about privilege:} Normal Curl applets can obtain data
                 and communicate with resources in their home location,
@@ -70,15 +71,16 @@
                 Letting Applets Access Web Sites}
                 for more on Curl security provisions.
                 
-                These Developer Guide pages, of course, are not
-                normally privileged.
-                {Frame border-width = 1px,
+                {Frame 
+                    background = "yellow",
                     {paragraph
-                        At the moment, they are
+                        At the moment, these pages are
                         {if {process-privileged?} 
                          then {bold color = "green", privileged}
                          else {bold color = "red", not privileged}}.
                     }}
+                Privilege is requored for some of the examples to run
+                properly.
                 
                 To grant privilege to the examples, you need to use
                 the Curl Control Panel to grant privilege to the

@@ -74,6 +74,8 @@
     words are provided below. These samples are written using PHP.
 }
 
+{privilege-note}
+
 {heading level=2, Autocomplete Classes}
 {paragraph
     The basic interfaces for autocompletion are defined by two

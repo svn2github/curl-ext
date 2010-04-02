@@ -18,4 +18,3 @@
 {delegate-to COM.CURL.EXT,
     location = "../../../manifest.mcurl"
 }
-
