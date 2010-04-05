@@ -878,10 +878,6 @@
         update-proc = update-proc,
         weak-predecessors? = weak-predecessors?
     }
-    def manager = {CalculatedFieldManager}
-    def new-node = {manager.create-node self}
-    set self.node = new-node
-    {manager.add-field self}
   }
   
   || ======== ACCESS OVERRIDES (expose predecessor methods) ========
