@@ -1,0 +1,797 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl-file-attributes character-encoding = "utf8"}
+
+
+{def public CalculatedFieldUpdateProcType:ProcType =
+    {proc-type {CalculatedField}:void}
+}
+
+
+{doc-next
+    {purpose
+        An object that updates itself when defined predecessors are changed.
+    }
+    {details
+        Each {ctext CalculatedField} has a {docref-abbr CalculatedField.value}
+        property, an {docref-abbr CalculatedField.update-proc}, and
+        a list of {docref-abbr CalculatedField.predecessors}. When the value
+        at one {ctext CalculatedField} changes, all successor
+        {ctext CalculatedField}s will be scheduled for an update of their
+        {docref-abbr CalculatedField.value}, using their respective
+        {docref-abbr CalculatedField.update-proc}. This can be used to
+        build automatic update chains like the classical example of
+        a spreadsheet cell that sums all the cells in the column above it.
+        
+        Each {ctext CalculatedField} is associated with a
+        {docref CalculatedFieldManager}. {ctext CalculatedField}s
+        can only interoperate with other {ctext CalculatedField}s
+        in the same group.
+        
+        Due to their automatic update features, {ctext CalculatedField}s
+        can remain alive as long as their {docref CalculatedFieldManager}s.
+        To minimize memory usage, it is best to call
+        {docref-abbr CalculatedField.disconnect} on any
+        {ctext CalculatedField} that is no longer needed.
+    }
+}
+{define-class public abstract open CalculatedField
+  
+  || NOTE: careful here; this is actually our container.
+  || The container reference should always be glued onto this object
+  || _immediately_ after creation, before the manager is notified.
+  field package node:{DefaultDirectedGraphNode-of CalculatedField}
+  
+  || Our manager.
+  field private _manager:#CalculatedFieldManager = null
+  
+  || Proc to run when predecessor data changes:
+  field private _update-proc:#CalculatedFieldUpdateProcType
+  
+  || False if this node has been disconnected.
+  field private _connected?:bool = true
+  
+  || Whether prerequisites can be quietly removed when their
+  || record (fields) are deleted.
+  field private _weak-predecessors?:bool
+  
+  || True if an update was requested locally (at this very node).
+  field private _update-requested?:bool
+  
+  || True if the update proc is being run on us right this moment.
+  || Used e.g. to detect whether value changes should be signaled.
+  field package in-update?:bool
+  
+  || The last computed update epoch we updated in.
+  field package last-update-epoch:int
+  
+  || Whether the value changed since the last update.
+  field package value-changed?:bool = true
+  
+  || The place of this node in the working update queue.
+  || This value is only valid when it's been stamped by the manager
+  || and is junk at all other times; leave its use to the manager.
+  field package update-sequence-position:int = -1
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter manager,
+        See {docref-abbr CalculatedField.manager}
+    }
+    {parameter update-proc,
+        The proc to run when this object requires updating.
+    }
+    {parameter weak-predecessors?,
+        See {docref-abbr CalculatedField.weak-predecessors?}
+    }
+  }
+  {constructor public {default
+                          manager:CalculatedFieldManager,
+                          update-proc:#CalculatedFieldUpdateProcType = null,
+                          weak-predecessors?:bool = false
+                      }
+    set self._update-proc = update-proc
+    set self._weak-predecessors? = weak-predecessors?
+    
+    || Always set up the node before we do anything that could reference it.
+    def new-node = {manager.create-node self}
+    set self.node = new-node asa {DefaultDirectedGraphNode-of CalculatedField}
+    
+    || Add ourself to the manager.
+    {manager.add-field self}
+  }
+  
+  || ======== MISCELLANEOUS PROPERTIES ========
+  
+  {doc-next
+    {purpose
+        Whether this node is connected to a valid data property and
+        can perform normal operations.
+    }
+    {details
+        By default, this property is {ctext true}. If it becomes
+        {ctext false}, which is typically only when the
+        {docref-abbr CalculatedField.disconnect} method is called,
+        this object will thereafter be unusable and performing
+        any operations upon it may result in an error. 
+    }
+  }
+  {getter public open {connected?}:bool
+    {return self._connected?}
+  }
+  
+  {doc-next
+    {purpose
+        Whether this {ctext CalculatedField} watches for events on
+        its {ctext record-set}.
+    }
+  }
+  {getter package {watching?}:bool
+    {return false}
+  }
+  
+  {doc-next
+    {purpose
+        The manager this field is associated with,
+        or {ctext null} if it has been disconnected.
+    }
+    {details
+        {ctext CalculatedField}s should not be moved between managers.
+        This value should be set once at creation to a valid manager
+        instance and thereafter only set to {ctext null} upon disconnection.
+    }
+  }
+  {getter public open {manager}:#CalculatedFieldManager
+    {return self._manager}
+  }
+  {setter protected open {manager m:#CalculatedFieldManager}:void
+    set self._manager = m
+  }
+  
+  {doc-next
+    {purpose
+        The record set this field is associated with, if any.
+    }
+  }
+  {getter public open {record-set}:#RecordSet
+    {return null}
+  }
+  
+  {doc-next
+    {purpose
+        The record this field is associated with, if any.
+    }
+  }
+  {getter public open {record}:#Record
+    {return null}
+  }
+  
+  {doc-next
+    {purpose
+        The record field this field is associated with, if any.
+    }
+  }
+  {getter public open {field}:#RecordField
+    {return null}
+  }
+  
+  {doc-next
+    {purpose
+        Whether {docref-abbr CalculatedField.predecessors} can be silently
+        removed when required.
+    }
+    {details
+        Generally, attempting to {docref-abbr CalculatedField.disconnect}
+        a field that has one or more successor fields will result
+        in an error. A successor field generally depends on its
+        predecessors, so if the {docref-abbr CalculatedField.disconnect}ion
+        were allowed it might cause unexpected results downstream when the
+        next update cycle runs.
+        If that is {italic not} the case, then this property can be set
+        to {ctext true}, whereupon predecessors of this field can be
+        disconnected without error.
+        
+        For example, a field that simply sums a number of other fields
+        may not need to worry about any individual predecessor's existence.
+        In this case, this property should probably be set to {ctext true}.
+        On the other hand, if the {docref-abbr CalculatedField.update-proc}
+        depends on the existence of a single predecessor field, and would
+        be unable to function properly if that field were removed, then
+        this property should be set to {ctext false}.
+        
+        When this property is {ctext false}, predecessors might not be
+        removed automatically, but they can still be removed using
+        appropriate methods like
+        {docref-abbr CalculatedField.remove-predecessor}.
+        
+        Note that {italic all} successor fields must have this property
+        set to {ctext true} in order to allow silent disconnection of
+        a shared predecessor field.
+    }
+  }
+  {getter public open {weak-predecessors?}:bool
+    {return self._weak-predecessors?}
+  }
+  {setter public open {weak-predecessors? b:bool}:void
+    {if b != self._weak-predecessors? then
+        set self._weak-predecessors? = b
+    }
+  }
+  
+  {doc-next
+    {purpose
+        The procedure to run whenever an update is required.
+    }
+    {details
+        The update proc takes a {ctext CalculatedField} as its argument;
+        this {docref CalculatedField} object itself is passed as that
+        argument when the proc is called.
+        If the {docref-abbr CalculatedField.value} requires
+        updating, it should be done when the update proc is called.
+    }
+    {notes
+        When this value is {ctext null} calls to, for example,
+        {docref-abbr CalculatedField.request-update}, may be ignored.
+    }
+  }
+  {getter public open {update-proc}:#CalculatedFieldUpdateProcType
+    {return self._update-proc}
+  }
+  {setter public open {update-proc new-proc:#CalculatedFieldUpdateProcType}
+    {if new-proc != self._update-proc then
+        set self._update-proc = new-proc
+        {if-non-null new-proc then
+            {self.request-update}
+        }
+    }
+  }
+  
+  {doc-next
+    {purpose
+        The value associated with this field.
+    }
+    {notes
+        This property should generally not be set except by the
+        {docref-abbr CalculatedField.update-proc} when it runs. Changing
+        it at other times may force a running update cycle to abort,
+        leading to performance degradation or worse.
+    }
+  }
+  {getter public abstract open {value}:any}
+  {setter public open {value val:any}:void}
+  
+  {doc-next
+    {purpose
+        Indicates that the {docref-abbr CalculatedField.value}
+        property has changed since the last update.
+    }
+    {details
+        This method should be called by the
+        {docref-abbr CalculatedField.value} setter when the {ctext value}
+        actually changes. It may also be called by connected fields
+        if responsibility for the value is shared with another object;
+        e.g. in the case of a calculated field connected to a {docref Record}.
+    }
+  }
+  {method public open {note-value-changed}:void
+    set self.value-changed? = true
+    {if not self.in-update? then
+        {for successor in self.node.successors do
+            {successor.data.request-update}
+        }
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Whether a new update has been requested for this field.
+    }
+  }
+  {getter public open {update-requested?}:bool
+    {return self._update-requested?}
+  }
+  
+  || ======== EDGE (PREDECESSOR / SUCCESSOR) OPERATIONS ========
+  
+  {doc-next
+    {purpose
+        Returns one predecessor {ctext CalculatedField}.
+    }
+    {parameter index,
+        The index of the predecessor field to return.
+    }
+    {throws
+        {exception KeyNotFoundException,
+            if {param index} is out of bounds.
+        }   
+    }
+  }
+  {method public open {get index:int}:CalculatedField
+    {if index < 0 or index >= self.node.predecessors.size then
+        {throw
+            {KeyNotFoundException
+                obj = self,
+                key = index,
+                "Index out of bounds."
+            }
+        }
+    }
+    {return self.node.predecessors[index].data}
+  }
+  
+  {doc-next
+    {purpose
+        Enables iteration over counters in for loops.
+    }
+    {details
+        The count returned is the number of predecessor fields.
+    }
+  }
+  {getter public open {for-loop-count}:int
+    {return self.node.predecessors.size}
+  }
+  
+  {doc-next
+    {purpose
+        Add a predecessor (prerequisite) field.
+    }
+    {parameter computed-field,
+        The field to make a predecessor.
+    }
+    {parameter error-if-present?,
+        Whether to throw an error if {param computed-field} is already
+        a predecessor to this field.
+    }
+    {details
+        Calling {docref-abbr CalculatedField.add-predecessor} on a
+        {docref-abbr CalculatedField.disconnect}ed {ctext CalculatedField}
+        will result in an error.
+    }
+    {throws
+        {exception CalculatedFieldDisconnectedException,
+            if this field is already
+            {docref-abbr CalculatedField.disconnect}ed.
+        }   
+    }
+  }
+  {method package {add-predecessor
+                      computed-field:CalculatedField,
+                      error-if-present?:bool = true
+                  }:void
+    {if not self.connected? then
+        {throw {CalculatedFieldDisconnectedException}}
+    }
+    {computed-field.add-successor
+        self,
+        error-if-present? = error-if-present?
+    }
+    {self.request-update}
+  }
+  
+  {doc-next
+    {purpose
+        Remove a predecessor (prerequisite) field.
+    }
+    {parameter computed-field,
+        The field to remove as a predecessor.
+    }
+    {parameter error-if-missing?,
+        If {ctext true}, an error will be thrown if {param computed-field}
+        is not a predecessor.
+    }
+    {details
+        This method calls {ctext remove-successor} on {param computed-field}
+        to perform the actual removal, then requests an update.
+    }
+  }
+  {method package {remove-predecessor
+                      computed-field:CalculatedField,
+                      error-if-missing?:bool = false
+                  }:void
+    {computed-field.remove-successor
+        self,
+        error-if-missing? = error-if-missing?
+    }
+    {self.request-update}
+  }
+  
+  {doc-next
+    {purpose
+        Remove a successor field.
+    }
+    {parameter computed-field,
+        The field removing this field as a predecessor.
+    }
+    {parameter error-if-missing?,
+        If {ctext true}, an error will be thrown if {param computed-field}
+        is not a successor.
+    }
+    {details
+        This method should only be called from {ctext remove-predecessor}.
+    }
+  }  
+  {method package {remove-successor
+                      computed-field:CalculatedField,
+                      error-if-missing?:bool = false                      
+                  }:void
+    {self.node.remove-successor
+        computed-field.node,
+        error-if-missing? = error-if-missing?
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Add a successor field.
+    }
+    {parameter computed-field,
+        The field to which this field will become a predecessor.
+    }
+    {parameter error-if-present?,
+        Whether to throw an error if {param computed-field} is already
+        a successor to this field.
+    }
+    {details
+        This method should only be called by {ctext add-predecessor}.
+    }
+  }
+  {method package {add-successor
+                      computed-field:CalculatedField,
+                      error-if-present?:bool = false                      
+                  }:void
+    {self.node.add-successor
+        computed-field.node,
+        error-if-present? = error-if-present?
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Remove all predecessor (prerequisite) fields.
+    }
+  }
+  {method package {clear-predecessors}:void
+    def predecessors = self.node.predecessors
+    {for i = predecessors.size - 1 downto 0 do
+        def pnode = predecessors[i]
+        {self.remove-predecessor pnode.data}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Disconnect this object from updates.
+    }
+    {parameter force?,
+        If {ctext true}, all fields that have this node as a predecessor
+        will be signaled remove it through calls to
+        {docref CalculatedField.remove-predecessor}.
+        If {ctext false}, then attempting to {ctext disconnect} a node
+        with non-weak successors will result in an error.
+    }
+    {details
+        This method should only be called on {ctext CalculatedField}s that
+        are no longer needed or have become invalid; e.g. a field whose
+        value is attached to a {docref Record} that has become
+        {ctext RecordState.detached} could no longer usefully update.
+        After this method is called, this object will become unusable,
+        and further method calls may result in an error.
+    }
+  }
+  {method public open {disconnect force?:bool = false}:void
+    {if not self.connected? then {return}}
+    
+    || Verify that we can remove successors, then do so or error out.
+    def successors = self.node.successors
+    {if not force? then
+        {for node in successors do
+            {if not node.data.weak-predecessors? then
+                {throw
+                    {CalculatedFieldException
+                        {hlmessage
+                            Cannot remove field with nonweak successors.
+                        }
+                    }
+                }
+            }
+        }
+    }
+    {for i = successors.size - 1 downto 0 do
+        def snode = successors[i]
+        {snode.data.remove-predecessor self}
+    }
+    
+    || Clear our own predecessors.
+    {self.clear-predecessors}
+    
+    || Remove ourself from anyone who was paying attention.
+    {self.manager.remove-field self}
+    
+    || Finish clearing any remaining external links.
+    set self.manager = null
+    
+    || Mark self disconnected.
+    set self._connected? = false
+  }
+  
+  || ======== UPDATE OPERATIONS ========
+  
+  {doc-next
+    {purpose
+        Indicate that this field requires updating.
+    }
+    {details
+        A field is typically scheduled for an update automatically if the
+        value of one of its {docref-abbr CalculatedField.predecessors} changes
+        or its {docref-abbr CalculatedField.update-proc} is changed.
+        If a field has no predecessors, or the behavior of the
+        {docref-abbr CalculatedField.update-proc} depends on state not
+        indicated by these properties, an update may be manually
+        requested by calling this method.
+        
+        If an update is already scheduled for this field, calling this
+        method should have no effect. In some cases, generally when
+        the field has no connections, calling this method may induce
+        an immediate update.
+    }
+    {notes
+        If an update cycle is currently running, calling this method may
+        force the update to rerun. As may degrade performance or
+        have other negative impacts, calling {ctext request-update}
+        from inside a {docref-abbr CalculatedField.update-proc}
+        should generally be avoided.
+    }
+  }
+  {method public open {request-update}:void
+    {if self.update-proc == null then {return}}
+    {if-non-null manager = self.manager then
+        set self._update-requested? = true
+        {manager.request-update-for-field self}
+     else
+        {self.update}
+        set self._update-requested? = false
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Prepare for an update.
+    }
+    {details
+        This method is called on all fields before the
+        {docref-abbr CalculatedField.update} method is call.
+        This method clears state and, if necessary,
+        manages dependencies in preparation for an update.
+        
+        Some {ctext CalculatedField}s may need to dynamically manage their
+        predecessors; e.g. a field that adds all values for a given
+        {docref RecordField} across all {docref Record}s in a
+        {docref RecordSet} (a "column sum").
+    }
+    {override
+        For reasons of performance and safety, this method should be
+        overridden with care if at all. Incautious modification of the
+        predecessor list when this method is called, or at any other time
+        during an update, may force the entire update cycle to abort
+        and rerun.
+    }
+  }
+  {method public open {prepare-for-update}:void}
+  
+  || We allow a node with informal prerequisites (captured variables)
+  || to request an update. But don't expose the base update, because
+  || we might be running one already.
+  {method package {update}:void
+    
+    || Only update if we demanded it, or a predecessor value changed.
+    {if-non-null p = self.update-proc then
+        let call-update-proc?:bool = self.update-requested?
+        {if not call-update-proc? then
+            {for pred in self do
+                {if pred.value-changed? then
+                    set call-update-proc? = true
+                    {break}
+                }
+            }
+        }
+        {if call-update-proc? then
+            {p self}
+        }
+    }
+    
+    || Stamp the epoch.
+    {if-non-null manager = self.manager then
+        set self.last-update-epoch = manager.epoch
+    }
+    
+  }
+  
+  {doc-next
+    {purpose
+        Clean up after an update has run.
+    }
+    {details
+        When this method is called, all fields requiring updates have
+        been updated. Any transient state required for an update should
+        be cleared at this time, if it wasn't already cleared during
+        the update itself.
+    }
+  }
+  {method public open {update-finished}:void
+    set self.value-changed? = false
+    set self._update-requested? = false
+    set self.update-sequence-position = -1
+  }
+  
+  || ======== MISC METHODS ========
+  
+  {doc-next
+    {purpose
+        Note a {docref RecordSetEvent} occurring at the associated
+        {docref RecordSet}.
+    }
+    {parameter event,
+        The {docref RecordSetEvent} that occurred.
+    }
+    {details
+        This is only called on fields that operate via events,
+        like {docref RecordFilterCalculatedField}.
+    }
+  }
+  {method package {note-event-at-record-set event:RecordSetEvent}:void}
+  
+}
+
+
+{doc-next
+    {purpose
+        A {docref CalculatedField} that holds its own {ctext value}.
+    }
+    {details
+        This class simply adds an internal {ctext value} property
+        to {docref CalculatedField}.
+    }
+}
+{define-class public abstract sealed BaseCalculatedValueField
+  {inherits CalculatedField}
+  
+  field private _value:any
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter value,
+        The initial {docref-abbr CalculatedField.value} of this object.
+    }
+    {parameter update-proc,
+        The initial {docref-abbr CalculatedField.update-proc} to be run
+        for this object.
+    }
+    {parameter weak-predecessors?,
+        See {docref-abbr CalculatedField.weak-predecessors?}.
+    }
+  }
+  {constructor public {default
+                          manager:CalculatedFieldManager,
+                          value:any = null,
+                          update-proc:#CalculatedFieldUpdateProcType = null,
+                          weak-predecessors?:bool = false
+                      }
+    set self._value = value
+    {construct-super
+        manager,
+        update-proc = update-proc,
+        weak-predecessors? = weak-predecessors?
+    }
+  }
+  
+  {getter public open {value}:any
+    {return self._value}
+  }
+  {setter public open {value val:any}:void
+    {if val != self._value then
+        set self._value = val
+        {self.note-value-changed}
+    }
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        A {docref CalculatedField} that holds its own {ctext value}.
+    }
+    {details
+        This class can be used for intermediate calculations or values
+        not bounds to a {docref Record}. For example, if many other
+        {docref CalculatedField}s all relied on a sum across all
+        {docref Record}s in a {docref RecordSet}, it would be more
+        efficient to perform the sum operation once each update rather
+        than once for each {docref CalculatedField} for each update. This
+        could be done by performing the sum in a
+        {ctext CalculatedValueField}, setting its value, and having
+        each later {docref CalculatedField} reuse that value instead.
+        
+        This call can also be used to manage values outside of a
+        {docref Record} context.
+    }
+}
+{define-class public open CalculatedValueField
+  {inherits BaseCalculatedValueField}
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter value,
+        The initial {docref-abbr CalculatedField.value} of this object.
+    }
+    {parameter update-proc,
+        The initial {docref-abbr CalculatedField.update-proc} to be run
+        for this object.
+    }
+    {parameter weak-predecessors?,
+        See {docref-abbr CalculatedField.weak-predecessors?}.
+    }
+  }
+  {constructor public {default
+                          manager:CalculatedFieldManager,
+                          value:any = null,
+                          update-proc:#CalculatedFieldUpdateProcType = null,
+                          weak-predecessors?:bool = false
+                      }
+    {construct-super
+        manager,
+        value = value,
+        update-proc = update-proc,
+        weak-predecessors? = weak-predecessors?
+    }
+  }
+  
+  || ======== ACCESS OVERRIDES (expose predecessor methods) ========
+  
+  {method public open {add-predecessor
+                          computed-field:CalculatedField,
+                          error-if-present?:bool = true
+                      }:void
+    {super.add-predecessor
+        computed-field,
+        error-if-present? = error-if-present?
+    }
+  }
+  
+  {method public open {remove-predecessor
+                          computed-field:CalculatedField,
+                          error-if-missing?:bool = false
+                      }:void
+    {super.remove-predecessor
+        computed-field,
+        error-if-missing? = error-if-missing?
+    }
+  }
+  
+  {method public open {clear-predecessors}:void
+    {super.clear-predecessors}
+  }
+  
+}
+

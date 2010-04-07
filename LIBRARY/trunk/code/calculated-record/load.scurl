@@ -18,6 +18,7 @@
 {curl 7.0 package}
 {curl-file-attributes character-encoding = "utf8"}
 
+
 {doc type = package, COM.CURL.EXT.CALCULATED-RECORDSET
     {purpose
         This package provides calculated record functionality;
@@ -25,11 +26,21 @@
     }
 }
 
+
 {package COM.CURL.EXT.CALCULATED-RECORDSET,
     {compiler-directives careful? = true}
 }
 
+
 {import * from COM.CURL.EXT.GRAPHS}
 {import * from CURL.DATA-ACCESS.BASE}
+||--{import WeakPointer-to from CURL.UTIL.POINTER-TO}
 
-{include "calculated-record-set.scurl"}
+
+{include "events.scurl"}
+{include "exceptions.scurl"}
+{include "fields.scurl"}
+{include "filters.scurl"}
+{include "manager.scurl"}
+{include "recordset.scurl"}
+

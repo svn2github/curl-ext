@@ -1,0 +1,696 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl-file-attributes character-encoding = "utf8"}
+
+
+{doc-next
+    {purpose
+        A {docref CalculatedField} that manages its predecessors through
+        use of a {docref RecordFilter}.
+    }
+    {details
+        Any {docref CalculatedField} can be thought to automatically
+        manage its {docref-abbr CalculatedField.value} property through
+        its {docref-abbr CalculatedField.update-proc} by watching for
+        value changes at their predecessors.
+        {ctext RecordFilterCalculatedField}s extend this automatic management
+        to also include the predecessors themselves, automatically
+        updating the predecessor list.
+        
+        However, automatic predecessor management must be done with
+        care to avoid creating a dependency cycle, forcing updates to
+        abort prematurely, or causing other problems. In general, it
+        is safest to set filters that work only on identity (constant)
+        properties of records; e.g. a unique index.
+        
+        {ctext RecordFilterCalculatedField}s updates are triggered by
+        {docref RecordSetEvent}s at their
+        {docref-abbr CalculatedField.record-set}.
+    }
+    {notes
+        {ctext RecordFilterCalculatedField} filter updates have
+        significant overhead, so these should be used sparingly with
+        source {docref RecordSet}s that are frequently updated,
+        especially large sets that experience frequent
+        {docref RecordsBulkChanges}; e.g. {docref RecordView}s.
+    }
+}
+{define-class public abstract open RecordFilterCalculatedField
+  {inherits BaseCalculatedValueField}
+  
+  || The filter and its target.
+  field private _filter:RecordFilter
+  field private constant _record-set:RecordSet
+  field private _record-field:RecordField
+  
+  || Whether we need to call apply-filter before the next update.
+  field package needs-refilter?:bool = true
+  
+  || Whether we should suppress the normal request-update because we are
+  || doing an operation that we know doesn't need notification.
+  field private silence-update?:bool
+  
+  || Records that passed the filter and fields attached to those records.
+  || Be very careful to keep these two arrays in sync.
+  || FIXME: could be done as one, but there are optimization issues.
+  field package valid-records:{Array-of Record} = {new {Array-of Record}}
+  field package valid-fields:{Array-of CalculatedField} =
+      {new {Array-of CalculatedField}}
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter record-set,
+        The {docref RecordSet} to run the filter against.
+    }
+    {parameter filter,
+        The {docref RecordFilter} to run for updates.
+    }
+    {parameter record-field,
+        The {docref RecordField} from which to take predecessor values
+        in the {docref Record}s that pass the filter.
+    }
+    {parameter update-proc,
+        See {docref-abbr CalculatedField.update-proc}.
+    }
+  }
+  {constructor public {from-record-set
+                          manager:CalculatedFieldManager,
+                          record-set:RecordSet,
+                          filter:RecordFilter,
+                          record-field:RecordField,
+                          update-proc:#CalculatedFieldUpdateProcType = null
+                      }
+    set self._record-set = record-set
+    set self._filter = filter
+    set self._record-field = record-field
+    {construct-super
+        manager,
+        update-proc = update-proc,
+        weak-predecessors? = true
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Create a new instance of this type.
+    }
+    {parameter record-set,
+        The {docref RecordSet} to run the filter against.
+    }
+    {parameter filter,
+        The {docref RecordFilter} to run for updates.
+    }
+    {parameter record-field,
+        The {docref RecordField} from which to take predecessor values
+        in the {docref Record}s that pass the filter.
+    }
+    {parameter update-proc,
+        See {docref-abbr CalculatedField.update-proc}.
+    }
+  }
+  {factory public {default
+                      manager:CalculatedFieldManager,
+                      record-set:RecordSet,
+                      filter:RecordFilter,
+                      record-field:RecordField,
+                      update-proc:#CalculatedFieldUpdateProcType = null
+                  }:RecordFilterCalculatedField
+    {type-switch record-set
+     case crs:CalculatedRecordSet do
+        {return
+            {CalculatedRecordFilterCalculatedField
+                manager,
+                crs,
+                filter,
+                record-field,
+                update-proc = update-proc
+            }
+        }
+     else
+        {return
+            {GenericRecordFilterCalculatedField
+                manager,
+                record-set,
+                filter,
+                record-field,
+                update-proc = update-proc
+            }
+        }
+    }
+  }
+  
+  {getter package {watching?}:bool
+    {return self.connected?}
+  }
+  
+  {getter public open {record-set}:RecordSet
+    {return self._record-set}
+  }
+  
+  {method public open {prepare-for-update}:void
+    {super.prepare-for-update}
+    {if self.needs-refilter? then
+        {self.apply-filter}
+        set self.needs-refilter? = false
+    }
+  }
+  
+  {method public open {disconnect force?:bool = false}:void
+    {super.disconnect force? = force?}
+    {self.valid-records.clear}
+    {self.valid-fields.clear}
+  }
+  
+  {getter public open {filter}:RecordFilter
+    {return self._filter}
+  }
+  {setter public open {filter new-filter:RecordFilter}:void
+    {if new-filter != self._filter then
+        set self._filter = new-filter
+        set self.needs-refilter? = true
+        {self.request-update}
+    }
+  }
+  
+  {getter public open {field}:RecordField
+    {return self._record-field}
+  }
+  {setter public open {field new-field:RecordField}:void
+    {if new-field != self._record-field then
+        set self._record-field = new-field
+        set self.needs-refilter? = true
+        {self.request-update}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Called when the filter needs to be rerun against the entire
+        target {docref RecordSet}.
+    }
+    {notes
+        This method is called automatically from
+        {docref-abbr CalculatedField.prepare-for-update} when needed,
+        and should generally not be called outside of those times.
+    }
+  }
+  {method public open {apply-filter}:void
+    def record-set = self.record-set
+    || Get the new list of valid records.
+    def pass-records = {record-set.select filter = self.filter}
+    
+    || The new Records to add, and the indices of the valid
+    || Records and CalculatedRecordFields in the existing arrays to remove.
+    def to-add = {new {Array-of Record}}
+    def to-remove = {new {Array-of int}}
+    
+    || Figure out the diff from the current, known, valid set.
+    || FIXME: this could be slow; we're looping through walking an array.
+    {for rec in pass-records do
+        {if {self.valid-records.find rec} == -1 then
+            {to-add.append rec}
+        }
+    }
+    {for rec key index in self.valid-records do
+        {if {pass-records.find rec} == -1 then
+            {to-remove.append index}
+        }
+    }
+    
+    || Remove all fields that no longer pass.
+    || We recorded their Record and CF indices in increasing order above,
+    || so it's safe to loop backwards through that list for in-loop deletion.
+    {for i = to-remove.size - 1 downto 0 do
+        def remove-index = to-remove[i]
+        def pred = self.valid-fields[remove-index]
+        {with self.silence-update? = true do
+            {self.remove-predecessor pred}
+        }
+        {self.valid-fields.remove remove-index}
+        {self.valid-records.remove remove-index}
+    }
+    
+    || Add new fields, trying to avoid requesting an update.
+    {for rec in to-add do
+        def pred = {self.create-computed-field rec}
+        def silence? =
+            pred.update-sequence-position < self.update-sequence-position
+        {with self.silence-update? = silence? do
+            {self.add-predecessor pred}
+        }
+        {self.valid-records.append rec}
+        {self.valid-fields.append pred}
+    }
+  }
+  
+  || NOTE: this method is opened from the parent class.
+  || FIXME: move the RecordModified request-update into the leaf class?
+  {method public open {note-event-at-record-set event:RecordSetEvent}:void
+    || If we're already going to just run through the whole list,
+    || then skip additional processing.
+    {if self.needs-refilter? then {return}}
+    
+    || FIXME: these could be further optimized with deep changes in
+    || CalculatedRecord. Whether that's wise is another question.
+    {type-switch event
+     case rr:RecordsReordered do
+        || We don't really care about reordering, as long as
+        || there are no identity changes. Ignore these events
+        || to avoid horrible performance when run against a RecordView.
+        
+     case ra:RecordAdded do
+        || If it passes the filter, add a new field to the list.
+        def rec = ra.record
+        {if {self.filter.includes? rec} then
+            def cf = {self.create-computed-field rec}
+            {self.add-predecessor cf}
+            {self.valid-records.append rec}
+            {self.valid-fields.append cf}
+        }
+        
+     case rr:RecordRemoved do
+        || If present, remove the given field from the list.
+        def rec = rr.record
+        def index = {self.valid-records.find rec}
+        {if index >= 0 then
+            || We need to remove it.
+            def cf = self.valid-fields[index]
+            {self.remove-predecessor cf}
+            {self.valid-records.remove index}
+            {self.valid-fields.remove index}
+        }            
+        
+     case rm:RecordModified do
+        def rec = rm.record
+        def index = {self.valid-records.find rec}
+        || Rerun the filter, adding or removing as necessary.
+        {if {self.filter.includes? rec} then
+            {if index == -1 then
+                || We need to add it.
+                def cf = {self.create-computed-field rec}
+                {self.add-predecessor cf}
+                {self.valid-records.append rec}
+                {self.valid-fields.append cf}
+             else
+                || We'll need to update.
+                {self.request-update}
+            }
+            
+         else
+            {if index != -1 then
+                || We need to remove it (though the predecessor
+                || may have already been removed for us).
+                def cf = self.valid-fields[index]
+                {self.remove-predecessor cf}
+                {self.valid-records.remove index}
+                {self.valid-fields.remove index}
+            }
+        }
+        
+     else
+        set self.needs-refilter? = true
+        {self.request-update}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Create a {docref CalculatedField} associated with a given
+        {docref Record} that passed the
+        {docref-abbr RecordFilterCalculatedField.filter}.
+    }
+    {parameter record,
+        The {docref Record} that passed the filter.
+    }
+    {return-vals
+        The new field.
+    }
+  }
+  {method public abstract open {create-computed-field
+                                   record:Record
+                               }:CalculatedField
+  }
+  
+  {method public open {request-update}:void
+    {if not self.silence-update? then
+        {super.request-update}
+    }
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        A {docref RecordFilterCalculatedField} associated with a
+        non-{docref CalculatedRecordSet}.
+    }
+    {notes
+        The predecessors of this node are
+        {docref OpaqueCalculatedRecordField}s. These should be
+        considered transient, and should not be used outside of the
+        {docref-abbr CalculatedField.update-proc}s of their own
+        {ctext GenericRecordFilterCalculatedField}.
+        
+        {ctext GenericRecordFilterCalculatedField} watches for
+        {docref RecordSetEvent}s and will call
+        {docref-abbr CalculatedField.request-update} on itself when required,
+        so it is not necessary to otherwise call
+        {docref-abbr CalculatedField.request-update} on value changes
+        at the source {docref CalculatedField.record-set}.
+    }
+}
+{define-class public open GenericRecordFilterCalculatedField
+  {inherits RecordFilterCalculatedField}
+  
+  {doc-next
+    {purpose
+        Create a new instance of this type.
+    }
+    {parameter record-set,
+        The {docref RecordSet} to run the filter against.
+    }
+    {parameter filter,
+        The {docref RecordFilter} to run for updates.
+    }
+    {parameter record-field,
+        The {docref RecordField} from which to take predecessor values
+        in the {docref Record}s that pass the filter.
+    }
+    {parameter update-proc,
+        See {docref-abbr CalculatedField.update-proc}.
+    }
+  }
+  {constructor public {default
+                          manager:CalculatedFieldManager,
+                          record-set:RecordSet,
+                          filter:RecordFilter,
+                          record-field:RecordField,
+                          update-proc:#CalculatedFieldUpdateProcType = null
+                      }
+    {construct-super.from-record-set
+        manager,
+        record-set,
+        filter,
+        record-field,
+        update-proc = update-proc
+    }
+  }
+  
+  {method public open {create-computed-field record:Record}:CalculatedField
+    {if-non-null manager = self.manager then
+        {return
+            {GenericCalculatedRecordField
+                manager,
+                self.record-set,
+                record,
+                self.field
+            }
+        }
+     else
+        {throw {CalculatedFieldDisconnectedException}}
+    }
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        A {docref RecordFilterCalculatedField} associated with a
+        {docref CalculatedRecordSet}.
+    }
+}
+{define-class public open CalculatedRecordFilterCalculatedField
+  {inherits RecordFilterCalculatedField}
+  
+  {doc-next
+    {purpose
+        Create a new instance of this type.
+    }
+    {parameter record-set,
+        The {docref RecordSet} to run the filter against.
+    }
+    {parameter filter,
+        The {docref RecordFilter} to run for updates.
+    }
+    {parameter record-field,
+        The {docref RecordField} from which to take predecessor values
+        in the {docref Record}s that pass the filter.
+    }
+    {parameter update-proc,
+        See {docref-abbr CalculatedField.update-proc}.
+    }
+  }
+  {constructor public {default
+                          manager:CalculatedFieldManager,
+                          record-set:CalculatedRecordSet,
+                          filter:RecordFilter,
+                          record-field:RecordField,
+                          update-proc:#CalculatedFieldUpdateProcType = null
+                      }
+    {construct-super.from-record-set
+        manager,
+        record-set,
+        filter,
+        record-field,
+        update-proc = update-proc
+    }
+  }
+  
+  {method public open {create-computed-field record:Record}:CalculatedField
+    def record-set = self.record-set asa CalculatedRecordSet
+    {return
+        {record-set.get-or-create-computed-field
+            record asa CalculatedRecord,
+            self.field
+        }
+    }
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        A {docref CalculatedField} whose {ctext value} is attached to
+        a {docref RecordField} in a {docref Record}, but can only provide
+        a readable {docref-abbr CalculatedField.value} property;
+        it cannot update, write to the {ctext value}, or add predecessors.
+    }
+    {details
+        This class is designed for use by {docref RecordFilterCalculatedField}
+        and should not generally be instantiated in other contexts.
+        
+        This class does not automatically notice value changes.
+        Updates for successor {docref CalculatedField}s must be triggered
+        manually through calls to {docref CalculatedField.note-value-changed},
+        which is done automatically when used by
+        {docref RecordFilterCalculatedField}.
+    }
+}
+{define-class public open GenericCalculatedRecordField
+  {inherits CalculatedField}
+  
+  field private constant _record-set:RecordSet
+  field private constant _record:Record
+  field private constant _record-field:RecordField
+  
+  {constructor package {default
+                           manager:CalculatedFieldManager,
+                           record-set:RecordSet,
+                           record:Record,
+                           record-field:RecordField
+                       }
+    set self._record-set = record-set
+    set self._record = record
+    set self._record-field = record-field
+    
+    {construct-super
+        manager,
+        weak-predecessors? = true
+    }
+  }
+  
+  {getter public open {record-set}:RecordSet
+    {return self._record-set}
+  }
+  
+  {getter public open {record}:Record
+    {return self._record}
+  }
+  
+  {getter public open {field}:RecordField
+    {return self._record-field}
+  }
+  
+  {getter public open {value}:any
+    {if not self.connected? then
+        {throw {CalculatedFieldDisconnectedException}}
+    }
+    {return {self.record.get self.field.name}}
+  }
+  
+  
+}
+
+
+{doc-next
+    {purpose
+        A {docref CalculatedField} whose {ctext value} is attached to
+        a {docref RecordField} in a {docref Record}, but can only provide
+        a readable {docref-abbr CalculatedField.value} property;
+        it cannot update, write to the {ctext value}, or add predecessors.
+    }
+    {details
+        This class is designed for use by {docref RecordFilterCalculatedField}
+        and should not generally be instantiated in other contexts.
+        
+        {ctext OpaqueCalculatedRecordField} will automatically
+        {docref-abbr CalculatedField.disconnect} when it is no longer
+        any other field's predecessor.
+        
+        This class does not automatically notice value changes.
+        Updates for successor {docref CalculatedField}s must be triggered
+        manually through calls to {docref CalculatedField.note-value-changed},
+        which is done automatically when used by
+        {docref RecordFilterCalculatedField}.
+        
+        Certain properties cannot be set on instances of this class;
+        e.g. {ctext value}, {ctext update-proc}. Attempting to do so
+        will cause an exception to be thrown.
+    }
+}
+{define-class public open OpaqueCalculatedRecordField
+  {inherits CalculatedField}
+  
+  field private constant _record-set:RecordSet
+  field private constant _record:Record
+  field private constant _record-field:RecordField
+  
+  {constructor package {default
+                           manager:CalculatedFieldManager,
+                           record-set:RecordSet,
+                           record:Record,
+                           record-field:RecordField
+                       }
+    set self._record-set = record-set
+    set self._record = record
+    set self._record-field = record-field
+    
+    {construct-super
+        manager,
+        weak-predecessors? = true
+    }
+  }
+  
+  {getter public open {record-set}:#RecordSet
+    {if not self.connected? then {return null}}
+    {return self._record-set}
+  }
+  
+  {getter public open {record}:#Record
+    {if not self.connected? then {return null}}
+    {return self._record}
+  }
+  
+  {getter public open {field}:#RecordField
+    {if not self.connected? then {return null}}
+    {return self._record-field}
+  }
+  
+  {doc-next
+    {purpose
+        The value associated with this field.
+    }
+    {notes
+        This property cannot be set on an {ctext OpaqueCalculatedRecordField}.
+    }
+    {throws
+        CalculatedFieldException,
+        if set.
+    }
+  }
+  {getter public open {value}:any
+    {if not self.connected? then
+        {throw {CalculatedFieldDisconnectedException}}
+    }
+    {return {self.record.get self.field.name}}
+  }
+  {setter public open {value val:any}:void
+    {throw
+        {CalculatedFieldException
+            {hlmessage
+                "Cannot set the value of an OpaqueCalculatedRecordField."
+            }
+        }
+    }    
+  }
+  
+  {method package {add-predecessor
+                      computed-field:CalculatedField,
+                      error-if-present?:bool = true
+                  }:void
+    {throw
+        {CalculatedFieldException
+            {hlmessage
+                "Cannot add a predecessor to an OpaqueCalculatedRecordField."
+            }
+        }
+    }    
+  }
+  
+  {doc-next
+    {purpose
+        The procedure to run whenever an update is required.
+    }
+    {notes
+        This property cannot be set on an {ctext OpaqueCalculatedRecordField}.
+    }
+    {throws
+        CalculatedFieldException,
+        if set.
+    }
+  }
+  {setter public open {update-proc new-proc:#CalculatedFieldUpdateProcType}
+    {throw
+        {CalculatedFieldException
+            {hlmessage
+                "Cannot set update-proc on an OpaqueCalculatedRecordField."
+            }
+        }
+    }
+  }
+  
+  {method package {remove-successor
+                      computed-field:CalculatedField,
+                      error-if-missing?:bool = false                      
+                  }:void
+    {super.remove-successor
+        computed-field,
+        error-if-missing? = error-if-missing?
+    }
+    {if self.node.outdegree == 0 then
+        {self.disconnect}
+    }
+  }
+  
+}
+

@@ -74,6 +74,8 @@
 
 {define-proc package {chain-with-filters}:void
     
+    def manager = {CalculatedFieldManager}
+    
     || the record fields
     def rfs = {RecordFields
                   {RecordField "index", domain = int, index-type = "unique"},
@@ -91,7 +93,7 @@
     def crs-array = {new {Array-of CalculatedRecordSet}}
     def record-set-count = 10
     {for i = 0 below record-set-count do
-        {crs-array.append {CalculatedRecordSet rfs}}
+        {crs-array.append {CalculatedRecordSet manager, rfs}}
     }
     {crs-handles.insert crs-array}
     
@@ -131,6 +133,7 @@
                 || point a filter field at matching cell in the previous RS
                 def new-filter-field =
                     {RecordFilterCalculatedField
+                        manager,
                         prev-crs,
                         {RecordData index = i},
                         f,
@@ -172,9 +175,7 @@
             }
             {test-finished "chain-with-filters"}
             || clean up
-            {for crs in crs-array do
-                {crs.disconnect-all-fields}
-            }
+            {manager.disconnect-all}
         }
     }
 }

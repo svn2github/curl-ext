@@ -35,251 +35,9 @@
 }
 
 
-
-||--{def rf =
-||--    {RecordFields
-||--        {RecordField "index",
-||--            domain = int,
-||--            modifiable? = false,
-||--            index-type = RecordFieldIndexType.unique
-||--        },
-||--        {RecordField "a", domain = int},
-||--        {RecordField "b", domain = int},
-||--        {RecordField "c", domain = int},
-||--        {RecordField "d", domain = int},
-||--        {RecordField "e", domain = int}
-||--    }
-||--}
-||--
-||--{def rs = {CalculatedRecordSet rf}}
-||--
-||--{do
-||--    {for i = 0 below 1000 do
-||--        {rs.append
-||--            {RecordData
-||--                index = i,
-||--                a = i * 3 + 1,
-||--                b = i * 3 + 2,
-||--                c = i * 3 + 3
-||--            }
-||--        }
-||--    }
-||--}
-||--
-||--{value
-||--    def timer-display = {TextDisplay}
-||--
-||--    def cb-sums-d =
-||--        {CommandButton
-||--            label = "set sums d",
-||--            {on Action do
-||--                def dt = {DateTime}
-||--                {for rec in rs do
-||--                    def one-record = rec asa CalculatedRecord
-||--                    {rs.set-computed-field
-||--                        one-record asa CalculatedRecord,
-||--                        rf["d"],
-||--                        sum-proc,
-||--                        {rs.get-or-create-computed-field one-record, rf["a"]},
-||--                        {rs.get-or-create-computed-field one-record, rf["b"]},
-||--                        {rs.get-or-create-computed-field one-record, rf["c"]}
-||--                    }
-||--                }
-||--                set timer-display.value = {String {dt.elapsed}}
-||--            }
-||--        }
-||--    
-||--    def cb-sums-d-alt =
-||--        {CommandButton
-||--            label = "set sums d (alt)",
-||--            {on Action do
-||--                def dt = {DateTime}
-||--                {for rec in rs do
-||--                    def one-record = rec asa CalculatedRecord
-||--                    {rs.set-computed-field
-||--                        one-record asa CalculatedRecord,
-||--                        rf["d"],
-||--                        sum-proc,
-||--                        {rs.get-or-create-computed-field one-record, rf["a"]},
-||--                        {rs.get-or-create-computed-field one-record, rf["b"]}
-||--                    }
-||--                }
-||--                set timer-display.value = {String {dt.elapsed}}
-||--            }
-||--        }
-||--    
-||--    def cb-sums-e =
-||--        {CommandButton
-||--            label = "set sums e",
-||--            {on Action do
-||--                def dt = {DateTime}
-||--                let prev-record:#CalculatedRecord = null
-||--                {for rec in rs do
-||--                    def one-record = rec asa CalculatedRecord
-||--                    {if-non-null prev-record then
-||--                        {rs.set-computed-field
-||--                            one-record asa CalculatedRecord,
-||--                            rf["e"],
-||--                            sum-proc,
-||--                            {rs.get-or-create-computed-field prev-record, rf["a"]},
-||--                            {rs.get-or-create-computed-field prev-record, rf["b"]},
-||--                            {rs.get-or-create-computed-field prev-record, rf["c"]},
-||--                            {rs.get-or-create-computed-field prev-record, rf["d"]},
-||--                            {rs.get-or-create-computed-field prev-record, rf["e"]}
-||--                        }
-||--                     else
-||--                        {if-non-null cf = {rs.get-computed-field
-||--                                              one-record asa CalculatedRecord,
-||--                                              rf["e"]
-||--                                          }
-||--                         then
-||--                            {cf.clear-predecessors}
-||--                            set cf.update-proc = null
-||--                        }
-||--                        {rec.set "e", 0}
-||--                    }
-||--                    set prev-record = one-record
-||--                }
-||--                set timer-display.value = {String {dt.elapsed}}
-||--            }
-||--        }
-||--    
-||--    def cb-sums-e-alt =
-||--        {CommandButton
-||--            label = "set sums e (reverse)",
-||--            {on Action do
-||--                def dt = {DateTime}
-||--                let prev-record:#CalculatedRecord = null
-||--                def rec-array = {new {Array-of CalculatedRecord}}
-||--                {for rec in rs do
-||--                    {rec-array.append rec asa CalculatedRecord}
-||--                }
-||--                {for i = rec-array.size - 1 downto 0 do
-||--                    def rec = rec-array[i]
-||--                    def one-record = rec asa CalculatedRecord
-||--                    {if-non-null prev-record then
-||--                        {rs.set-computed-field
-||--                            one-record asa CalculatedRecord,
-||--                            rf["e"],
-||--                            sum-proc,
-||--                            {rs.get-or-create-computed-field prev-record, rf["a"]},
-||--                            {rs.get-or-create-computed-field prev-record, rf["b"]},
-||--                            {rs.get-or-create-computed-field prev-record, rf["c"]},
-||--                            {rs.get-or-create-computed-field prev-record, rf["d"]},
-||--                            {rs.get-or-create-computed-field prev-record, rf["e"]}
-||--                        }
-||--                     else
-||--                        {if-non-null cf = {rs.get-computed-field
-||--                                              one-record asa CalculatedRecord,
-||--                                              rf["e"]
-||--                                          }
-||--                         then
-||--                            {cf.clear-predecessors}
-||--                        }
-||--                        {rec.set "e", 0}
-||--                    }
-||--                    set prev-record = one-record
-||--                }
-||--                set timer-display.value = {String {dt.elapsed}}
-||--            }
-||--        }
-||--    
-||--    def cb-remove-d =
-||--        {CommandButton
-||--            label = "unset d",
-||--            {on Action do
-||--                def dt = {DateTime}
-||--                let prev-record:#Record = null
-||--                {for rec in rs do
-||--                    def one-record = rec asa CalculatedRecord
-||--                    {if-non-null cf =
-||--                        {rs.get-computed-field one-record, rf["d"]}
-||--                     then
-||--                        {cf.clear-predecessors}
-||--                    }
-||--                }
-||--                set timer-display.value = {String {dt.elapsed}}
-||--            }
-||--        }
-||--
-||--    def cb-remove-e =
-||--        {CommandButton
-||--            label = "unset e",
-||--            {on Action do
-||--                def dt = {DateTime}
-||--                let prev-record:#Record = null
-||--                {for rec in rs do
-||--                    def one-record = rec asa CalculatedRecord
-||--                    {if-non-null cf =
-||--                        {rs.get-computed-field one-record, rf["e"]}
-||--                     then
-||--                        {cf.clear-predecessors}
-||--                    }
-||--                }
-||--                set timer-display.value = {String {dt.elapsed}}
-||--            }
-||--        }
-||--
-||--    def cb-bulk =
-||--        {CommandButton
-||--            label = "bulk",
-||--            {on Action do
-||--                {rs.handle-event {RecordsBulkChanges}}
-||--            }
-||--        }
-||--
-||--    def cb-delete-odd =
-||--        {CommandButton
-||--            label = "delete odd",
-||--            {on Action do
-||--                def dt = {DateTime}
-||--                def to-remove = {new {Array-of Record}}
-||--                let count:int = 0
-||--                {for one-record in rs do
-||--                    {if count mod 2 == 1 then
-||--                        {to-remove.append one-record}
-||--                    }
-||--                    {inc count}
-||--                }
-||--                {with rs.batch-events? = true do
-||--                    {for rec in to-remove do
-||--                        {rec.delete}
-||--                    }
-||--                    {rs.commit}
-||--                }
-||--                set timer-display.value = {String {dt.elapsed}}
-||--            }
-||--        }
-||--
-||--    def rg =
-||--        {RecordGrid
-||--            record-source = rs,
-||--            key-spec = "index",
-||--            width = 21cm,
-||--            height = 7cm,
-||--            region-selection-enabled? = true,
-||--            record-selection-enabled? = false,
-||--            edit-on-focus? = false
-||--        }
-||--
-||--    {spaced-vbox
-||--        rg,
-||--        {spaced-hbox
-||--            cb-sums-d,
-||--            cb-sums-d-alt,
-||--            cb-sums-e,
-||--            cb-sums-e-alt,
-||--            cb-remove-d,
-||--            cb-remove-e,
-||--            cb-bulk,
-||--            cb-delete-odd,
-||--            timer-display
-||--        }
-||--    }
-||--}
-||--
-
 {value
+    
+    def manager = {CalculatedFieldManager}
 
     def rf1 =
         {RecordFields
@@ -293,7 +51,7 @@
             {RecordField "c", domain = int},
             {RecordField "row-sum", domain = int}
         }
-    def rs1 = {CalculatedRecordSet rf1}
+    def rs1 = {CalculatedRecordSet manager, rf1}
 
     def rf2 =
         {RecordFields
@@ -320,7 +78,7 @@
             {RecordField "c", domain = int},
             {RecordField "col-sum", domain = int}
         }
-    def rs3 = {CalculatedRecordSet rf3}
+    def rs3 = {CalculatedRecordSet manager, rf3}
     
     {for i = 0 below 10 do
         {rs1.append
@@ -373,6 +131,7 @@
                 }
             def pred2-cf =
                 {RecordFilterCalculatedField
+                    manager,
                     rs2,
                     {proc {r:Record}:bool
                         {if r["index"] == index then
@@ -409,6 +168,7 @@
         {rf3.get-by-index 4},
         update-proc = sum-proc,
         {RecordFilterCalculatedField
+            manager,
             rs1,
             {proc {r:Record}:bool {return true}},
             {rf1.get-by-index 1},
@@ -420,6 +180,7 @@
         {rf3.get-by-index 4},
         update-proc = sum-proc,
         {RecordFilterCalculatedField
+            manager,
             rs1,
             {proc {r:Record}:bool {return true}},
             {rf1.get-by-index 2},
@@ -431,6 +192,7 @@
         {rf3.get-by-index 4},
         update-proc = sum-proc,
         {RecordFilterCalculatedField
+            manager,
             rs1,
             {proc {r:Record}:bool {return true}},
             {rf1.get-by-index 3},
@@ -443,6 +205,7 @@
         {rf3.get-by-index 4},
         update-proc = sum-proc,
         {RecordFilterCalculatedField
+            manager,
             rs2,
             {proc {r:Record}:bool {return true}},
             {rf2.get-by-index 1},
@@ -454,6 +217,7 @@
         {rf3.get-by-index 4},
         update-proc = sum-proc,
         {RecordFilterCalculatedField
+            manager,
             rs2,
             {proc {r:Record}:bool {return true}},
             {rf2.get-by-index 2},
@@ -465,6 +229,7 @@
         {rf3.get-by-index 4},
         update-proc = sum-proc,
         {RecordFilterCalculatedField
+            manager,
             rs2,
             {proc {r:Record}:bool {return true}},
             {rf2.get-by-index 3},
@@ -595,6 +360,7 @@
                         }
                     def pred2-cf =
                         {RecordFilterCalculatedField
+                            manager,
                             rs2,
                             {proc {r:Record}:bool
                                 {if r["index"] == add-index then
