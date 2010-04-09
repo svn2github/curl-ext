@@ -556,7 +556,7 @@
     
     || Start watching the target record set, or attach a CRS.
     {if-non-null rs = new-field.record-set then
-        {if new-field.watching? then
+        {if new-field.requires-record-set-events? then
             {self.watch-record-set rs, new-field}
          else
             {type-switch rs
@@ -602,7 +602,7 @@
     {self.update-requested-at.remove n, error-if-missing? = false}
     
     || Stop watching its record set, if necessary.
-    {if field-to-remove.watching? then
+    {if field-to-remove.requires-record-set-events? then
         {if-non-null rs = field-to-remove.record-set then
             {self.unwatch-record-set rs, field-to-remove}
         }

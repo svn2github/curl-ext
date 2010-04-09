@@ -81,7 +81,7 @@
   field package last-update-epoch:int
   
   || Whether the value changed since the last update.
-  field package value-changed?:bool = true
+  field private _value-changed?:bool = true
   
   || The place of this node in the working update queue.
   || This value is only valid when it's been stamped by the manager
@@ -139,11 +139,18 @@
   
   {doc-next
     {purpose
-        Whether this {ctext CalculatedField} watches for events on
-        its {ctext record-set}.
+        Whether this {ctext CalculatedField} needs to be notified of
+        events on its {ctext record-set}.
+    }
+    {details
+        If {ctext true}, events occurring at the associated
+        {docref-abbr CalculatedField.record-set} should be passed to
+        {docref-abbr CalculatedField.note-event-at-record-set}.
+        
+        By default, this getter returns {ctext false}.
     }
   }
-  {getter package {watching?}:bool
+  {getter public open {requires-record-set-events?}:bool
     {return false}
   }
   
@@ -276,6 +283,16 @@
   }
   {getter public abstract open {value}:any}
   {setter public open {value val:any}:void}
+    
+  {doc-next
+    {purpose
+        Whether the {docref-abbr CalculatedField.value} may have changed
+        since the last update.
+    }
+  }
+  {getter public open {value-changed?}:bool
+    {return self._value-changed?}
+  }
   
   {doc-next
     {purpose
@@ -291,7 +308,7 @@
     }
   }
   {method public open {note-value-changed}:void
-    set self.value-changed? = true
+    set self._value-changed? = true
     {if not self.in-update? then
         {for successor in self.node.successors do
             {successor.data.request-update}
@@ -635,7 +652,7 @@
     }
   }
   {method public open {update-finished}:void
-    set self.value-changed? = false
+    set self._value-changed? = false
     set self._update-requested? = false
     set self.update-sequence-position = -1
   }
@@ -791,6 +808,206 @@
   
   {method public open {clear-predecessors}:void
     {super.clear-predecessors}
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        A {docref CalculatedField} that wants to be notified of all
+        {docref RecordSetEvent}s occurring on its associated
+        (non-{ctext null}) {docref RecordSet}.
+    }
+}
+{define-class public abstract open RecordEventObservingCalculatedField
+  {inherits BaseCalculatedValueField}
+  
+  field private constant _record-set:RecordSet
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter manager,
+        See {docref-abbr CalculatedField.manager}
+    }
+    {parameter record-set,
+        The associated {docref RecordSet}.
+    }
+    {parameter update-proc,
+        See {docref-abbr CalculatedField.update-proc}.
+    }
+    {parameter weak-predecessors?,
+        See {docref-abbr CalculatedField.weak-predecessors?}
+    }
+  }
+  {constructor public {default
+                          manager:CalculatedFieldManager,
+                          record-set:RecordSet,
+                          update-proc:#CalculatedFieldUpdateProcType = null,
+                          weak-predecessors?:bool = false
+                      }
+    set self._record-set = record-set
+    {construct-super
+        manager,
+        update-proc = update-proc,
+        weak-predecessors? = weak-predecessors?
+    }
+  }
+  
+  {getter public open {record-set}:RecordSet
+    {return self._record-set}
+  }
+  
+  {getter public open {requires-record-set-events?}:bool
+    {return true}
+  }
+  
+  || NOTE: this method is opened from the parent class.
+  {method public open {note-event-at-record-set event:RecordSetEvent}:void}
+  
+}
+
+{doc-next
+    {purpose
+        A {docref CalculatedField} associated with a single
+        {docref RecordField} in a {docref Record} that is not a
+        {docref CalculatedRecord}.
+        
+        Instances of this class can only provide a readable
+        {docref-abbr CalculatedField.value} property;
+        they cannot update, set the {docref-abbr CalculatedField.value},
+        or add predecessors.
+    }
+    {details
+        This class only notices value changes as a result of.
+        {docref RecordSetEvent}s. If events are not handled on the
+        associated {docref RecordSet}, or are not delivered to instances
+        of this class, it will not function properly. Note that
+        {docref CalculatedFieldManager} will generally watch for such
+        events and deliver them automatically.
+        
+    }
+}
+{define-class public abstract open OpaqueCalculatedField
+  {inherits RecordEventObservingCalculatedField}
+  
+  field private constant _record:Record
+  field private constant _record-field:RecordField
+  
+  {constructor public {default
+                          manager:CalculatedFieldManager,
+                          record-set:RecordSet,
+                          record:Record,
+                          record-field:RecordField
+                      }
+    set self._record = record
+    set self._record-field = record-field
+    
+    {construct-super
+        manager,
+        record-set,
+        weak-predecessors? = true
+    }
+  }
+  
+  || NOTE: this method is opened from the parent class.
+  {method public open {note-event-at-record-set event:RecordSetEvent}:void
+    
+    {type-switch event
+     case rr:RecordsReordered do
+        || We don't really care about reordering, as long as
+        || there are no identity changes. Ignore these events
+        || to avoid horrible performance when run against a RecordView.
+                
+     case rr:RecordRemoved do
+        {if rr.record == self.record then
+            {self.disconnect}
+        }
+        
+     case rm:RecordModified do
+        {if rm.record == self then
+            {self.note-value-changed}
+        }
+        
+     else
+        {self.note-value-changed}
+    }
+  }
+  
+  {getter public open {record}:Record
+    {return self._record}
+  }
+  
+  {getter public open {field}:RecordField
+    {return self._record-field}
+  }
+  
+  {doc-next
+    {purpose
+        The value associated with this field.
+    }
+    {notes
+        This property cannot be set on objects of this type.
+    }
+    {throws
+        CalculatedFieldException,
+        if set.
+    }
+  }
+  {getter public open {value}:any
+    {if not self.connected? then
+        {throw {CalculatedFieldDisconnectedException}}
+    }
+    {return {self.record.get self.field.name}}
+  }
+  
+  || ======== OVERRIDES (unavailable class members) ========
+  
+  {setter public open {value val:any}:void
+    {throw
+        {CalculatedFieldException
+            {hlmessage
+                "Cannot set the value of an OpaqueCalculatedField."
+            }
+        }
+    }    
+  }
+  
+  {method package {add-predecessor
+                      computed-field:CalculatedField,
+                      error-if-present?:bool = true
+                  }:void
+    {throw
+        {CalculatedFieldException
+            {hlmessage
+                "Cannot add a predecessor to an OpaqueCalculatedField."
+            }
+        }
+    }    
+  }
+  
+  {doc-next
+    {purpose
+        The procedure to run whenever an update is required.
+    }
+    {notes
+        This property cannot be set on objects of this type.
+    }
+    {throws
+        CalculatedFieldException,
+        if set.
+    }
+  }
+  {setter public open {update-proc new-proc:#CalculatedFieldUpdateProcType}
+    {throw
+        {CalculatedFieldException
+            {hlmessage
+                "Cannot set update-proc on an OpaqueCalculatedField."
+            }
+        }
+    }
   }
   
 }

@@ -51,20 +51,21 @@
     }
 }
 {define-class public abstract open RecordFilterCalculatedField
-  {inherits BaseCalculatedValueField}
+  {inherits RecordEventObservingCalculatedField}
   
-  || The filter and its target.
+  || The filter.
   field private _filter:RecordFilter
-  field private constant _record-set:RecordSet
   field private _record-field:RecordField
   
   || Whether we need to call apply-filter before the next update.
   field package needs-refilter?:bool = true
   
-  || Whether we should suppress the normal request-update because we are
-  || doing an operation that we know doesn't need notification.
+  || True when we want to suppress the effects of request-update.
   field private silence-update?:bool
   
+  || FIXME: we don't need these, right?
+  || After all, we have actual CalculatedFields as predecessors --
+  || just reuse them instead of double booking.
   || Records that passed the filter and fields attached to those records.
   || Be very careful to keep these two arrays in sync.
   || FIXME: could be done as one, but there are optimization issues.
@@ -75,6 +76,9 @@
   {doc-next
     {purpose
         Instantiate this object.
+    }
+    {parameter manager,
+        See {docref-abbr CalculatedField.manager}
     }
     {parameter record-set,
         The {docref RecordSet} to run the filter against.
@@ -97,11 +101,11 @@
                           record-field:RecordField,
                           update-proc:#CalculatedFieldUpdateProcType = null
                       }
-    set self._record-set = record-set
     set self._filter = filter
     set self._record-field = record-field
     {construct-super
         manager,
+        record-set,
         update-proc = update-proc,
         weak-predecessors? = true
     }
@@ -154,14 +158,6 @@
             }
         }
     }
-  }
-  
-  {getter package {watching?}:bool
-    {return self.connected?}
-  }
-  
-  {getter public open {record-set}:RecordSet
-    {return self._record-set}
   }
   
   {method public open {prepare-for-update}:void
@@ -308,10 +304,8 @@
                 {self.add-predecessor cf}
                 {self.valid-records.append rec}
                 {self.valid-fields.append cf}
-             else
-                || We'll need to update.
-                {self.request-update}
             }
+            || Otherwise, it already exists, and it will ask us to update.
             
          else
             {if index != -1 then
@@ -417,7 +411,7 @@
   {method public open {create-computed-field record:Record}:CalculatedField
     {if-non-null manager = self.manager then
         {return
-            {GenericCalculatedRecordField
+            {RecordFilterOpaqueCalculatedField
                 manager,
                 self.record-set,
                 record,
@@ -496,189 +490,34 @@
         it cannot update, write to the {ctext value}, or add predecessors.
     }
     {details
-        This class is designed for use by {docref RecordFilterCalculatedField}
+        This class is designed for use by
+        {docref RecordFilterCalculatedField}
         and should not generally be instantiated in other contexts.
         
-        This class does not automatically notice value changes.
-        Updates for successor {docref CalculatedField}s must be triggered
-        manually through calls to {docref CalculatedField.note-value-changed},
-        which is done automatically when used by
-        {docref RecordFilterCalculatedField}.
+        Instances of this class should only be accessed for their
+        {docref-abbr CalculatedField.value} property during updates,
+        and not for any other reason. Instances of this class should
+        not be linked to other {docref ComputedField}s.
     }
 }
-{define-class public open GenericCalculatedRecordField
-  {inherits CalculatedField}
-  
-  field private constant _record-set:RecordSet
-  field private constant _record:Record
-  field private constant _record-field:RecordField
+{define-class public open RecordFilterOpaqueCalculatedField
+  {inherits OpaqueCalculatedField}
   
   {constructor package {default
                            manager:CalculatedFieldManager,
                            record-set:RecordSet,
                            record:Record,
                            record-field:RecordField
-                       }
-    set self._record-set = record-set
-    set self._record = record
-    set self._record-field = record-field
-    
+                       }    
     {construct-super
         manager,
-        weak-predecessors? = true
+        record-set,
+        record,
+        record-field
     }
   }
   
-  {getter public open {record-set}:RecordSet
-    {return self._record-set}
-  }
-  
-  {getter public open {record}:Record
-    {return self._record}
-  }
-  
-  {getter public open {field}:RecordField
-    {return self._record-field}
-  }
-  
-  {getter public open {value}:any
-    {if not self.connected? then
-        {throw {CalculatedFieldDisconnectedException}}
-    }
-    {return {self.record.get self.field.name}}
-  }
-  
-  
-}
-
-
-{doc-next
-    {purpose
-        A {docref CalculatedField} whose {ctext value} is attached to
-        a {docref RecordField} in a {docref Record}, but can only provide
-        a readable {docref-abbr CalculatedField.value} property;
-        it cannot update, write to the {ctext value}, or add predecessors.
-    }
-    {details
-        This class is designed for use by {docref RecordFilterCalculatedField}
-        and should not generally be instantiated in other contexts.
-        
-        {ctext OpaqueCalculatedRecordField} will automatically
-        {docref-abbr CalculatedField.disconnect} when it is no longer
-        any other field's predecessor.
-        
-        This class does not automatically notice value changes.
-        Updates for successor {docref CalculatedField}s must be triggered
-        manually through calls to {docref CalculatedField.note-value-changed},
-        which is done automatically when used by
-        {docref RecordFilterCalculatedField}.
-        
-        Certain properties cannot be set on instances of this class;
-        e.g. {ctext value}, {ctext update-proc}. Attempting to do so
-        will cause an exception to be thrown.
-    }
-}
-{define-class public open OpaqueCalculatedRecordField
-  {inherits CalculatedField}
-  
-  field private constant _record-set:RecordSet
-  field private constant _record:Record
-  field private constant _record-field:RecordField
-  
-  {constructor package {default
-                           manager:CalculatedFieldManager,
-                           record-set:RecordSet,
-                           record:Record,
-                           record-field:RecordField
-                       }
-    set self._record-set = record-set
-    set self._record = record
-    set self._record-field = record-field
-    
-    {construct-super
-        manager,
-        weak-predecessors? = true
-    }
-  }
-  
-  {getter public open {record-set}:#RecordSet
-    {if not self.connected? then {return null}}
-    {return self._record-set}
-  }
-  
-  {getter public open {record}:#Record
-    {if not self.connected? then {return null}}
-    {return self._record}
-  }
-  
-  {getter public open {field}:#RecordField
-    {if not self.connected? then {return null}}
-    {return self._record-field}
-  }
-  
-  {doc-next
-    {purpose
-        The value associated with this field.
-    }
-    {notes
-        This property cannot be set on an {ctext OpaqueCalculatedRecordField}.
-    }
-    {throws
-        CalculatedFieldException,
-        if set.
-    }
-  }
-  {getter public open {value}:any
-    {if not self.connected? then
-        {throw {CalculatedFieldDisconnectedException}}
-    }
-    {return {self.record.get self.field.name}}
-  }
-  {setter public open {value val:any}:void
-    {throw
-        {CalculatedFieldException
-            {hlmessage
-                "Cannot set the value of an OpaqueCalculatedRecordField."
-            }
-        }
-    }    
-  }
-  
-  {method package {add-predecessor
-                      computed-field:CalculatedField,
-                      error-if-present?:bool = true
-                  }:void
-    {throw
-        {CalculatedFieldException
-            {hlmessage
-                "Cannot add a predecessor to an OpaqueCalculatedRecordField."
-            }
-        }
-    }    
-  }
-  
-  {doc-next
-    {purpose
-        The procedure to run whenever an update is required.
-    }
-    {notes
-        This property cannot be set on an {ctext OpaqueCalculatedRecordField}.
-    }
-    {throws
-        CalculatedFieldException,
-        if set.
-    }
-  }
-  {setter public open {update-proc new-proc:#CalculatedFieldUpdateProcType}
-    {throw
-        {CalculatedFieldException
-            {hlmessage
-                "Cannot set update-proc on an OpaqueCalculatedRecordField."
-            }
-        }
-    }
-  }
-  
+  || Automatically disconnect when our parent delinks us.
   {method package {remove-successor
                       computed-field:CalculatedField,
                       error-if-missing?:bool = false                      

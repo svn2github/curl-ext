@@ -231,7 +231,6 @@
   {method package {attach-to-manager}:void
     {if not self._manager-attached? then
         {self.manager.attach-record-set self}
-        set self._manager-attached? = true
     }
   }
   
@@ -242,6 +241,7 @@
     }
   }
   {method package {note-manager-attached}:void
+      set self.manager-attached? = true
   }
   
   {doc-next
@@ -253,7 +253,6 @@
   {method package {detach-from-manager}:void
     {if self._manager-attached? then
         {self.manager.detach-record-set self}
-        set self._manager-attached? = false
     }
   }
   
@@ -264,9 +263,11 @@
     }
   }
   {method package {note-manager-detached}:void
+      set self.manager-attached? = false
   }
   
   || ======== computed field management ========
+  
   
   {method package {create-new-computed-field
                       record:CalculatedRecord,
@@ -286,6 +287,44 @@
             update-proc = update-proc,
             weak-predecessors? = weak-predecessors?
         }
+    
+    {return new-field}
+  }
+  
+  {doc-next
+    {purpose
+        Create a new {docref CalculatedRecordFilterCalculatedField}
+        associated with this record set.
+    }
+    {parameter filter,
+        The {docref RecordFilter} to run for updates.
+    }
+    {parameter record-field,
+        The {docref RecordField} from which to take predecessor values
+        in the {docref Record}s that pass the filter.
+    }
+    {parameter update-proc,
+        See {docref-abbr CalculatedField.update-proc}.
+    }
+  }
+  {method public open {create-new-filter-computed-field
+                          filter:RecordFilter,
+                          record-field:RecordField,
+                          update-proc:#CalculatedFieldUpdateProcType = null
+                      }:CalculatedRecordFilterCalculatedField
+    || Ensure that we're attached.
+    {self.attach-to-manager}
+    
+    || Create and return a new CF.
+    def new-field =
+        {CalculatedRecordFilterCalculatedField
+            self.manager,
+            self,
+            filter,
+            record-field,
+            update-proc = update-proc
+        }
+    
     {return new-field}
   }
   
