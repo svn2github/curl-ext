@@ -47,18 +47,8 @@
 || since we do the full topological sort upfront.
 || Note that this may not be reasonable / possible.
 
-|| TODO: rather than a single manager, it would be safer to have
-|| different managers that can either work together as needed, or
-|| can combine and split when appropriate. Merge is how the system worked
-|| originally, but it's hard to get right and the system occasionally
-|| has to do a big block of work when you merge/split, and the conditions
-|| for when you can split without worrying about having to then immediately
-|| re-merge are unclear.
-|| Note that you can't just treat the managers as another simple digraph
-|| level because the contained CFs can call back and forth between RecordSets.
-
-|| TODO: The abuse of batch-events? by ComputedRecordSet and
-|| ComputedFieldManager should be removed, but first we'll need a
+|| TODO: The abuse of batch-events? by CalculatedRecordSet and
+|| CalculatedFieldManager should be removed, but first we'll need a
 || very similar-appearing state-tracking and event-mangling system...
 
 || TODO: seems like we should be able to do more with the epoch.

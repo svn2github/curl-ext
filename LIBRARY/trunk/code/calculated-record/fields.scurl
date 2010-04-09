@@ -77,7 +77,7 @@
   || Used e.g. to detect whether value changes should be signaled.
   field package in-update?:bool
   
-  || The last computed update epoch we updated in.
+  || The last calculated update epoch we updated in.
   field package last-update-epoch:int
   
   || Whether the value changed since the last update.
@@ -369,11 +369,11 @@
     {purpose
         Add a predecessor (prerequisite) field.
     }
-    {parameter computed-field,
+    {parameter calculated-field,
         The field to make a predecessor.
     }
     {parameter error-if-present?,
-        Whether to throw an error if {param computed-field} is already
+        Whether to throw an error if {param calculated-field} is already
         a predecessor to this field.
     }
     {details
@@ -389,13 +389,13 @@
     }
   }
   {method package {add-predecessor
-                      computed-field:CalculatedField,
+                      calculated-field:CalculatedField,
                       error-if-present?:bool = true
                   }:void
     {if not self.connected? then
         {throw {CalculatedFieldDisconnectedException}}
     }
-    {computed-field.add-successor
+    {calculated-field.add-successor
         self,
         error-if-present? = error-if-present?
     }
@@ -406,23 +406,23 @@
     {purpose
         Remove a predecessor (prerequisite) field.
     }
-    {parameter computed-field,
+    {parameter calculated-field,
         The field to remove as a predecessor.
     }
     {parameter error-if-missing?,
-        If {ctext true}, an error will be thrown if {param computed-field}
+        If {ctext true}, an error will be thrown if {param calculated-field}
         is not a predecessor.
     }
     {details
-        This method calls {ctext remove-successor} on {param computed-field}
+        This method calls {ctext remove-successor} on {param calculated-field}
         to perform the actual removal, then requests an update.
     }
   }
   {method package {remove-predecessor
-                      computed-field:CalculatedField,
+                      calculated-field:CalculatedField,
                       error-if-missing?:bool = false
                   }:void
-    {computed-field.remove-successor
+    {calculated-field.remove-successor
         self,
         error-if-missing? = error-if-missing?
     }
@@ -433,11 +433,11 @@
     {purpose
         Remove a successor field.
     }
-    {parameter computed-field,
+    {parameter calculated-field,
         The field removing this field as a predecessor.
     }
     {parameter error-if-missing?,
-        If {ctext true}, an error will be thrown if {param computed-field}
+        If {ctext true}, an error will be thrown if {param calculated-field}
         is not a successor.
     }
     {details
@@ -445,11 +445,11 @@
     }
   }  
   {method package {remove-successor
-                      computed-field:CalculatedField,
+                      calculated-field:CalculatedField,
                       error-if-missing?:bool = false                      
                   }:void
     {self.node.remove-successor
-        computed-field.node,
+        calculated-field.node,
         error-if-missing? = error-if-missing?
     }
   }
@@ -458,11 +458,11 @@
     {purpose
         Add a successor field.
     }
-    {parameter computed-field,
+    {parameter calculated-field,
         The field to which this field will become a predecessor.
     }
     {parameter error-if-present?,
-        Whether to throw an error if {param computed-field} is already
+        Whether to throw an error if {param calculated-field} is already
         a successor to this field.
     }
     {details
@@ -470,11 +470,11 @@
     }
   }
   {method package {add-successor
-                      computed-field:CalculatedField,
+                      calculated-field:CalculatedField,
                       error-if-present?:bool = false                      
                   }:void
     {self.node.add-successor
-        computed-field.node,
+        calculated-field.node,
         error-if-present? = error-if-present?
     }
   }
@@ -787,21 +787,21 @@
   || ======== ACCESS OVERRIDES (expose predecessor methods) ========
   
   {method public open {add-predecessor
-                          computed-field:CalculatedField,
+                          calculated-field:CalculatedField,
                           error-if-present?:bool = true
                       }:void
     {super.add-predecessor
-        computed-field,
+        calculated-field,
         error-if-present? = error-if-present?
     }
   }
   
   {method public open {remove-predecessor
-                          computed-field:CalculatedField,
+                          calculated-field:CalculatedField,
                           error-if-missing?:bool = false
                       }:void
     {super.remove-predecessor
-        computed-field,
+        calculated-field,
         error-if-missing? = error-if-missing?
     }
   }
@@ -869,6 +869,7 @@
   
 }
 
+
 {doc-next
     {purpose
         A {docref CalculatedField} associated with a single
@@ -890,7 +891,7 @@
         
     }
 }
-{define-class public abstract open OpaqueCalculatedField
+{define-class public abstract open BaseOpaqueCalculatedRecordField
   {inherits RecordEventObservingCalculatedField}
   
   field private constant _record:Record
@@ -976,7 +977,7 @@
   }
   
   {method package {add-predecessor
-                      computed-field:CalculatedField,
+                      calculated-field:CalculatedField,
                       error-if-present?:bool = true
                   }:void
     {throw

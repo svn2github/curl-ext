@@ -140,7 +140,7 @@
                         update-proc = set-from-pred-proc                        
                     }
                 || then point the attached field at that
-                {crs.set-computed-field
+                {crs.set-calculated-field
                     {crs.select-one filter = {RecordData index = i}}
                     asa CalculatedRecord,
                     f,

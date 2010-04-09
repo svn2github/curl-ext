@@ -125,7 +125,7 @@
             }
             
             def pred1-cf =
-                {rs1.get-or-create-computed-field
+                {rs1.get-or-create-calculated-field
                     (rec1 asa CalculatedRecord),
                     field
                 }
@@ -142,7 +142,7 @@
                     {rf2.get field.name},
                     update-proc = sum-proc
                 }
-            {rs3.set-computed-field
+            {rs3.set-calculated-field
                 rec3 asa CalculatedRecord,
                 {rf3.get field.name},
                 update-proc = sum-proc,
@@ -153,17 +153,17 @@
     }
     {for record in rs1 do
         def rec = record asa CalculatedRecord
-        {rs1.set-computed-field
+        {rs1.set-calculated-field
             rec asa CalculatedRecord,
             rf1["row-sum"],
             update-proc = sum-proc,
-            {rs1.get-or-create-computed-field rec, rf1["a"]},
-            {rs1.get-or-create-computed-field rec, rf1["b"]},
-            {rs1.get-or-create-computed-field rec, rf1["c"]}
+            {rs1.get-or-create-calculated-field rec, rf1["a"]},
+            {rs1.get-or-create-calculated-field rec, rf1["b"]},
+            {rs1.get-or-create-calculated-field rec, rf1["c"]}
         }
     }
 
-    {rs3.set-computed-field
+    {rs3.set-calculated-field
         {rs3.select-one filter = {RecordData index = 0}} asa CalculatedRecord,
         {rf3.get-by-index 4},
         update-proc = sum-proc,
@@ -175,7 +175,7 @@
             update-proc = sum-proc
         }
     }
-    {rs3.set-computed-field
+    {rs3.set-calculated-field
         {rs3.select-one filter = {RecordData index = 1}} asa CalculatedRecord,
         {rf3.get-by-index 4},
         update-proc = sum-proc,
@@ -187,7 +187,7 @@
             update-proc = sum-proc
         }
     }
-    {rs3.set-computed-field
+    {rs3.set-calculated-field
         {rs3.select-one filter = {RecordData index = 2}} asa CalculatedRecord,
         {rf3.get-by-index 4},
         update-proc = sum-proc,
@@ -200,7 +200,7 @@
         }
     }
 
-    {rs3.set-computed-field
+    {rs3.set-calculated-field
         {rs3.select-one filter = {RecordData index = 3}} asa CalculatedRecord,
         {rf3.get-by-index 4},
         update-proc = sum-proc,
@@ -212,7 +212,7 @@
             update-proc = sum-proc
         }
     }
-    {rs3.set-computed-field
+    {rs3.set-calculated-field
         {rs3.select-one filter = {RecordData index = 4}} asa CalculatedRecord,
         {rf3.get-by-index 4},
         update-proc = sum-proc,
@@ -224,7 +224,7 @@
             update-proc = sum-proc
         }
     }
-    {rs3.set-computed-field
+    {rs3.set-calculated-field
         {rs3.select-one filter = {RecordData index = 5}} asa CalculatedRecord,
         {rf3.get-by-index 4},
         update-proc = sum-proc,
@@ -236,31 +236,31 @@
             update-proc = sum-proc
         }
     }
-    {rs3.set-computed-field
+    {rs3.set-calculated-field
         {rs3.select-one filter = {RecordData index = 6}} asa CalculatedRecord,
         {rf3.get-by-index 4},
         update-proc = sum-proc,
-        {rs3.get-or-create-computed-field
+        {rs3.get-or-create-calculated-field
             {rs3.select-one filter = {RecordData index = 0}} asa CalculatedRecord,
             {rf3.get-by-index 4}
         },
-        {rs3.get-or-create-computed-field
+        {rs3.get-or-create-calculated-field
             {rs3.select-one filter = {RecordData index = 1}} asa CalculatedRecord,
             {rf3.get-by-index 4}
         },
-        {rs3.get-or-create-computed-field
+        {rs3.get-or-create-calculated-field
             {rs3.select-one filter = {RecordData index = 2}} asa CalculatedRecord,
             {rf3.get-by-index 4}
         },
-        {rs3.get-or-create-computed-field
+        {rs3.get-or-create-calculated-field
             {rs3.select-one filter = {RecordData index = 3}} asa CalculatedRecord,
             {rf3.get-by-index 4}
         },
-        {rs3.get-or-create-computed-field
+        {rs3.get-or-create-calculated-field
             {rs3.select-one filter = {RecordData index = 4}} asa CalculatedRecord,
             {rf3.get-by-index 4}
         },
-        {rs3.get-or-create-computed-field
+        {rs3.get-or-create-calculated-field
             {rs3.select-one filter = {RecordData index = 5}} asa CalculatedRecord,
             {rf3.get-by-index 4}
         }
@@ -354,7 +354,7 @@
                     }
                     
                     def pred1-cf =
-                        {rs1.get-or-create-computed-field
+                        {rs1.get-or-create-calculated-field
                             (rec1 asa CalculatedRecord),
                             field
                         }
@@ -371,7 +371,7 @@
                             {rf2.get field.name},
                             update-proc = sum-proc
                         }
-                    {rs3.set-computed-field
+                    {rs3.set-calculated-field
                         rec3 asa CalculatedRecord,
                         {rf3.get field.name},
                         update-proc = sum-proc,

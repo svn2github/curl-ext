@@ -27,7 +27,7 @@
         {ctext CalculatedRecordSet} adds to {docref LocalRecordSet}
         the ability to generate automatic
         updates to given record fields through, for example, the
-        {docref-abbr CalculatedRecordSet.set-computed-field} method.
+        {docref-abbr CalculatedRecordSet.set-calculated-field} method.
         Automatic updates are performed through
         {docref CalculatedRecordField} objects, which can declare
         other {docref CalculatedField}s as predecessors, thus allowing
@@ -266,10 +266,10 @@
       set self.manager-attached? = false
   }
   
-  || ======== computed field management ========
+  || ======== calculated field management ========
   
   
-  {method package {create-new-computed-field
+  {method package {create-new-calculated-field
                       record:CalculatedRecord,
                       field-index:int,
                       update-proc:#CalculatedFieldUpdateProcType,
@@ -307,7 +307,7 @@
         See {docref-abbr CalculatedField.update-proc}.
     }
   }
-  {method public open {create-new-filter-computed-field
+  {method public open {create-new-filter-calculated-field
                           filter:RecordFilter,
                           record-field:RecordField,
                           update-proc:#CalculatedFieldUpdateProcType = null
@@ -330,7 +330,7 @@
   
   {doc-next
     {purpose
-        Set a computed field, creating one if necessary, or altering an
+        Set a calculated field, creating one if necessary, or altering an
         existing one.
     }
     {parameter record,
@@ -353,7 +353,7 @@
         The {docref CalculatedRecordField} modified or generated.
     }
   }
-  {method public open {set-computed-field
+  {method public open {set-calculated-field
                           record:CalculatedRecord,
                           record-field:RecordField,
                           update-proc:#CalculatedFieldUpdateProcType = null,
@@ -364,7 +364,7 @@
     {self.ensure-attached record}
     def field-index = {self.fields.get-index record-field.name} 
     def ret-field =
-        {record.set-computed-field-by-index
+        {record.set-calculated-field-by-index
             field-index,
             update-proc = update-proc,
             weak-predecessors? = weak-predecessors?,
@@ -389,14 +389,14 @@
         or {ctext null} if none exists.
     }
   }
-  {method public open {get-computed-field
+  {method public open {get-calculated-field
                           record:CalculatedRecord,
                           record-field:RecordField
                       }:#CalculatedRecordField
     {self.ensure-attached record}
     def field-index = {self.fields.get-index record-field.name}
     {if field-index >= 0 then
-        {return {record.get-computed-field-by-index field-index}}
+        {return {record.get-calculated-field-by-index field-index}}
      else
         {error {hlmessage "RecordField %s not found."}, record-field.name}
     }
@@ -423,15 +423,15 @@
         a {docref bool} indicating whether it was created.
     }
   }
-  {method public open {get-or-create-computed-field
+  {method public open {get-or-create-calculated-field
                           record:CalculatedRecord,
                           record-field:RecordField
-                      }:(computed-field:CalculatedRecordField, created?:bool)
+                      }:(calculated-field:CalculatedRecordField, created?:bool)
     {self.ensure-attached record}
     def field-index = {self.fields.get-index record-field.name}
     {if field-index >= 0 then
         def (cf, created?) =
-            {record.get-or-create-computed-field-by-index field-index}
+            {record.get-or-create-calculated-field-by-index field-index}
         {return cf, created?}
      else
         {error {hlmessage "RecordField %s not found."}, record-field.name}
@@ -445,7 +445,7 @@
     }
     {notes
         It should not generally be necessary to call this method.
-        See {docref ComputedField.request-update}.
+        See {docref CalculatedField.request-update}.
     }
   }
   {method public open {request-calculated-fields-update}:void
@@ -468,11 +468,11 @@
   }
   {method public open {disconnect-all-fields}:void
     {for rec in self do
-        {(rec asa CalculatedRecord).remove-all-computed-fields force? = true}
+        {(rec asa CalculatedRecord).remove-all-calculated-fields force? = true}
     }
     {self.detach-from-manager}
     
-    || FIXME: unwatch all filter computed fields that point to this RS?
+    || FIXME: unwatch all filter calculated fields that point to this RS?
   }
   
 }
@@ -487,7 +487,7 @@
 {define-class public open CalculatedRecord {inherits BasicRecord}
   
   || The nodes (with CalculatedFields) present in self.
-  field private _computed-fields:#{FastArray-of #CalculatedRecordField}
+  field private _calculated-fields:#{FastArray-of #CalculatedRecordField}
   
   {doc-next 
     {purpose 
@@ -509,18 +509,18 @@
     {construct-super record-set}
   }
   
-  || ======== COMPUTEDFIELD MANAGEMENT ========
+  || ======== CalculatedRecordField MANAGEMENT ========
   
   || Return the node array, creating it if necessary.
-  {getter private {non-null-computed-fields}:{FastArray-of
+  {getter private {non-null-calculated-fields}:{FastArray-of
                                                  #CalculatedRecordField}
-    {if self._computed-fields == null then
+    {if self._calculated-fields == null then
         || FIXME: It would be nice to avoid checking the RecordSet on the
         || required array size but we can't access ._data.
         || This could be removed if this code were migrated into
         || the data-access package itself.
         {if-non-null rs = self.record-set then
-            set self._computed-fields =
+            set self._calculated-fields =
                 {{FastArray-of #CalculatedRecordField}.from-size
                     rs.fields.size,
                     null
@@ -533,7 +533,7 @@
             }
         }
     }
-    {return {non-null self._computed-fields}}
+    {return {non-null self._calculated-fields}}
   }
   
   {doc-next
@@ -545,11 +545,11 @@
         The index of the {docref RecordField} of interest.
     }
   }
-  {method public open {get-computed-field-by-index
+  {method public open {get-calculated-field-by-index
                           field-index:int
                       }:#CalculatedRecordField
-    {if-non-null computed-fields = self._computed-fields then
-        {return computed-fields[field-index]}
+    {if-non-null calculated-fields = self._calculated-fields then
+        {return calculated-fields[field-index]}
     }
     {return null}
   }
@@ -569,21 +569,21 @@
         a {docref bool} indicating whether it was created.
     }    
   }
-  {method public open {get-or-create-computed-field-by-index
+  {method public open {get-or-create-calculated-field-by-index
                           field-index:int
-                      }:(computed-field:CalculatedRecordField, created?:bool)
-    {if-non-null cf = {self.get-computed-field-by-index field-index} then
+                      }:(calculated-field:CalculatedRecordField, created?:bool)
+    {if-non-null cf = {self.get-calculated-field-by-index field-index} then
         {return cf, false}
     }
     {if-non-null rs = self.record-set asa #CalculatedRecordSet then
         def new-field =
-            {rs.create-new-computed-field
+            {rs.create-new-calculated-field
                 self,
                 field-index,
                 null,
                 false
             }
-        set self.non-null-computed-fields[field-index] = new-field
+        set self.non-null-calculated-fields[field-index] = new-field
         {return new-field, true}
      else
         {error
@@ -597,7 +597,7 @@
   || Create or update a node in our tracking array.
   {doc-next
     {purpose
-        Set a computed field, creating one if necessary, or altering an
+        Set a calculated field, creating one if necessary, or altering an
         existing one.
     }
     {parameter field-index,
@@ -616,7 +616,7 @@
         The {docref CalculatedRecordField} modified or generated.
     }
   }
-  {method public open {set-computed-field-by-index
+  {method public open {set-calculated-field-by-index
                           field-index:int,
                           update-proc:#CalculatedFieldUpdateProcType = null,
                           weak-predecessors?:bool = false,
@@ -637,7 +637,7 @@
     let return-field:#CalculatedRecordField = null
     let update-preds?:bool = false
     
-    {if-non-null cf = {self.get-computed-field-by-index field-index} then
+    {if-non-null cf = {self.get-calculated-field-by-index field-index} then
         || If we have an existing node, update it with the new properties.
         {cf.clear-predecessors}
         {for pred-field in ... do
@@ -651,9 +651,9 @@
         
      else
         || We didn't have an existing node, so create and set a new node.
-        def computed-fields = self.non-null-computed-fields
+        def cfs = self.non-null-calculated-fields
         def new-field =
-            {rs.create-new-computed-field
+            {rs.create-new-calculated-field
                 self,
                 field-index,
                 update-proc,
@@ -663,7 +663,7 @@
             {new-field.add-predecessor pred-field}
         }
         || FIXME: should this move before the predecessor settings?
-        set computed-fields[field-index] = new-field
+        set cfs[field-index] = new-field
         set return-field = new-field
     }
     
@@ -681,22 +681,22 @@
   || so don't query our RecordSet here, as it may have already become null.
   ||
   || force? == skip has-successor/weak-predecessor? checks.
-  {method package {remove-computed-field-by-index
+  {method package {remove-calculated-field-by-index
                       field-index:int,
                       force?:bool = false
                   }:void
-    {if-non-null computed-fields = self._computed-fields then
-        {if-non-null cf = computed-fields[field-index] then
+    {if-non-null cfs = self._calculated-fields then
+        {if-non-null cf = cfs[field-index] then
             {cf.disconnect force? = force?}
         }
     }
   }
   
   || Disconnect all nodes in self.
-  {method package {remove-all-computed-fields force?:bool = false}:void
-    {if-non-null computed-fields = self._computed-fields then
-        {for field-index = 0 below computed-fields.size do
-            {if-non-null cf = computed-fields[field-index] then
+  {method package {remove-all-calculated-fields force?:bool = false}:void
+    {if-non-null cfs = self._calculated-fields then
+        {for field-index = 0 below cfs.size do
+            {if-non-null cf = cfs[field-index] then
                 {cf.disconnect force? = force?}
             }
         }
@@ -707,10 +707,10 @@
   || The CF is probably already dead, so don't call any of its methods,
   || even to query the RecordField, just look for it and remove it.
   {method package {note-field-disconnected cf:CalculatedRecordField}:void
-    {if-non-null computed-fields = self._computed-fields then
-        def index = {computed-fields.find cf}
+    {if-non-null cfs = self._calculated-fields then
+        def index = {cfs.find cf}
         {if index >= 0 then
-            set computed-fields[index] = null
+            set cfs[index] = null
         }
     }
   }
@@ -722,13 +722,13 @@
     }
     {notes
         It should not generally be necessary to call this method.
-        See {docref ComputedField.request-update}.
+        See {docref CalculatedField.request-update}.
     }
   }
   {method public open {request-calculated-fields-update}:void
-    {if-non-null computed-fields = self._computed-fields then
-        {for field-index = 0 below computed-fields.size do
-            {if-non-null cf = computed-fields[field-index] then
+    {if-non-null cfs = self._calculated-fields then
+        {for field-index = 0 below cfs.size do
+            {if-non-null cf = cfs[field-index] then
                 {cf.request-update}
             }
         }
@@ -745,8 +745,8 @@
     || the case of a Record with nodes that don't actually change value
     || because of this, but it may be rare enough that we don't need to.
     {super.internal-revert}
-    {if-non-null computed-fields = self._computed-fields then
-        {for cf in computed-fields do
+    {if-non-null cfs = self._calculated-fields then
+        {for cf in cfs do
             {if-non-null cf then
                 {cf.note-value-changed}
             }
@@ -761,7 +761,7 @@
                       }:void
     {super.internal-set-value field-index, value, for-init? = for-init?}
     || Notify any attached CalculatedField that its base value changed.
-    {if-non-null cf = {self.get-computed-field-by-index field-index} then
+    {if-non-null cf = {self.get-calculated-field-by-index field-index} then
         {cf.note-value-changed}
     }
   }
@@ -770,8 +770,8 @@
     {super.internal-set-state state}
     || When we detach, disconnect all attached CalculatedFields.
     {if state == RecordState.detached then
-        {if-non-null computed-fields = self._computed-fields then
-            {for cf in computed-fields do
+        {if-non-null cfs = self._calculated-fields then
+            {for cf in cfs do
                 {if-non-null cf then
                     let force?:bool = true
                     {for succ in cf.node.successors do
@@ -863,21 +863,21 @@
   || ======== ACCESS OVERRIDES (expose predecessor methods) ========
   
   {method public open {add-predecessor
-                          computed-field:CalculatedField,
+                          calculated-field:CalculatedField,
                           error-if-present?:bool = true
                       }:void
     {super.add-predecessor
-        computed-field,
+        calculated-field,
         error-if-present? = error-if-present?    
     }
   }
   
   {method public open {remove-predecessor
-                          computed-field:CalculatedField,
+                          calculated-field:CalculatedField,
                           error-if-missing?:bool = false
                       }:void
     {super.remove-predecessor
-        computed-field,
+        calculated-field,
         error-if-missing? = error-if-missing?
     }
   }
