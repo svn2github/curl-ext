@@ -1,0 +1,808 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+|| -----------------------------------------------------------------------------
+
+||FIXME: move to EXT.DATA-ACCESS
+{doc-next
+    {purpose
+        A 2-dimensional array that can be expanded and contracted by
+        inserting or deleting rows and columns.
+    }
+}
+{define-class public open {ResizableArray-of t:Type} {inherits {Array-2-of t}}
+
+  {doc-next
+    {purpose The number of rows currently in the array.}
+  }
+  {getter public open {rows}:int
+    let (rows:int, cols:int) = {self.size}
+    {return rows}
+  }
+
+  {doc-next
+    {purpose The number of columns currently in the array.}
+  }
+  {getter public open {cols}:int
+    let (rows:int, cols:int) = {self.size}
+    {return cols}
+  }
+
+
+  {doc-next
+    {purpose
+        Construct a resizablea array initially containing {param rows} rows
+        and {param cols} columns.
+    }
+  }
+  {constructor public {default rows:int, cols:int}
+    {construct-super rows, cols}
+  }
+
+  {method public {clone}:{Array-2-of t}
+    def c = {new {ResizableArray-of t}, self.rows, self.cols}
+    {for ri = 0 below self.rows do
+        {for ci = 0 below self.cols do
+            set c[ri, ci] = self[ri, ci]
+        }
+    }
+    {return c}
+  }
+
+||--  {method public {set-size s1:int, s0:int}:void
+||--  }
+
+  {doc-next
+    {purpose
+        Insert {param count} rows into the resizable array
+        or (delete them if {param count} is negative).
+    }
+    {details
+        If {param count} is positive, insert {param count} rows
+        at {param first}, so that the values originally at first will
+        be found at {code first + count}. If {param init-proc} is
+        supplied, then each new value is initialized to the value it
+        returns, where {param r} and {param c} are the row and column
+        index of the value being initialized.
+
+        If {param count} is negative, then the data starting at {param
+        first} and including {param count} rows will be removed from
+        the array, reducing the number of rows by {param count}.
+    }
+  }
+  {method public {insert-rows
+                     first:int,
+                     count:int,
+                     init-proc:#{proc-type {r:int, c:int}:t} = null
+                 }:void
+
+    || Check for cases that do nothing
+    {if count == 0 || nothing to do
+        or (count < 0 and first >= self.rows) || no rows above to delete
+     then
+        {return}
+    }
+
+    || Check for errors
+    {if first > self.rows or first < 0 then
+        {throw {ArrayBoundsException obj = self, 
+                   {hlmessage Invalid row specified}
+               }
+        }
+    }
+
+    {if count < 0 then
+        || move, then delete
+        def tbdel = {min -count, self.rows - first}
+        def move-count = self.rows - first - tbdel - 1
+        let last:int = self.rows - tbdel - 1
+        {for ri = first to last do
+            {for ci = 0 below self.cols do
+                set self[ri, ci] = self[ri + tbdel, ci]
+            }
+        }
+        {self.set-size self.rows - tbdel, self.cols}
+     else
+        || add space, copy old to new, reset old
+        let last:int = self.rows - 1 + count
+        {self.set-size self.rows + count, self.cols}
+        {for ri = last downto first + count do
+            {for ci = 0 below self.cols do
+                set self[ri, ci] = self[ri - count, ci]
+            }
+        }
+        {for ri = 0 below count do
+            {for ci = 0 below self.cols do
+                set self[first + ri, ci] =
+                    {if-non-null init-proc then
+                        {init-proc first + ri, ci}
+                     else
+                        {uninitialized-value-for-type t}
+                    }
+            }
+        }
+    }
+  }
+
+  {doc-next
+    {purpose
+        Insert {param count} columns into the resizable array
+        or (delete them if {param count} is negative).
+    }
+    {details
+        If {param count} is positive, insert {param count} columns
+        at {param first}, so that the values originally at first will
+        be found at {code first + count}. If {param init-proc} is
+        supplied, then each new value is initialized to the value it
+        returns, where {param r} and {param c} are the row and column
+        index of the value being initialized.
+
+        If {param count} is negative, then the data starting at {param
+        first} and including {param count} columns will be removed from
+        the array, reducing the number of columns by {param count}.
+    }
+  }
+  {method public {insert-cols
+                     first:int,
+                     count:int,
+                     init-proc:#{proc-type {r:int, c:int}:t} = null
+                 }:void
+
+    || Check for cases that do nothing
+    {if count == 0 || nothing to do
+        or (count < 0 and first >= self.cols) || no cols above to delete
+     then
+        {return}
+    }
+
+    || Check for errors
+    {if first > self.cols or first < 0 then
+        {throw {ArrayBoundsException obj = self, 
+                   {hlmessage Invalid column specified}
+               }
+        }
+    }
+
+    {if count < 0 then
+        || move, then delete
+        def tbdel = {min -count, self.cols - first}
+        def move-count = self.cols - first - tbdel - 1
+        let last:int = self.cols - tbdel - 1
+        {for ci = first to last do
+            {for ri = 0 below self.rows do
+                set self[ri, ci] = self[ri, ci + tbdel]
+            }
+        }
+        {self.set-size self.rows, self.cols - tbdel}
+     else
+        || add space, copy old to new, reset old
+        let last:int = self.cols - 1 + count
+        {self.set-size self.rows, self.cols + count}
+        {for ci = last downto first + count do
+            {for ri = 0 below self.rows do
+                set self[ri, ci] = self[ri, ci - count]
+            }
+        }
+        {for ci = 0 below count do
+            {for ri = 0 below self.rows do
+                set self[ri, first + ci] =
+                    {if-non-null init-proc then
+                        {init-proc ri, first + ci}
+                     else
+                        {uninitialized-value-for-type t}
+                    }
+            }
+        }
+    }
+  }
+}
+
+|| -----------------------------------------------------------------------------
+
+||FIXME: move to EXT.DATA-ACCESS
+{doc-next
+    {purpose
+        Define a protocol for refreshing the state of an object once,
+        after one or perhaps many requests to update.
+    }
+    {details
+        This interface is used to decouple the recognition that an
+        update is needed from the code that performs the update.  It
+        is usually used where changes are noted during an event
+        handler but the processing of those changes is best delayed
+        until the current event is finished.
+
+        An object implements this interface by overriding the
+        {docref RefreshMixin.refresh} method to do the work of updating
+        the object.
+
+        The user of a subclass of this class can then
+        call {docref-abbr RefreshMixin.update} to request that the
+        object be refreshed.  Once the current event is finished,
+        the {ctext refresh} method will be called to perform any
+        necessary computations.
+    }
+}
+{define-class abstract public open RefreshMixin
+
+  {doc-next
+    {purpose
+        Counter incremented each time {docref RefreshMixin.refresh}
+        is called.
+    }
+  }
+  field public-get protected-set refresh-count:int
+
+  {doc-next
+    {purpose
+        Indicates that a refresh should be performed once the applet
+        returns to the event loop.
+    }
+  }
+  field protected _refresh-requested?:bool = false
+
+  {doc-next
+    {purpose
+        Initialize a new {docref RefreshMixin}.
+    }
+  }
+  {constructor public {default}
+  }
+
+  {doc-next
+    {purpose
+        Request a refresh, usually after all updates are requested.
+    }
+    {details 
+        The method {docref RefreshMixin.refresh} will be called once,
+        after the current event has been handled,
+    }
+  }
+  {method public open {update}:void
+    {if not self._refresh-requested? then
+        {inc self.refresh-count}
+        set self._refresh-requested? = true
+        {after 0.0s do
+            {self.refresh}
+            set self._refresh-requested? = false
+        }
+    }
+  }
+
+  {doc-next
+    {purpose
+        Override this method to do actual work
+    }
+    {details
+        Code should call {docref RefreshMixin.update} when an update
+        is needed. The system will call this method the next time
+        the applet returns to the event loop.
+    }
+  }
+  {method abstract public open {refresh}:void
+  }
+}
+
+|| -----------------------------------------------------------------------------
+
+{doc-next
+    {purpose Map from String to any.}
+}
+{def public Dictionary = {HashTable-of String, any}}
+
+
+|| Proc type used to represent a formula
+|| Return a new value for target
+{def CalcProc = any}
+||--{def CalcProcN =
+||--    {proc-type {target:DataRef, ...:DataRef}:any}
+||--}
+{def CalcProc1 =
+    {proc-type {target:DataRef, a:DataRef}:any}
+}
+{def CalcProc2 =
+    {proc-type {target:DataRef, a:DataRef, b:DataRef}:any}
+}
+{def CalcProc3 =
+    {proc-type {target:DataRef, a:DataRef, b:DataRef, c:DataRef}:any}
+}
+{def CalcProc4 =
+    {proc-type {target:DataRef,
+                a:DataRef, b:DataRef, c:DataRef, d:DataRef
+               }:any
+    }
+}
+{def CalcProc5 =
+    {proc-type {target:DataRef,
+                a:DataRef, b:DataRef, c:DataRef, d:DataRef, e:DataRef
+               }:any
+    }
+}
+
+{define-proc package {any-to-double v:any}:double
+    {return
+        {type-switch v
+         case s:String do
+            {s.to-double}
+         else
+            {if {number? v} then
+                v asa double
+             else
+                0.0
+            }
+        }
+    }
+}
+
+
+{doc-next
+    {purpose
+        An abstract container, with values that are accessed using a
+        subclass of {docref DataRef}. It notifies observers when a value
+        is changed.
+    }
+}
+{define-class abstract public open DataSource {inherits Observer, Observable}
+
+  {doc-next
+    {purpose
+        Return a reference to some element within this DataSource.
+    }
+  }
+  {method abstract public open {get-ref
+                                   ...
+                               }:DataRef
+  }
+
+  || Request a notification if the value identified by name is changed.
+  || The notification is the name. If name is the empty string, all
+  || changes are notified, with the name of the thing changed.
+  {method abstract public open {request-notification
+                                   ref:DataRef, obs:Observer
+                               }:void
+  }
+
+  || Stop notifications for ref. If ref is null, stop all notifications to obs
+  {method abstract public open {suspend-notification
+                                   ref:#DataRef, obs:Observer
+                               }:void
+  }
+
+  ||FIXME: load and save
+}
+
+
+{doc-next
+    {purpose
+        A reference into some {docref DataSource}.
+    }
+    {details
+        A {ctext DataRef} is usually obtained by calling
+        {docref DataSource.get-ref}.
+    }
+}
+{define-class abstract public open DataRef
+
+  {doc-next
+    {purpose
+        The object that contains the data denoted by this {docref DataRef}.
+    }
+  }
+  field public-get protected-set source:DataSource
+
+  {doc-next
+    {purpose
+        Initialize a new {docref DataRef}.
+    }
+    {param source, Provides the value for the {docref-abbr DataRef.source}
+        property.
+    }
+  }
+  {constructor public {default source:DataSource}
+    set self.source = source
+  }
+
+  {doc-next
+    {purpose
+        Combine self with {param target} and return a {docref DataRef}
+        that a formula can use. May return self or a new DataRef.
+    }
+  }
+  {method abstract public open {resolve target:DataRef}:DataRef
+  }
+
+  {doc-next
+    {purpose
+        Get the value that this reference points to.
+    }
+  }
+  {method abstract public open {get-value}:any
+  }
+
+  {doc-next
+    {purpose Update the value that is the target of this reference.}
+  }
+  {method abstract public open {set-value val:any}:void
+  }
+
+  {doc-next
+    {purpose Get the value that this reference points to as a String.}
+  }
+  {method abstract public open {get-String}:String
+  }
+
+  {doc-next
+    {purpose
+        Get the value that this reference points to asa double.
+    }
+  }
+  {method abstract public open {get-double}:double
+  }
+
+  {doc-next
+    {purpose Return true if this object references several values.}
+  }
+  {getter abstract public open {composite?}:bool
+  }
+
+||--  {getter public open {array?}:bool
+||--    {return false}
+||--  }
+||--
+||--  {getter public open {dictionary?}:bool
+||--    {return false}
+||--  }
+
+  {doc-next
+    {purpose
+        If this is a composite reference, return an iterator for all of
+        the values. Otherwise return an iterator for the single value.
+    }
+  }
+  {method public open {to-Iterator}:{Iterator-of any}
+    {return {SingleIterator self}}
+  }
+
+  ||FIXME: implement this (or drop it)
+||--  {method public open {get-array}:#Array
+||--    {return null}
+||--  }
+||--  
+||--  ||FIXME: implement this (or drop it)
+||--  {method public open {get-dictionary}:#Dictionary
+||--    {return null}
+||--  }
+
+}
+
+{doc-next
+    {purpose
+        An implementation of the {docref DataSource} protocol for
+        literal values.
+    }
+    {details
+        The methods of this class do nothing, but they are required
+        so that the interface can be satisfied.
+    }
+}
+{define-class public open ValueDataSource {inherits DataSource}
+
+  {doc-next
+    {purpose Return a {docref ValueRef} constructed from the value
+        passed in the rest args.
+    }
+  }
+  ||FIXME: could make an array out of ... document it either way.
+  {method public open {get-ref
+                          ...
+                      }:DataRef
+    {return {ValueRef {splice ...}}}
+  }
+
+  {method public open {request-notification
+                          ref:DataRef, obs:Observer
+                      }:void
+    || Don't do anything
+  }
+
+  {method public open {suspend-notification
+                          ref:#DataRef, obs:Observer
+                      }:void
+    || Don't do anything
+  }
+}
+
+{doc-next
+    {purpose
+        A singleton {docref ValueDataSource} that may be used for
+        all {docref ValueRef}s.
+    }
+}
+{def public value-source = {ValueDataSource}}
+
+{doc-next
+    {purpose
+        Represents a literal value that can be passed to a {docref Worksheet}
+        formula.
+    }
+}
+{define-class public open ValueRef {inherits DataRef}
+
+  {doc-next
+    {purpose The literal value that this object represents.}
+  }
+  field protected value:any
+  
+  {constructor public {default value:any}
+    {construct-super value-source}
+    set self.value = value
+  }
+
+  {method public open {resolve target:DataRef}:DataRef
+    {return self}
+  }
+
+  {method public open {get-value}:any
+    {return self.value}
+  }
+
+  {method public open {set-value val:any}:void
+    ||FIXME: notify observers
+    set self.value = val
+  }
+
+  || Get the value that this reference points to as a String
+  {method public open {get-String}:String
+    {type-switch self.value
+     case s:String do
+        {return s}
+     else
+        {return {String self.value}}
+    }
+  }
+
+  || Get the value that this reference points to asa double
+  {method public open {get-double}:double
+    {return {any-to-double self.value}}
+  }
+
+  || Return true if this object references several values
+  {getter public open {composite?}:bool
+    ||FIXME: this can be improved... use introspection?
+    {type-switch self.value
+     case a:Array do
+        {return true}
+     else
+        {return false}
+    }
+  }
+
+  || If this is a composite reference, return an iterator for all of
+  || the values.
+  {method public open {to-Iterator}:{Iterator-of any}
+    ||FIXME: this can be improved... use introspection?
+    {type-switch self.value
+     case a:Array do
+        {return {a.to-Iterator}}
+    }
+    {return {SingleIterator self}}
+  }
+}
+
+{doc-next
+    {purpose Iterator for a single value {docref DataRef}.}
+}
+{define-class public final SingleIterator {inherits {Iterator-of any}}
+
+  field private ref:DataRef
+  field private done?:bool
+
+  {doc-next
+    {purpose Initialize this object.}
+    {param ref, The value to be returned by the iterator.}
+  }
+  {constructor public {default
+                          ref:DataRef
+                      }
+    set self.ref = ref
+    {self.reset}
+  }
+
+  {method public {reset}:void
+    set self.done? = false
+  }
+  
+  {method public {read-one}:(v:any, eof?:bool)
+
+    {if self.done? then
+        {return (null, true)}
+    }
+
+    set self.done? = true
+    {return ({self.ref.get-value}, false)}
+  }
+}
+
+{define-proc package {bad-ref s:String}:void
+    {error {hlformat "Bad cell reference: %s", s}}
+}
+
+{doc-next
+    {purpose A reference temporarily represented by a string.}
+}
+{define-class public open Ref {inherits ValueRef}
+  {constructor public {default ref:String}
+    {construct-super ref}
+  }
+
+  {method public open {resolve target:DataRef}:DataRef
+    {return {target.source.get-ref self.value}}
+  }
+
+}
+
+|| -----------------------------------------------------------------------------
+
+{doc-next
+    {purpose
+        Structure to hold the information required to invoke a calculation
+        in a {docref Worksheet}.
+    }
+}
+{define-class public final Formula
+  ||FIXME: missing doc
+  field public constant target:DataRef
+  field public constant domain:Domain
+  field public constant formula:CalcProc
+  field public constant args:Arguments
+
+  ||FIXME: missing doc
+  {constructor public {default
+                          target:DataRef,
+                          domain:Domain,
+                          formula:CalcProc,
+                          ...:DataRef
+                      }
+    set self.target = target
+    set self.domain = domain
+    set self.formula = formula
+    set self.args = {Arguments {splice ...}}
+  }
+}
+
+||FIXME: Is this always mixed into DataSource? maybe it isn't really a mixin.
+{define-class abstract public open CalcMixin {inherits RefreshMixin}
+
+  field ordered-calcs:{Array-of Formula}
+
+  {constructor public {default}
+    {construct-super}
+    set self.ordered-calcs = {new {Array-of Formula}}
+  }
+
+  {method public open {make-formula
+                          target:DataRef,
+                          domain:Domain,
+                          formula:CalcProc,
+                          ...:DataRef
+                      }:Formula
+    def f = {Formula target, domain, formula, {splice ...}}
+    {with-compiler-directives allow-any-calls? = true do
+        {for arg in f.args do
+            {(self asa Observer).observe (arg asa DataRef).source}
+        }
+    }
+    {self.ordered-calcs.append f}
+    {return f}
+  }
+
+  || Calculate formula and update target. Return true iff target changed.
+  || All args are resolved for target before the formula proc is invoked
+  {method public open {eval
+                          formula:CalcProc,
+                          target:DataRef,
+                          ...:DataRef
+                      }:void
+    def args = {new {Array-of DataRef}}
+    {for dr in ... do
+        {args.append {dr.resolve target}}
+    }
+
+    {with-compiler-directives allow-any-calls? = true do
+        {formula target, {splice args}}
+    }
+  }
+
+||--  {method abstract public open {recalc}:void
+||--  }
+
+}
+
+|| -----------------------------------------------------------------------------
+
+{doc-next
+    {purpose
+        Used with {docref validate-with} to ensure that an entry is
+        valid according to the associated {docref Domain}.
+    }
+}
+{define-class public open WorksheetDomainValidator {inherits Validator}
+  
+  {doc-next
+    {purpose The {docref Domain} used to validate values.}
+  }
+  field public-get protected-set domain:Domain
+
+  {doc-next
+    {purpose Construct a {docref DomainValidator}.
+    }
+    {details
+        Use this class with {docref validate-with} to check that an
+        entry is valid for the domain.
+    }
+  }
+  {constructor public {default
+                          domain:Domain
+                      }
+    {construct-super}
+    set self.domain = domain
+  }
+  
+  {method public open {validate-value
+                          controller:ValidationController, 
+                          target:ValueControl, 
+                          partial?:bool
+                      }:#Visual
+    let v:any = target.value-as-any
+    let msg:Visual = 
+        {if-non-null m = controller.message then
+            m
+         else
+            {hlmessage Invalid entry.} asa Visual
+        }
+    {type-switch v
+     case sv:StringInterface do
+        let tv:String = {sv.trim-clone}
+        {if tv.size > 0 then
+            {try
+                let v:any = {self.domain.parse tv}
+                {return null}
+             catch e:Exception do
+                set msg = e.message asa Visual
+            }
+         else
+            || Input is only spaces
+            {if controller.required? then
+                {target.mark-invalid missing? = true}
+                {if not partial? then
+                    {return controller.missing-entry-message}
+                }
+             else
+                {return null}
+            }
+        }
+     else
+        {if v == null or {self.domain.validate v} == null then
+            {return null}
+        }
+    }
+    {return msg}
+  }
+
+}
+
+|| -----------------------------------------------------------------------------

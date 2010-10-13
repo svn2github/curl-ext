@@ -1,0 +1,322 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+|| -------------------
+|| Worksheet Commands
+|| -------------------
+
+
+{doc-next
+    {purpose 
+        {docref Command} used to select all cells in a {docref Worksheet}.
+    }
+}
+{define-class public open WorksheetSelectAll {inherits SelectAllCommand}
+
+  {doc-next
+    {purpose
+        Construct new {ctext WorksheetSelectAll}.
+    }
+    {parameter context, 
+        {docref Worksheet} on which this command operates.
+    }
+  }
+  {constructor public {default context:Worksheet}    
+    {construct-super context}
+  }
+
+  {getter public open {context}:Worksheet
+    {return super.context asa Worksheet}
+  }
+  
+  || Methods to implement CommandImpl:
+  
+  {getter public open {enabled?}:bool
+    let constant context:Worksheet = self.context
+    {return super.enabled?}
+  }
+  
+  {method protected open {execute}:void
+    {self.context.select-all}
+  }
+  
+}
+
+
+{doc-next
+    {purpose 
+        {docref Command} used to delete all selected records in a
+        {docref Worksheet}.
+    }
+}
+{define-class public open WorksheetDelete {inherits DeleteCommand}
+
+  {doc-next
+    {purpose
+        Construct a new {ctext WorksheetDelete}.
+    }
+    {parameter context, 
+        {docref Worksheet} on which this command operates.
+    }
+  }
+  {constructor public {default context:Worksheet}    
+    {construct-super context}
+  }
+
+  {getter public open {context}:Worksheet
+    {return super.context asa Worksheet}
+  }
+  
+  || Methods to implement CommandImpl:
+
+  {getter public open {enabled?}:bool
+    let constant context:Worksheet = self.context
+    {return 
+        super.enabled? and
+        context.enabled? and
+        context.editable?
+    }
+  }
+  
+  {method protected open {execute}:void
+    {self.context.delete-selection}
+  }
+  
+}
+
+
+{doc-next
+    {purpose 
+        Copy {docref Worksheet} selection to clipboard.
+    }
+    {details 
+        The default instance of this method outputs the tab delimited
+        contents of the selected cells, formatted according to
+        the rules of {docref WorksheetCell.get-formatted-data}.
+
+        The base implementation of this command is enabled when
+        the selection is non-empty and contains records only, 
+        columns only, or a single region.
+    }
+}
+{define-class public open WorksheetCopy {inherits CopyCommand}
+
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter context,
+        The {docref Worksheet} this command is used with.
+    }
+    {since 6.0}
+  }
+  {constructor public {default context:Worksheet}    
+    {construct-super context}
+  }
+
+  {getter public open {context}:Worksheet
+    {return super.context asa Worksheet}
+  }
+  
+  {getter public open {enabled?}:bool
+    let constant sel:WorksheetSelection = self.context.selection
+    
+    {return self.context.enabled? and not sel.empty?}
+  }
+    
+  || FIXME: don't put the extra (trailing) delimiters on
+  {method protected open {execute}:void  
+    {if not self.enabled? then {return}}
+    
+    let constant grid:Worksheet = self.context
+    let constant selection:WorksheetSelection = grid.selection
+    let constant buf:StringBuf = {StringBuf}
+    let constant line-delimiter:char = '\n'
+    let constant cell-delimiter:char = '\t'
+    
+    {for ri = selection.begin-row to selection.end-row do
+        {for ci = selection.begin-column to selection.end-column do
+            {if ci > selection.begin-column then
+                {buf.append cell-delimiter}
+            }
+            def cell = grid.cells[ri, ci]
+            {cell.get-range-as-selected-text buf}
+        }
+        {buf.append line-delimiter}
+    }
+    {if buf.size > 0 and buf[buf.size - 1] == line-delimiter then
+        set buf.size = buf.size - 1
+    }
+    
+    {{CLIPBOARD.Clipboard.get-system-clipboard}.set-string buf}   
+  }
+  
+
+||--  {method private {format-data
+||--                      record:Record, 
+||--                      column:WorkpageColumn
+||--                  }:String
+||-- 
+||--    {if-non-null cell = {self.context.ui.get-cell-at record, column} then
+||--        {return {cell.get-formatted-data}}
+||--     else
+||--        {return ""}
+||--    }
+||--  }
+
+}
+
+
+{doc-next
+    {purpose 
+        Paste {docref Worksheet} selection from the clipboard.
+    }
+    {details 
+        The default instance of this method takes the contents of
+        the clipboard as tab delimited data and attempts to insert
+        it using {docref WorksheetCell.update-data}.
+
+        The base implementation of this command is enabled when
+        the selection is empty and a cell has grid focus, or a
+        selection exists and contains records only, 
+        columns only, or a single region. If there is a selection,
+        then the selection will act as a mask for the paste
+        operation; unselected cells will not receive clipboard content.
+    }
+}
+{define-class public open WorksheetPaste {inherits PasteCommand}
+
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter context,
+        The {docref Worksheet} this command is used with.
+    }
+    {since 6.0}
+  }
+  {constructor public {default context:Worksheet}    
+    {construct-super context}
+  }
+
+  {getter public open {context}:Worksheet
+    {return super.context asa Worksheet}
+  }
+  
+  {getter public open {enabled?}:bool
+    let constant grid:Worksheet = self.context
+    let constant sel:WorksheetSelection = grid.selection
+
+    {return 
+        grid.enabled? and
+        grid.editable? and
+        not sel.empty?
+    }
+  }
+    
+  {method protected open {execute}:void  
+
+    {if not self.enabled? then {return}}
+
+    || Get the clipboard and ensure its validity
+    
+    let clipping:String = ""
+    let clipboard-valid?:bool = false
+    
+    {try
+        set (clipping, clipboard-valid?) =
+            {{CLIPBOARD.Clipboard.get-system-clipboard}.get-string}
+     catch e:CLIPBOARD.HostClipboardException do
+        {return}
+    }
+    
+    {if not clipboard-valid? then {return}}
+
+    let constant selection:WorksheetSelection = self.context.selection
+    let constant line-delimiter:char = '\n'
+    {if selection.empty? then
+        {return}
+    }
+    
+    let constant lines:{Array-of String} =
+        {clipping.split split-chars = {CharClass.from-any line-delimiter}}
+
+    {for ri = selection.begin-row to selection.end-row do
+        {self.paste-line lines[(ri - selection.begin-row) mod lines.size], ri}
+    }
+  }
+  
+  {method private {paste-line line:String, row-index:int}:void
+    let constant selection:WorksheetSelection = self.context.selection
+    let constant cell-delimiter:char = '\t'
+    let constant cell-splitter:CharClass = {CharClass.from-any cell-delimiter}
+    let vals:{Array-of String} = {line.split split-chars = cell-splitter}
+
+    {for ci = selection.begin-column to selection.end-column do
+        def cell = self.context.cells[row-index, ci]
+        {if cell.editable? then
+            {self.context.set-value
+                row-index, ci, 
+                vals[(ci - selection.begin-column) mod vals.size]
+            }
+        }
+    }
+  }
+
+  || Perform the actual pasting on a paste operation.
+||--  {method private {perform-paste
+||--                      target-records:{Array-of int},
+||--                      target-columns:{Array-of int},
+||--                      target-fragments:{Array-of String}
+||--                  }:void
+||--    
+||--    {if target-records.size != target-columns.size or
+||--        target-records.size != target-fragments.size
+||--     then
+||--        {return}
+||--    }
+||--    
+||--    let constant grid:Workpage = self.context
+||--    let constant ui:WorkpageUI = grid.ui
+||--
+||--    let target-cell:#WorksheetCell = null
+||--    
+||--    {for i = 0 to target-records.size - 1 do
+||--        
+||--        set target-cell = 
+||--            {ui.get-cell-at 
+||--                grid.records[target-records[i]],
+||--                grid.columns[target-columns[i]]
+||--            }
+||--        
+||--        {if-non-null target-cell then
+||--            {if target-cell.enabled? and
+||--                target-cell.editable?
+||--             then
+||--                {try
+||--                    {target-cell.update-data target-fragments[i]}
+||--                 catch e:Exception do
+||--                    || nothing; continue
+||--                }
+||--            }
+||--        }
+||--        
+||--    }
+||--    
+||--  }
+  
+}

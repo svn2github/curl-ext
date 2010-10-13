@@ -54,7 +54,7 @@
         via data binding.
     }
     {details
-        A {ctext DataStore} is used to store and retreive values in
+        A {ctext DataStore} is used to store and retrieve values in
         a {docref JsonObject}. Individual values are addressable by
         strings that use a dot to select named attributes and
         subscripting into array values. For example, the path

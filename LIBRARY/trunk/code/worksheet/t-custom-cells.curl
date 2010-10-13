@@ -1,0 +1,179 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0 applet}
+
+{applet manifest = "../manifest.mcurl", locale = "en"}
+
+{import * from COM.CURL.EXT.WORKSHEET}
+{import * from CURL.GUI.CHARTS}
+{import * from CURL.IO.JSON}
+
+{set-document-properties
+    font-size = 10pt
+}
+
+|| -------------------------------------------------------------------------
+
+{title heading? = false, Customizing Cells}
+
+{define-proc {make-color-selector}:ValueControl
+    {return
+        {RadioFrame
+            {HBox
+                {RadioButton
+                    label =
+                        {Frame
+                            background = "white",
+                            width = 10px,
+                            height = 10px
+                        },
+                    radio-value = {FillPattern.get-white},
+                    style = "command-button-standard"
+                },
+                {RadioButton
+                    label =
+                        {Frame
+                            background = "yellow",
+                            width = 10px,
+                            height = 10px
+                        },
+                    radio-value = {FillPattern.get-white},
+                    style = "command-button-standard"
+                },
+                {RadioButton
+                    label =
+                        {Frame
+                            background = "maroon",
+                            width = 10px,
+                            height = 10px
+                        },
+                    radio-value = {FillPattern.get-maroon},
+                    style = "command-button-standard"
+                },
+                {RadioButton
+                    label =
+                        {Frame
+                            background = "green",
+                            width = 10px,
+                            height = 10px
+                        },
+                    radio-value = {FillPattern.get-green},
+                    style = "command-button-standard"
+                },
+                {RadioButton
+                    label =
+                        {Frame
+                            background = "blue",
+                            width = 10px,
+                            height = 10px
+                        },
+                    radio-value = {FillPattern.get-blue},
+                    style = "command-button-standard"
+                },
+                {RadioButton
+                    label =
+                        {Frame
+                            background = "black",
+                            width = 10px,
+                            height = 10px
+                        },
+                    radio-value = {FillPattern.get-black},
+                    style = "command-button-standard"
+                }
+            }
+        }
+
+    }
+}
+
+{def model = {WorksheetModel 16, 4}}
+{def a2 = {model.get-ref "A2"}}
+{def a3 = {model.get-ref "A3"}}
+{def a4 = {model.get-ref "A4"}}
+{def a5 = {model.get-ref "A5"}}
+{def a6 = {model.get-ref "A6"}}
+{def a7 = {model.get-ref "A7"}}
+{def a8 = {model.get-ref "A8"}}
+{def a9 = {model.get-ref "A9"}}
+{def a10 = {model.get-ref "A10"}}
+{def a11 = {model.get-ref "A11"}}
+{def a12 = {model.get-ref "A12"}}
+{def a13 = {model.get-ref "A13"}}
+
+{def worksheet =
+    {Worksheet
+        model,
+        {widths 2.0in, 1.5in},
+
+        row = 0, col = 0, {bold Control}, {bold Value},
+
+        row = 1, col = 0,
+        {cell-spec "test", ui-spec = TextArea, height = 1.0in},
+        {cell-spec a2},
+
+        row = 2, col = 0,
+        {cell-spec 20, ui-spec = Slider},
+        a3,
+
+        row = 3, col = 0,
+        {cell-spec 4, domain = WorksheetModel.any-domain,
+            ui-spec =
+            {proc {}:ValueControl
+                {return {ListBox height = 1in, 0, 1, 2, 3, 4, 5}}
+            }
+        },
+        {cell-spec domain = WorksheetModel.any-domain, a4},
+
+        row = 4, col = 0,
+        {cell-spec  "Tuesday", ui-spec =
+            {proc {}:ValueControl
+                {return {DropdownList "Monday", "Tuesday", "Wednesday"}}
+            }
+        },
+        a5,
+        
+        row = 5, col = 0,
+        {cell-spec "combo", ui-spec = ComboBox},
+        a6,
+
+        row = 6, col = 0,
+        {cell-spec true, ui-spec = CheckButton, domain = bool asa Domain},
+        a7,
+
+        row = 7, col = 0,
+        {cell-spec {FillPattern.get-black}, ui-spec = make-color-selector},
+        a8,
+  
+        row = 8, col = 0,
+        {cell-spec {DateTime.date} - 1d, ui-spec = DateField},
+        a9,
+
+        row = 9, col = 0,
+        {cell-spec {DateTime.date} - 7d, ui-spec = CalendarControl},
+        a10,
+
+        row = 10, col = 0,
+        {cell-spec 0, ui-spec = SpinControl},
+        a11,
+
+        row = 15, col = 0,
+        "END"
+    }
+}
+
+{value worksheet}

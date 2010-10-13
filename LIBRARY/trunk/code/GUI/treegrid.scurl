@@ -19,9 +19,6 @@
 
   To Do
 
-  o Pluggable de/serialize. For example to/from HTML, OPML, TreeNode, etc.
-  o Proper tree sorting (sort siblings at every level)
-
   o Put depth, ln, rn, and hide into a separate object that takes
     one column in the model. (TreeGridNodeInfo)
     - ExpanderCell already assumes it is in a TreeGrid
@@ -32,7 +29,6 @@
 
     o RecordSet supplied by caller. Needs id and pid fields to define
       the tree structure. Also one column for TreeGridNodeInfo.
-
 
 
 #|||-----------------------------------------------------------------------
@@ -74,19 +70,21 @@
         according to the depth in the hierarchy.
 
         The {param _ln} and {param _rn} columns are computed by
-        numbering the nodes in a depth first tree walk. The {param _ln}
-        numbers are assigned on the way down, the {param _rn} numbers
-        on the way back up. Any leaf node will have {ctext _rn == _ln +
-        1}. On any record, the difference between _ln and _rn divided by
-        two and rounded down gives the number of nodes below that node
-        in the hierarchy. You can select a node and it's children by
-        selecting for _ln greater than the node's _ln and _rn less than
-        the nodes _rn.
+        numbering the nodes in a depth first tree walk. The {param
+        _ln} numbers are assigned on the way down, the {param _rn}
+        numbers on the way back up. Any leaf node will have {ctext _rn
+        == _ln + 1}. On any record, the difference between _ln and _rn
+        divided by two and rounded down gives the number of nodes
+        below that node in the hierarchy. You can select a node and
+        it's children by selecting for _ln greater than or equal to
+        the node's _ln and _rn less than or equal to the nodes _rn.
 
         The {param _expand?} column indicates if a node is expanded or
         collapsed. When collapsed, the children are not shown.  This
         is controlled by the {param _hide} column, which is recomputed
-        any time the {param _expand?} field is changed.
+        any time the {param _expand?} field is changed. When the
+        _expand? field is changed, the _hide field is changed on all
+        of the child nodes.
     }
 }
 {define-class public open RecordSetTreeModel {inherits Observable}
@@ -232,7 +230,7 @@
   {doc-next
     {purpose The {docref RecordSet} used to store the tree nodes.}
   }
-  field public-get protected-set source:EventManagingRecordSet
+  field public-get protected-set source:CsvRecordSetB
 
   {doc-next
     {purpose
@@ -301,7 +299,7 @@
   }
   {constructor public {default
                           id-field:String = "_id",
-                          source:EventManagingRecordSet
+                          source:CsvRecordSetB
                       }
     {construct-super}
     set self.id-field = id-field
@@ -615,7 +613,7 @@
                                     r[self.id-field] asa int
                                 }
                     }
-                    {return not (r["_hide"] asa bool)} ||""
+||--                    {return not (r["_hide"] asa bool)} ||""
                 }
         }
 
@@ -1071,7 +1069,7 @@
 || TreeGrid Commands
 || ------------------
 
-||FIXME: get the id field and store it as in int to save lookups later
+||FIXME: get the id field and store it as int to save lookups later
 
 {doc-next
     {purpose Base class for commands that operate on a {docref TreeGrid}.}
@@ -1843,7 +1841,7 @@
 
   ||FIXME: should be Tree.dragdrop?
   {doc-next
-    {purpose Construct a {ctext MoveNodeDownCommand} with the name
+    {purpose Construct a {ctext MoveNodeCommand} with the name
         {ctext "dragdrop"}.
     }
   }
@@ -2011,7 +2009,10 @@
   {getter public open {enabled?}:bool
     {return
         super.enabled? and
-        self.record-display.records.pending-update?
+        (self.record-display.records.pending-update?
+         or
+         self.grid.model.source.file-changed?
+        )
     }
   }
  
@@ -2229,7 +2230,7 @@
             {AddChildNodeCommand self}
          case "Tree.delete-node" do
             {DeleteNodeCommand self}
-         case "Tree.move-node-up" do
+         case "dragdrop" do || Command name used by RecordMover
             {MoveNodeCommand self}
          case "Tree.save" do
             {TreeSaveCommand self}

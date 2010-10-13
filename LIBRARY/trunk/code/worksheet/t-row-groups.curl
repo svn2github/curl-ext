@@ -1,0 +1,185 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0 applet}
+
+{applet manifest = "../manifest.mcurl", locale = "en"}
+
+{import * from COM.CURL.EXT.WORKSHEET}
+{import * from CURL.GUI.CHARTS}
+
+{set-document-properties
+    font-size = 10pt
+}
+
+|| ------------------------------------
+{title Test RecordGrid in a Worksheet}
+|| ------------------------------------
+
+{DateField} || Just something to tab to
+
+{def model = {WorksheetModel 16, 7}}
+
+|| Sample RecordSet data
+{def rs =
+    {RecordSet
+        {RecordFields
+            {RecordField "id",
+                domain = int,
+                modifiable? = false,
+                index-type = RecordFieldIndexType.unique
+            },
+            {RecordField "a", domain = WorksheetModel.double-domain},
+            {RecordField "b", domain =  WorksheetModel.double-domain},
+            {RecordField "c", domain =  WorksheetModel.double-domain},
+            {RecordField "sum", domain =  WorksheetModel.double-domain}
+        }
+    }
+}
+
+|| Populate the RecordSet with sample data
+{for i = 1 to 15 do
+    {rs.append
+        {RecordData
+            id = i - 1,
+            a = {cos (i asa double) * 20deg},
+            b = i * 5, 
+            c = i,
+            sum = 0
+        }
+    }
+}
+
+|| Turn the RecordSet into a DataSource
+{def rds = {RecordSetDataSource rs}}
+
+|| proc to sum values provided (as range or some other aggregate)
+{def compute-sum =
+    {proc {dest:DataRef, src:DataRef}:void
+        let sum:double = 0.0
+        {for v in src do
+            {inc sum, v}
+        }
+        {dest.set-value sum}
+    }
+}
+
+|| proc to multiply two arguments
+{def compute-product =
+    {proc {dest:DataRef, p:DataRef, q:DataRef}:void
+        {dest.set-value {p.get-double} * {q.get-double}}
+    }
+}
+
+|| -------------------------------------------------------------------------
+
+{def a-ref = {rds.get-ref "a"}}
+{def b-ref = {rds.get-ref "b"}}
+{def c-ref = {rds.get-ref "c"}}
+{def abc-ref = {rds.get-ref "a/b/c"}}
+{def sum-ref = {rds.get-ref "sum"}}
+
+{def worksheet =
+    {Worksheet
+        model,
+        {widths 0.75in, 1.3in, 1.0in, 1.5in, 1in},
+        font-size = 9pt,
+        row = 0, col = 0, {cell-spec colspan = 2, {bold Sample Data}},
+        col = 6, {cell-spec {DateTime.date}},
+
+        row = 1, col = 1, "multiplier", {editable-cell 20},
+        colspan = 2, "Affects column C below",
+
+        row = 2, col = 0, {row-group 7, expanded? = false},
+        row = 2, col = 1, 
+        "a = cos(i * 20deg)", "b = i x 5", "c = i * C2", "sum = a + b + c",
+
+        || Sum each column into row 9 of the worksheet
+        row = 9, col = 0, "Totals",
+        {formula-cell compute-sum, a-ref},
+        {formula-cell compute-sum, b-ref},
+        {formula-cell compute-sum, c-ref},
+        {formula-cell compute-sum, sum-ref},
+
+        row = 10, col = 1,
+        {cell-spec color = "red", halign = "right",
+            colspan = 3,
+            hstretch? = false, vstretch? = false, valign = "center",
+            "These should add up"
+        },
+
+||--        row = 10, col = 0, "Error: Can't overwrite previous value",
+
+        || Add a RecordGrid
+        row = 3, col = 1,
+        {cell-spec
+            rowspan = 6, colspan = 5,
+            hstretch? = true, vstretch? = true,
+            {EmbeddedRecordGrid
+||--                width = 5in,
+                record-source = rs,
+||--                edit-on-focus? = true,
+                region-selection-enabled? = true,
+                automatic-columns? = false,
+                {RecordGridColumn "a"},
+                {RecordGridColumn "b"},
+                {RecordGridColumn "c"},
+                {RecordGridColumn "sum"}
+            }
+        },
+        || Add a LayeredChart
+        row = 11, col = 1,
+        {cell-spec
+            rowspan = 4,
+            colspan = 5,
+            vstretch? = true, hstretch? = true,
+            {LayeredChart
+||--                width = 5in,
+                height = 3in,
+                font-size = 8pt, font-family = "Tahoma",
+                {LineLayer
+                    {ChartDataSeries rs, "a"},
+                    {ChartDataSeries rs, "b"},
+                    {ChartDataSeries rs, "c"},
+                    legend-enabled? = true
+                },
+                {LineLayer
+                    {ChartDataSeries rs, "sum"},
+                    legend-enabled? = true
+                }
+            }
+        }
+    }
+}
+
+|| Add the formulas and display the complete Worksheet
+{value
+
+    || Recompute column c of the RecordSet from $C$2 in the worksheet
+    {rds.make-formula {rds.get-ref "c"}, WorksheetModel.double-domain, compute-product,
+        {worksheet.model.get-ref "$C$2"}, {rds.get-ref "a"}
+    }
+
+    || Add a formula to sum columns a, b, and c in the RecordSet
+    {rds.make-formula sum-ref, WorksheetModel.double-domain, compute-sum, abc-ref}
+
+    worksheet || display the worksheet
+}
+
+{after 3s do
+    {worksheet.model.update}
+}

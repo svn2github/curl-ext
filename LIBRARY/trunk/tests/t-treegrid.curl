@@ -141,6 +141,34 @@ id,pid,ord,expand?,depth,ln,rn,data
     }
 }
 
+{def collapsed-frame =
+    {DisclosingFrame
+        font-size = 12pt,
+||--        visible? = false,
+        state = "collapsed",
+        border-width = 1px, border-color = "blue",
+        "This is the Label",
+        {TextArea
+            width = 4in, height = 60pt,
+            value = "This is the expanded content"
+        }
+    }
+}
+||--{after 2s do
+||--    set collapsed-frame.visible? = true
+||--}
+
+{DisclosingFrame
+    font-size = 12pt,
+    border-width = 1px, border-color = "blue",
+    "This is the Label",
+    {TextArea
+        width = 4in, height = 60pt,
+        value = "This is the expanded content"
+    }
+}
+{value collapsed-frame}
+
 {HBox 
     valign = "top",
     tree-grid,
@@ -250,8 +278,7 @@ id,pid,ord,expand?,depth,ln,rn,data
 
 Here is a complete applet that uses a TreeGrid to make a 
 {link target = "tree", href = 
-||--    {url "../code/docs/sample-tree.curl"}, 
-    {url "sample-tree.curl"}, 
+    {url "../code/docs/samples/sample-tree.curl"}, 
 hierarchal To Do list}.
 
 

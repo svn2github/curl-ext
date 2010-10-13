@@ -192,8 +192,6 @@
             {self.notice-if-file-edited}
         }
     }
-
-    {self.register-commands}
   }
 
   {doc-next
@@ -339,66 +337,66 @@
   }
 
   {doc-next
-    {purpose Register the commands implemented by this applet.}
+    {purpose Create the commands implemented by this applet.}
   }
-  {method protected open {register-commands}:void
-    {self.add-command
-        {SimpleCommand
-            "exit", ||""
-            execute-proc = {proc {}:void {self.exit}},
-            enabled-proc = {proc {}:bool {return true}}
-        }
-    }
+  {method protected open {create-command name:String}:#Command
+    {return
+        {switch name
+         case "exit" do ||""
+            {SimpleCommand
+                "exit", ||""
+                execute-proc = {proc {}:void {self.exit}},
+                enabled-proc = {proc {}:bool {return true}}
+            }
 
-    {self.add-command
-        {SimpleCommand
-            "file-new", ||""
-            execute-proc = {proc {}:void {self.file-new}},
-            enabled-proc = {proc {}:bool {return true}}
-        }
-    }
+         case "file-new" do ||""
+            {SimpleCommand
+                "file-new", ||""
+                execute-proc = {proc {}:void {self.file-new}},
+                enabled-proc = {proc {}:bool {return true}}
+            }
 
-    {self.add-command
-        {SimpleCommand
-            "file-open", ||""
-            execute-proc = {proc {}:void {self.file-open}},
-            enabled-proc = {proc {}:bool {return true}}
-        }
-    }
+         case "file-open" do ||""
+            {SimpleCommand
+                "file-open", ||""
+                execute-proc = {proc {}:void {self.file-open}},
+                enabled-proc = {proc {}:bool {return true}}
+            }
 
-    {self.add-command
-        {SimpleCommand
-            "file-revert", ||""
-            execute-proc = {proc {}:void {self.file-revert}},
-            enabled-proc = 
-                {proc {}:bool 
+         case "file-revert" do ||""
+            {SimpleCommand
+                "file-revert", ||""
+                execute-proc = {proc {}:void {self.file-revert}},
+                enabled-proc = 
+                    {proc {}:bool 
 ||--                    {return true}
-                    || FIXME: this doesn't work reliably. It returns the
-                    || correct result, but the menu doesn't show it!
-                    {return self.save-needed?}
-                }
-        }
-    }
+                        || FIXME: this doesn't work reliably. It returns the
+                        || correct result, but the menu doesn't show it!
+                        {return self.save-needed?}
+                    }
+            }
 
-    {self.add-command
-        {SimpleCommand
-            "file-save", ||""
-            execute-proc = {proc {}:void {self.file-save}},
-            enabled-proc = 
-                {proc {}:bool 
+         case "file-save" do ||""
+            {SimpleCommand
+                "file-save", ||""
+                execute-proc = {proc {}:void {self.file-save}},
+                enabled-proc = 
+                    {proc {}:bool 
 ||--                    {return true}
-                    || FIXME: this doesn't work reliably. It returns the
-                    || correct result, but the menu doesn't show it!
-                    {return self.save-needed?}
-                }
-        }
-    }
+                        || FIXME: this doesn't work reliably. It returns the
+                        || correct result, but the menu doesn't show it!
+                        {return self.save-needed?}
+                    }
+            }
 
-    {self.add-command
-        {SimpleCommand
-            "file-save-as", ||""
-            execute-proc = {proc {}:void {self.file-save-as}},
-            enabled-proc = {proc {}:bool {return true}}
+         case "file-save-as" do ||""
+            {SimpleCommand
+                "file-save-as", ||""
+                execute-proc = {proc {}:void {self.file-save-as}},
+                enabled-proc = {proc {}:bool {return true}}
+            }
+         else
+            {return {super.create-command name}}
         }
     }
   }
@@ -586,11 +584,21 @@
 
   {doc-next
     {purpose Save the current file into a new location.}
-    {details This called after the user is given a chance to save the
-        current file. The {param file-url} has been selected by the user.
+    {details
+        This called after the user is given a chance to save the
+        current file. The {param file-url} has been selected by the
+        user.
+
+        The implementation should to save the current document to the
+        new location and update {ctext self.file-location}.
+
+        The default implementation updates {ctext self.file-location}
+        first and then calls {docref FileApp.do-file-save}.
     }
   }
-  {method abstract public open {do-file-save-as file-url:Url}:void
+  {method public open {do-file-save-as file-url:Url}:void
+    set self.file-location = file-url
+    {self.do-file-save}
   }
 
   {method public open {get-file-menu

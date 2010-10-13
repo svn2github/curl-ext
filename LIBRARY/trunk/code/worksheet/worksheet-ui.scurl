@@ -1,0 +1,5556 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+|| Move to CURL.EXT
+{doc-next
+    {purpose
+        Create a JSON representation of the records in {param rs}.
+    }
+    {details
+        ||FIXME: currently returning a JsonObject with records:<array>
+        The result is a {docref JsonArray} with one {docref JsonObject}
+        for each record. The {ctext JsonObject} has entries field:value
+        for each field in the {ctext RecordSet}. You can use {docref
+        RecordSet-from-Json} to restore the records.
+
+        The field values are converted to strings using the {docref
+        Domain.format} method.
+    }
+}
+{define-proc public {RecordSet-to-Json rs:RecordSet}:JsonObject
+    def data = {JsonObject}
+    def records = {JsonArray}
+    ||FIXME: get rid of surrounding object, or also store col widths...
+    set data["records"] = records
+    {for r in rs do
+        def rdata = {JsonObject}
+        {for f in rs.fields do
+            set rdata[f.name] = {f.domain.format r[f.name]}
+        }
+        {records.append rdata}
+    }
+    {return data}
+}
+
+{doc-next
+    {purpose Replace all of the records in {param rs} with data from
+        {param records}.
+    }
+    {details
+        Each element in the {param records} array is expected to be
+        a {docref JsonObject} containing strings named by the field
+        names in {param rs}. Each string value is parsed using the
+        field domain.
+
+        All records in {param rs} are deleted (and committed).
+        For each record in {param records}, a new record is created
+        in {param rs} with fields initialized from the next {docref
+        JsonObject} in {param records}. The result is then committed to
+        {param rs}.
+    }
+}
+{define-proc public {RecordSet-from-Json rs:RecordSet, records:JsonArray}:void
+    {with rs.batch-events? = true do
+        {rs.delete-all}
+        {rs.commit}
+        {for rd in records do
+            def rdo = rd asa JsonObject
+            def r = {rs.new-record}
+            {for f in rs.fields do
+                set r[f.name] = {f.domain.parse rdo[f.name] asa String}
+            }
+            {rs.append r}
+        }
+        {rs.commit}
+    }
+}
+
+|| -------------------------------------------------------------------------
+|#
+
+What's in the Model?
+  o 2-D array of cell values and attributes
+  o List of formulas
+  o List of CellRefs
+  o List of RangeRefs
+
+What's in the UI?
+  o Grid that holds all GUI objects
+  o Row headings (at left) (not sure how useful these are)
+  o Column headings (at top) (not sure how useful these are)
+  o Cell state (anything persisted is stored in the model)
+    - current displayed value (formatted?, don't refresh unless it changes)
+    - editor (while active)
+    o pending? (don't refresh from model until commit/discard)
+
+Worksheet Life Cycle
+  - Create a model big enough to hold everything you need
+  - Instantiate the data sources
+  - Instantiate datarefs as needed
+  - Construct the Worksheet
+    - Text and visuals as needed
+    - Editable cells
+    - EmbeddedRecordGrid
+    - EmbeddedRecordForm
+
+How does the edit/update cycle work?
+  o Steady state: all calcs have run and UI shows current values
+  o User edits a cell, commits
+  o Recalc everything
+  o notify observers, including the UI
+  o Look at every cell. If (formatted) value is different than it was,
+    rebuild the cell. Same for attributes.
+
+Issues
+  o Should get domain from model where possible
+
+#|
+
+|| ---------------------------------------------------------------------------
+
+||FIXME: Not yet used
+{define-class package final CellRefInfo
+  field public constant rc-ref?:bool
+  field public constant row:int
+  field public constant col:int
+  field public constant abs-row?:bool
+  field public constant abs-col?:bool
+  field public constant rel-row?:bool
+  field public constant rel-col?:bool
+
+  {constructor package {default
+                          rc-ref?:bool,
+                          row:int,
+                          col:int,
+                          abs-row?:bool,
+                          abs-col?:bool,
+                          rel-row?:bool,
+                          rel-col?:bool
+                      }
+    set self.rc-ref? = rc-ref?
+    set self.row = row
+    set self.col = col
+    set self.abs-row? = abs-row?
+    set self.abs-col? = abs-col?
+    set self.rel-row? = rel-row?
+    set self.rel-col? = rel-col?
+  }
+}
+
+||FIXME: Not yet used
+|| Parse Excel style r4c2 or r[0]c[-1]
+{define-proc package {parse-rc-ref s:String}:#CellRefInfo
+    let rc-ref?:bool
+    let row:int
+    let col:int
+    let abs-row?:bool
+    let abs-col?:bool
+    let rel-row?:bool
+    let rel-col?:bool
+    let state:int = 0
+    ||States: 0:start 1:[ 2:row 3:] 4:c 5:[ 6:row 7:]
+    {for c:char in s do
+        def uc = {char-upcase c}
+        {if uc == 'R' then
+            {if state == 0 then
+                set state = 1
+             else
+                {bad-ref s}
+            }
+         elseif uc == '[' then
+
+         elseif uc == ']' then
+
+         elseif {digit? c, 10} then
+            {if state == 2 or state == 3 or state == 4 then
+                set state = 4
+                set row = row * 10 + c - '0'
+             else
+            }
+        }
+    }
+    {return null}
+}
+
+|| Helper proc to parse A1, $B$3, etc.
+{define-proc package {parse-cellref s:String}:(r:int, c:int, ra?:bool, ca?:bool)
+    ||FIXME: also parse a sheet ref
+    ||FIXME: what about named ranges, and named sheets?
+    let state:int = 0 || start => 0 $ => 1 letter => 2 $ => 3 digit => 4
+    let abs-c?:bool = false
+    let abs-r?:bool = false
+    let col:int = 0
+    let row:int = 0
+    {for c:char in s do
+        {if c == '$' then
+            {if state == 0 then
+                set abs-c? = true
+                set state = 1
+             elseif state == 2 then
+                set abs-r? = true
+                set state = 3
+             else
+                {bad-ref s}
+            }
+         elseif {digit? c, 10} then
+            {if state == 2 or state == 3 or state == 4 then
+                set state = 4
+                set row = row * 10 + c - '0'
+             else
+                {bad-ref s}
+            }
+         elseif {CharClass.letter-chars.member? c} then
+            {if state == 0 or state == 1 or state == 2 then
+                set state = 2
+                set col = col * 26 + {char-upcase c} - 'A'
+             elseif state == 3 then
+                {bad-ref s}
+||--             elseif state == 4 then
+||--                || Saw letter, digit. Letter again might mean r1c1 notation
+||--                {return {parse-rc-ref s}}
+            }
+         else
+            {bad-ref s}
+        }
+    }
+    {return (row - 1, col, abs-r?, abs-c?)}
+}
+
+
+{doc-next
+    {purpose
+        Base class for cell reference or range reference in a {docref
+        Worksheet}.
+    }
+}
+{define-class abstract public open SheetRef {inherits DataRef}
+
+  {getter public open {worksheet}:WorksheetModel
+    {return self.source asa WorksheetModel}
+  }
+
+  {doc-next
+    {purpose Initialize a new {docref SheetRef}.}
+    {parameter worksheet, The data source for this reference.}
+  }
+  {constructor public {default
+                          worksheet:WorksheetModel
+                      }
+    {construct-super worksheet}
+  }
+
+  {getter abstract public open {absolute?}:bool
+  }
+
+  || Adjust for row-count rows added (negative means deleted) at row
+  || and col-count added/deleted at col.
+  {method abstract public open {adjust
+                                   row:int, row-count:int,
+                                   col:int, col-count:int
+                               }:void
+  }
+}
+
+|# About CellRefs
+
+  - Both absolute and relative cellrefs are adjusted when rows or
+    columns are inserted or deleted.a
+  - The difference between "absolute" and "relative" is what
+    happens when the reference is resolved to a "target" in
+    CalcMixin.eval. Absolute refs are not changed. Relative
+    refs are adjusted to the target.
+
+#|
+
+{doc-next
+    {purpose A reference to a cell defined by its position relative
+        to the target cell of a formula.
+    }
+}
+{define-class public open RelativeCellRef {inherits ValueRef}
+  field public-get protected-set row-offset:int
+  field public-get protected-set col-offset:int
+  
+  {doc-next
+    {purpose Initialize a new {docref RelativeCellRef}.}
+    {param row-offset, This offset is added to the row number
+        of the target cell of a formula.
+    }
+    {param col-offset, This offset is added to the column number
+        of the target cell of a formula.
+    }
+  }
+  {constructor public {default row-offset:int, col-offset:int}
+    {construct-super 0}
+    set self.row-offset = row-offset
+    set self.col-offset = col-offset
+  }
+
+  {method public open {resolve target:DataRef}:DataRef
+    {return {target.source.get-ref target, self.row-offset, self.col-offset}}
+  }
+
+}
+
+{doc-next
+    {purpose Reference to a single cell in a {docref Worksheet}.}
+}
+{define-class public open CellRef {inherits SheetRef}
+
+  ||FIXME: do this in RangeRef, not CellRef
+  let public constant all:int = -1
+
+  field public-get protected-set row:int
+  field public-get protected-set row-abs?:bool
+  field public-get protected-set col:int
+  field public-get protected-set col-abs?:bool
+  field public-get protected-set all-cols?:bool = false || covers entire row
+  field public-get protected-set all-rows?:bool = false || covers entire column
+
+  || Actually, this is an easy way to construct relative refs
+  || def cell-above = {CellRef -1, 0}
+  || def cell-right = {CellRef 0, 1}
+  {doc-next
+    {purpose Initialize a {docref CellRef}.}
+    {notes
+        Normally a {docref CellRef} is created by calling {docref
+        WorksheetModel.get-ref}, which will register the reference and
+        update it if rows or columns are added or removed.
+    }
+    {parameter worksheet, the {docref DataSource} for this reference.}
+    {parameter row, the row index, with 0 meaning the first row.}
+    {parameter col, the column index, with 0 meaning the leftmost column.}
+    {parameter row-abs?, if true, the row index will never be adjusted.}
+    {parameter col-abs?, if true, the column index will never be adjusted.}
+  }
+  {constructor public {default
+                          worksheet:WorksheetModel,
+                          row:int, col:int,
+                          row-abs?:bool = false,
+                          col-abs?:bool = false,
+                          all-rows?:bool = false,
+                          all-cols?:bool = false
+                      }
+    {construct-super worksheet}
+    set self.row = row
+    set self.row-abs? = row-abs?
+    set self.col = col
+    set self.col-abs? = col-abs?
+    {if all-rows? then
+        ||FIXME: Better to use RangeRefs for this?
+        set self.all-rows? = true
+        set self.row-abs? = true || No resolution needed
+    }
+    {if all-cols? then
+        set self.all-cols? = true
+        set self.col-abs? = true || No resolution needed
+    }
+    {self.check-invariants}
+  }
+
+  {method private {check-invariants}:void
+    ||FIXME: do we allow both all-rows? and all-cols?
+    {if (self.row-abs? and self.row < 0) or (self.col-abs? and self.col < 0)
+     then
+        {error {hlmessage Absolute row or column value must be 0 or higher.}}
+    }
+  }
+
+  {method public open {resolve target:DataRef}:DataRef
+    {return self}
+  }
+
+  ||FIXME: you need to pass a row/col even if you want all-rows/cols
+  || maybe better to use all keyword args? Or maybe no big deal
+  {doc-next
+    {purpose Initialize a {docref CellRef}.}
+    {notes
+        Normally a {docref CellRef} is created by calling {docref
+        WorksheetModel.get-ref}, which will register the reference and
+        update it if rows or columns are added or removed.
+    }
+    ||FIXME: more params and details
+  }
+  {constructor public {absolute
+                          worksheet:WorksheetModel,
+                          row:int,
+                          col:int,
+                          all-rows?:bool = false,
+                          all-cols?:bool = false
+                      }
+    {construct-super worksheet}
+    set self.row = row
+    set self.row-abs? = true
+    set self.col = col
+    set self.col-abs? = true
+    {if all-rows? then
+        ||FIXME: Better to use RangeRefs for this?
+        set self.all-rows? = true
+    }
+    {if all-cols? then
+        set self.all-cols? = true
+    }
+    {self.check-invariants}
+  }
+
+  || This constructor is primarily for use by a GUI formula builder, which
+  || will know what cell to user for reference (for relative references).
+  {doc-next
+    {purpose Initialize a {docref CellRef}.}
+    {notes
+        Normally a {docref CellRef} is created by calling {docref
+        WorksheetModel.get-ref}, which will register the reference and
+        update it if rows or columns are added or removed.
+    }
+    ||FIXME: more params and details
+  }
+  {constructor public {from-String
+                          worksheet:WorksheetModel, s:String, ref:#CellRef
+                      }
+    {construct-super worksheet}
+    set (self.row, self.col, self.row-abs?, self.col-abs?) = {parse-cellref s}
+    {self.adjust-to-ref ref}
+  }
+
+  {method private {adjust-to-ref ref:#CellRef}:void
+    {if-non-null ref then
+        {assert self.worksheet == ref.worksheet}
+        {if not self.row-abs? then
+            set self.row = self.row - ref.row
+        }
+        {if not self.col-abs? then
+            set self.col = self.col - ref.col
+        }
+    }
+  }
+    
+  {doc-next
+    {purpose Initialize a {docref CellRef}.}
+    {notes
+        Normally a {docref CellRef} is created by calling {docref
+        WorksheetModel.get-ref}, which will register the reference and
+        update it if rows or columns are added or removed.
+    }
+    ||FIXME: more params and details
+  }
+  {constructor public {relative-to
+                          ref:CellRef,
+                          row-offset:int, col-offset:int
+                      }
+    {construct-super ref.worksheet}
+    set self.row = ref.row + row-offset
+    set self.row-abs? = ref.row-abs?
+    set self.col = ref.col + col-offset
+    set self.col-abs? = ref.col-abs?
+    set self.all-rows? = ref.all-rows?
+    set self.row-abs? = ref.row-abs?
+    set self.all-cols? = ref.all-cols?
+    set self.col-abs? = ref.col-abs?
+    {self.check-invariants}
+  }
+
+  {getter public open {absolute?}:bool
+    {return (self.row-abs? and self.col-abs?)
+            or (self.all-cols? and self.row-abs?)
+            or (self.all-rows? and self.col-abs?)
+    }
+  }
+
+  ||FIXME: How to adjust relative refs?
+  {method public open {adjust
+                          row:int, row-count:int,
+                          col:int, col-count:int
+                      }:void
+    {if row-count == 0 and col-count == 0 then
+        {return}
+    }
+    {if not self.all-rows? then
+        {if row-count < 0 then
+            {if self.row >= row - row-count then
+                {inc self.row, row-count}
+            }
+         else
+            {if self.row >= row then
+                {inc self.row, row-count}
+            }
+        }
+    }
+    {if not self.all-cols? then
+        {if col-count < 0 then
+            {if self.col >= col - col-count then
+                {inc self.col, col-count}
+            }
+         else
+            {if self.col >= col then
+                {inc self.col, col-count}
+            }
+        }
+    }
+  }
+
+  {method private {check-reference}:void
+    ||FIXME: what should this do?
+  }
+
+  || Get the value that this reference points to
+  {method public open {get-value}:any
+    {self.check-reference}
+    {return {self.worksheet.get-value self.row, self.col}}
+  }
+
+  || Update the value that is the target of this reference
+  {method public open {set-value val:any}:void
+    ||FIXME: notify observers
+    {self.check-reference}
+    {self.worksheet.set-value self.row, self.col, val}
+  }
+
+  || Get the value that this reference points to as a String
+  {method public open {get-String}:String
+    {self.check-reference}
+    def cv = self.worksheet.vals[self.row, self.col]
+    {return
+        {if-non-null v = {self.worksheet.get-value self.row, self.col} then
+            {cv.domain.format v}
+         else
+            ""
+        }
+    }
+  }
+
+  || Get the value that this reference points to asa double
+  {method public open {get-double}:double
+    {self.check-reference}
+    {return {any-to-double {self.get-value}}}
+  }
+
+  || Return true if this object references several values
+  {getter public open {composite?}:bool
+    {return false}
+  }
+}
+
+
+{doc-next
+    {purpose
+        Reference to a rectangular range of cells in a {docref Worksheet}.
+    }
+}
+{define-class public open RangeRef {inherits SheetRef}
+
+  field public-get protected-set cell1:CellRef
+  field public-get protected-set cell2:CellRef
+
+  {doc-next
+    {purpose Initialize a {docref RangeRef}.}
+    {notes
+        Normally a {docref CellRef} is created by calling {docref
+        WorksheetModel.get-ref}, which will register the reference and
+        update it if rows or columns are added or removed.
+    }
+    ||FIXME: more params and details
+  }
+  {constructor public {default
+                          worksheet:WorksheetModel,
+                          row:int,
+                          col:int,
+                          row2:int,
+                          col2:int
+                      }
+    {construct-super worksheet}
+    ||FIXME: canonicalize
+    set self.cell1 = {CellRef.absolute worksheet, row, col}
+    set self.cell2 = {CellRef.absolute worksheet, row2, col2}
+  }
+
+  {method public open {resolve target:DataRef}:DataRef
+    {return self}
+  }
+
+  {doc-next
+    {purpose Initialize a {docref RangeRef}.}
+    {notes
+        Normally a {docref CellRef} is created by calling {docref
+        WorksheetModel.get-ref}, which will register the reference and
+        update it if rows or columns are added or removed.
+    }
+    ||FIXME: more params and details
+  }
+  {constructor public {from-String
+                          worksheet:WorksheetModel,
+                          s:String,
+                          ref:#CellRef
+                      }
+   
+    {construct-super worksheet}
+    def cells = {s.split split-chars = {CharClass ".:"}}
+    {if cells.size == 3 then
+        def sheet = cells[0]
+        {cells.remove 0}
+        ||FIXME: deal with sheet prefix
+    }
+    set self.cell1 = {CellRef.from-String worksheet, cells[0], ref}
+    set self.cell2 = {CellRef.from-String worksheet, cells[1], ref}
+  }
+
+
+  {getter public open {absolute?}:bool
+    {return self.cell1.absolute? and self.cell2.absolute?}
+  }
+
+  {method public open {adjust
+                          row:int, row-count:int,
+                          col:int, col-count:int
+                      }:void
+    ||FIXME: NYI RangeRef.adjust
+  }
+
+  {method public open {get-value}:any
+    ||FIXME: Is this OK? should be error?
+    {return {self.cell1.get-value}}
+  }
+
+  || Update the value that is the target of this reference
+  {method public open {set-value val:any}:void
+    ||FIXME: notify observers
+    ||FIXME: Is this OK? should be error?
+    {self.cell1.set-value val}
+  }
+
+  || Get the value that this reference points to as a String
+  {method public open {get-String}:String
+    ||FIXME: Is this OK? should be error?
+    {return {self.cell1.get-String}}
+  }
+
+  || Get the value that this reference points to asa double
+  {method public open {get-double}:double
+    ||FIXME: Is this OK? should be error?
+    {return {self.cell1.get-double}}
+  }
+
+  || Return true if this object references several values
+  {getter public open {composite?}:bool
+    {return true}
+  }
+
+  {method public open {to-Iterator}:{Iterator-of any}
+    {return {RangeIterator self}}
+  }
+}
+
+{doc-next
+    {purpose
+        Iterator for the cells covered by a {docref  RangeRef}.
+    }
+}
+{define-class public final RangeIterator {inherits {Iterator-of any}}
+
+  field private ref:RangeRef
+  field private done?:bool
+  field private ri:int
+  field private ci:int
+
+  {doc-next
+    {purpose Initialize an iterator for the values covered by {param ref}.
+    }
+  }
+  {constructor public {default ref:RangeRef}
+    set self.ref = ref
+    {self.reset}
+    {assert ref.cell1.row <= ref.cell2.row and ref.cell1.col <= ref.cell2.col}
+  }
+
+  {method public {reset}:void
+    set self.done? = false
+    set self.ri = self.ref.cell1.row
+    set self.ci = self.ref.cell1.col
+  }
+
+  {method public {read-one}:(v:any, eof?:bool)
+    {if self.done? then
+        {return (null, true)}
+    }
+
+    || Get the current value to return
+    def nv = {self.ref.cell1.worksheet.get-value self.ri, self.ci}
+
+    || Increment for next call
+    {inc self.ci}
+    {if self.ci > self.ref.cell2.col then
+        set self.ci = self.ref.cell1.col
+        {inc self.ri}
+    }
+    {if self.ri > self.ref.cell2.row then
+        set self.done? = true
+    }
+    {return (nv, false)}
+  }
+}
+
+|| ---------------------------------------------------------------------------
+
+{def max-cols = 10000}
+
+{define-proc package {cellref-hash-proc ref:CellRef}:int
+    {assert ref.absolute?} || Can't hash relative refs
+    {return {value-hash ref.row * max-cols + ref.col}}
+}
+{define-proc package {cellref-equal-proc a:CellRef, b:CellRef}:bool
+    {return a.row == b.row and a.col == b.col}
+}
+
+||--{define-class public open WorksheetRefTable
+||--
+||--  field protected row-hash:{HashTable-of int, CellRef} =
+||--      {new {HashTable-of int, CellRef}}
+||--
+||--  field protected col-hash:{HashTable-of int, CellRef} =
+||--      {new {HashTable-of int, CellRef}}
+||--
+||--  field protected cell-hash:{HashTable-of int, CellRef} =
+||--      {new {HashTable-of int, CellRef}
+||--        key-hash-proc = cellref-hash-proc,
+||--        key-equality-proc = cellref-equal-proc
+||--      }
+||--
+||--  || FIXME: Doing a linear search for ranges. Need something better eventaully.
+||--  field protected ranges:{Array-of RangeRef} = {new {Array-of RangeRef}}
+||--
+||--  {constructor public {default}
+||--  }
+||--
+||--  || Return an interned CellRef for the cell at row,col
+||--  {method public open {get-cell-ref row:int, col:int}:CellRef
+||--    def (ref, found?) = {self.cell-hash.get-if-exists row * max-cols + col}
+||--    {if found? then
+||--        {return ref}
+||--     else
+||--        def ref = {CellRef.absolute row, col}
+||--        set self.cell-hash[row * max-cols + col] = ref
+||--        {return ref}
+||--    }
+||--  }
+||--
+||--  || Return all interned RangeRefs that overlap row,col
+||--  {method public open {get-range-refs row:int, col:int}:{Array-of RangeRef}
+||--  }
+||--
+||--  || Remove all refs
+||--  {method public open {clear}:
+||--  }
+||--
+||--  || Adjust any refs that overlap count rows at row.
+||--  {method public open {adjust-rows row:int count:int}:void
+||--  }
+||--
+||--  || Adjust any refs that overlap count columns at col.
+||--  {method public open {adjust-cols col:int count:int}:void
+||--  }
+||--
+||--  || Get ref
+||--  {method public open {get-}:
+||--  }
+||--
+||--  || 
+||--  {method public open {}:
+||--  }
+||--
+||--
+||--}
+
+|| ---------------------------------------------------------------------------
+
+{define-value-class public final GroupProto
+  field public constant row?:bool
+  field public constant span:int
+  field public constant expanded?:bool
+  {constructor public {default
+                          row?:bool,
+                          span:int,
+                          expanded?:bool = true
+                      }
+    set self.row? = row?
+    set self.span = span
+    set self.expanded? = expanded?
+  }
+}
+
+||FIXME: GroupSpec could contain links to parent if that helps performance
+{doc-next
+    {purpose
+        Specifies parameters for a group of rows or columns in a
+        {docref GroupTree}.
+    }
+}
+{define-class public open GroupSpec
+  field public row?:bool
+  field public level:int
+  field public first:int
+  field public last:int
+  field public group-tree:#GroupTree
+
+  field protected _expanded?:bool = true
+  {getter public {expanded?}:bool
+    {return self._expanded?}
+  }
+  {setter public {expanded? v:bool}:void
+    set self._expanded? = v
+    {if-non-null gt = self.group-tree then
+        {inc gt.edit-count}
+    }
+  }
+
+  {doc-next
+    {purpose Initialize a {docref GroupSpec} to specify one node
+        in the row or column group tree.
+    }
+    {details Usually row and column groups are created by calling
+        {docref row-group} and {docref col-group}.
+    }
+    ||FIXME: params and details
+  }
+  {constructor public {default
+                          row?:bool, level:int, first:int, last:int,
+                          expanded?:bool = true
+                      }
+    {if level < 0 then
+        {IllegalArgumentException
+            {hlmessage level must be 0 or greater.}
+        }
+    }
+    {if first > last then
+        {IllegalArgumentException
+            {hlmessage The argument first must be less than or equal to last.}
+        }
+    }
+    set self.row? = row?
+    set self.level = level
+    set self.first = first
+    set self.last = last
+    set self.expanded? = expanded?
+  }
+
+  {method public open {contains? n:int}:bool
+    {return (self.expanded? and n >= self.first and n <= self.last)
+        or n == self.first
+    }
+  }
+
+  ||FIXME: handle deletes that remove entire groups
+  {method protected open {adjust
+                             pos:int, count:int
+                         }:void
+    {if count == 0 then
+        {return}
+    }
+    {if pos <= self.first then
+        || Inserting before this group
+        {inc self.first, count}
+        {inc self.last, count}
+     elseif pos <= self.last then
+        || Inserting within this group
+        {inc self.last, count}
+        {assert self.last >= self.first} || Can't delete beyond end of group
+        || NOTE: must remove the group first
+    }
+  }
+
+  {method public open {object-describe
+                          out:TextOutputStream,
+                          locale:Locale
+                      }:void
+    {format out = out, locale = locale,
+        "[GroupSpec level=%s first=%s last=%s]",
+        self.level, self.first, self.last
+    }
+  }
+
+}
+
+{def GroupSpecArray = {Array-of GroupSpec}}
+
+{doc-next
+    {purpose
+        Represents a hierarchy of groups of rows or columns in a
+        {docref Worksheet}.
+    }
+}
+{define-class public open GroupTree
+  field protected edit-count:int = 0
+
+  field protected levels:{Array-of GroupSpecArray} =
+      {new {Array-of GroupSpecArray}}
+
+  {getter public open {depth}:int
+    {return self.levels.size}
+  }
+
+  {doc-next
+    {purpose Create an empty {docref GroupTree}.}
+  }
+  {constructor public {default}
+  }
+
+||--  {method public open {validate group:GroupSpec}:bool
+||--    {return true}||FIXME: NYI
+||--  }
+
+  || Return group at level that includes {param i} if any, or null otherwise.
+  {method public open {get-group
+                          level:int, i:int, j:int
+                      }:#GroupSpec
+    ||FIXME: Could sort and use a binary search if performance is a problem
+    {if level < self.depth then
+        {for group in self.levels[level] do
+            {if i >= group.first and i <= group.last then
+                {if j > group.last then
+                    {throw
+                        {IllegalArgumentException
+                            {hlmessage 
+                                Upper bound not included in group that
+                                contains lower bound.
+                            }
+                        }
+                    }
+                }
+                {return group}
+            }
+        }
+    }
+    {return null}
+  }
+
+  {method public {insert-group group:GroupSpec}:GroupSpec
+    {inc self.edit-count}
+    set group.group-tree = self
+    def missing-parent =
+        {hlmessage
+            There is no parent group to contain the new group.
+        }
+    def group-interferes =
+        {hlmessage Group interferes with existing group.}
+
+    {if group.level > self.depth then
+        {error missing-parent}
+     elseif self.depth == 0 then
+        || The very first group
+        {self.levels.append {GroupSpecArray group}}
+     else
+        {if group.level == self.depth then
+            {self.levels.append {GroupSpecArray}}
+        }
+        {if group.level > 0 then
+            {if {self.get-group
+                    group.level - 1, group.first, group.last
+                } != null
+             then
+                || There is a parent. Does this overlap anything at same level?
+                {try
+                    {if-non-null {self.get-group
+                                     group.level, group.first, group.last
+                                 }
+                     then
+                        {error group-interferes}
+                    }
+                 catch e:Exception do
+                    {error group-interferes}
+                }
+             else
+                {error missing-parent}
+            }
+        }
+        def groups = self.levels[group.level]
+        {for g key gi in groups do
+            {if group.first <= g.first then
+                {groups.insert group, gi}
+                {return group}
+            }
+        }
+        {groups.append group}
+    }
+    {return group}
+  }
+
+  {method public {get-Iterator level:int}:{Iterator-of GroupSpec}
+    {return {self.levels[level].to-Iterator}}
+  }
+
+  || Return an array that maps position to a visible index
+  {method protected open {make-map last:int}:{Array-of int}
+    def rows = {new {Array-of int}}
+    def gti = {GroupTreeIterator self}
+    let last-i:int = 0
+    {for i in gti do
+        {if i > last then
+            {break}
+        }
+        {for i = last-i + 1 below i do
+            {rows.append -1}
+        }
+        {rows.append gti.count - 1}
+        set last-i = i
+    }
+|| Map with iterator results - just the visible numbers
+||--    let last:int = -1
+||--    {for i in gti do
+||--        {if i > last then
+||--            {break}
+||--        }
+||--        {rows.append i}
+||--    }
+    {return rows}
+  }
+
+  {doc-next
+    {purpose Modify the tree to account for inserting (or deleting, if
+        {param count} is negative) items.
+    }
+  }
+  {method public open {adjust pos:int, count:int}:void
+    {if count == 0 then
+        {return}
+    }
+    {inc self.edit-count}
+    {for gsa in self.levels do
+        {for gs in gsa do
+            {if pos < gs.first then
+                {inc gs.first, count}
+                {inc gs.last, count}
+             elseif pos > gs.last + 1 then
+                || do nothing
+             else
+                {inc gs.last, count}
+            }
+        }
+    }
+  }
+
+
+  field private last-edit-count:int
+  field private last-last:int
+  field private last-map:#{Array-of int}
+
+  {method public open {get-map last:int}:{Array-of int}
+    {if-non-null map = self.last-map then
+        {if self.last-edit-count == self.edit-count and self.last-last == last
+         then
+            {return map}
+        }
+    }
+    def map = {self.make-map last}
+    set self.last-map = map
+    set self.last-edit-count = self.edit-count
+    set self.last-last = last
+    {return map}
+  }
+}
+
+{doc-next
+    {purpose
+        Iterator for visible index values in a {docref GroupTree}.
+    }
+}
+{define-class public open GroupTreeIterator {inherits {Iterator-of int}}
+  field private tree:GroupTree
+  field private done?:bool
+  field private next:int
+  field private level:int
+  field private group:#GroupSpec
+
+  field public-get protected-set count:int
+
+  {doc-next
+    {purpose Initialize an iterator over the visible indices of
+        {param tree}.
+    }
+  }
+  {constructor public {default
+                          tree:GroupTree
+                      }
+    set self.tree = tree
+    {self.reset}
+  }
+
+  {method public open {reset}:void
+    set self.done? = false
+    set self.next = 0
+    set self.group = null
+    set self.level = 0
+    set self.count = 0
+  }
+  
+  || Find the innermost group containing self.next
+  {method private {find-current-group}:#GroupSpec
+    let group:#GroupSpec = null
+    {for level = 0 below self.tree.depth do
+        {if-non-null g =
+            {self.tree.get-group level, self.next, self.next}
+         then
+            set group = g
+            {if not g.expanded? then
+                {break}
+            }
+         else
+            {break}
+        }
+    }
+    {return group}
+  }
+
+  {method public {read-one}:(v:int, eof?:bool)
+    ||FIXME: no upper bound, so done? is never true
+    {if self.done? then
+        {return (0, true)}
+    }
+
+    def ngroup = {self.find-current-group}
+    {if ngroup != self.group then
+        set self.group = ngroup
+    }
+
+    def current = self.next
+
+    || Find the next visible item
+    {inc self.next}
+    let ng:#GroupSpec = self.group
+    {while ng != null do
+        {if {ng.contains? self.next} then
+            {break}
+         else
+            set self.next = ng.last + 1
+            set ng = {self.find-current-group}
+        }
+    }
+||--
+||--        {if ng != self.group then
+||--            set self.next = ng.first
+||--            set self.group = ng
+||--         elseif not ng.expanded? then
+||--            set self.next = ng.last + 1
+||--            set ng = {self.find-current-group}
+||--            set self.group = ng
+||--         else
+||--            {break}
+||--        }
+||--    }
+    {inc self.count}
+    {return (current, false)}
+  }
+}
+
+
+
+{def public ValueArray = {ResizableArray-of CellValue}}
+
+{doc-next
+    {purpose
+        Represents one cell value in a {docref WorksheetModel}.
+    }
+}
+{define-class public sealed CellValue
+
+  field public-get protected-set value:any = null   || Current cell value
+  field public-get protected-set ui-spec:any = null
+  field protected _domain:#Domain
+  field public-get protected-set editable?:bool
+  field public-get protected-set locked?:bool       || Always edit, or never
+  field protected _formula:#Formula  || Formula, if any
+  field protected _dataref:#DataRef  || For refs to other sources
+  field protected _rowspan:int       ||FIXME: belongs in UI?
+  field protected _colspan:int       ||FIXME: belongs in UI?
+
+  || Computed values manipulated at run-time
+  field public-get protected-set covered?:bool      || due to row/colspan
+  field protected _style:#Dictionary || Options FIXME: unused
+  field public-get protected-set editing?:bool      || editing cell?
+
+  || For embedded form fields (could be in a subclass)
+  field public-get protected-set field-spec:#WksCellSpec
+  field public-get protected-set embedded-form:#EmbeddedRecordForm
+  field public-get protected-set init-proc:#{proc-type {r:#Record}:any}
+
+  {doc-next
+    {purpose Create a new {docref CellValue}.}
+  }
+  {constructor public {default
+                          value:any = null,
+                          ui-spec:any = null,
+                          domain:#Domain = null,
+                          editable?:bool = false,
+                          editing?:bool = false,
+                          rowspan:int = 1,
+                          colspan:int = 1,
+                          locked?:bool = true,
+                          formula:#Formula = null,
+                          dataref:#DataRef = null
+                      }
+    set self.value = value
+    set self.ui-spec = ui-spec
+    set self._domain = domain
+    set self.editable? = editable?
+    set self.rowspan = rowspan
+    set self.colspan = colspan
+    set self.locked? = locked?
+    set self.editing? = editing?
+    set self.formula = formula
+    set self.dataref = dataref
+  }
+
+  {doc-next
+    {purpose Clear the information that comes from the {docref-abbr
+        CellValue.field-spec}.
+    }
+    {details
+        When records are deleted, this method is used to reset the cell
+        values.
+    }
+  }
+  {method public open {clear-form-info}:void
+    set self.value = null
+    set self.ui-spec = null
+    set self._domain = null
+    set self.editable? = false
+    set self.locked? = true
+    set self._formula = null
+    set self._dataref = null
+    set self._rowspan = 1
+    set self._colspan = 1
+
+    set self.covered? = false
+    set self._style = null
+    set self.editing? = false
+
+    set self.field-spec = null
+    ||FIXME: You can't clear this or adding a record to an embedded
+    || form won't work. Should there be another method? Same for ui-spec
+||--    set self.embedded-form = null
+    set self.init-proc = null
+  }
+
+  ||FIXME: better to put a style-class on the cell
+  field private formula-styles:Dictionary =
+      {Dictionary "background", Worksheet.calculated-bg}
+
+  field private default-styles:Dictionary = {Dictionary}
+
+  {setter public open {formula fval:#Formula}:void
+    {if-non-null styles = self._style then
+        || if _styles is null, formula styles are delivered lazily
+        {if (self._formula == null) != (fval == null) then
+            || Changing whether or not the cell has a formula
+            {if self._formula != null then
+                || adding a formula. Also add styles from formula-styles
+                {for v:any key k:String in self.formula-styles do
+                    set styles[k] = v
+                }
+             else
+                || Remove any style that came from formula-styles
+                {for v:any key k:String in self.formula-styles do
+                    {if styles[k] == v then
+                        {styles.remove k}
+                    }
+                }
+            }
+        }
+    }
+    set self._formula = fval
+  }
+
+  {getter public open {formula}:#Formula
+    {return self._formula}
+  }
+
+
+||--  {getter public open {editable?}:bool
+||--    {return self.editable?}
+||--    {return || self.editing? or
+||--        {if self.locked? then
+||--            self.editing?
+||--         else
+||--            self._formula == null and self.dataref == null
+||--||--            and not self.value isa Visual
+||--        }
+||--    }
+||--  }
+
+  || Return a style Dictionary where styles can be stored for this cell
+  {getter public open {settable-styles}:Dictionary
+    {if self._style == null then
+        set self._style = {Dictionary}
+        {if self.formula != null then
+            {for v:any key k:String in self.formula-styles do
+                set self._style[k] = v
+            }
+         else
+            {for v:any key k:String in self.default-styles do
+                set self._style[k] = v
+            }
+        }
+    }
+    {return {non-null self._style}}
+  }
+
+  || Get the styles in effect on this cell, whether local or not
+  {getter public open {styles}:Dictionary
+    ||FIXME: need a range -> style map, and use it here
+    ||FIXME: if formula added/removed need to rebuild self._style
+    {if self._style == null then
+        set self._style =
+            {if self.formula != null then
+                {self.formula-styles.clone}
+             else
+                {self.default-styles.clone}
+            }
+    }
+    {return {non-null self._style}}
+  }
+        
+  {setter public open {dataref ref:#DataRef}:void
+    set self._dataref = ref
+  }
+
+  {getter public open {dataref}:#DataRef
+    {return self._dataref}
+  }
+
+  {setter public open {domain val:#Domain}:void
+    set self._domain = val
+  }
+
+  {getter public open {domain}:Domain
+    {if-non-null d = self._domain then
+        {return d}
+    }
+    ||FIXME: implement a type->Domain map
+    ||FIXME: implement a range->Domain map
+    {return {WorksheetModel.get-default-domain self.value}}
+  }
+
+  {setter public open {rowspan val:int}:void
+    ||FIXME: update the self.covered? flags for adjacent cells (on WorksheetModel)
+    set self._rowspan = val
+  }
+
+  {getter public open {rowspan}:int
+    {return self._rowspan}
+  }
+
+  {setter public open {colspan val:int}:void
+    ||FIXME: update the self.covered? flags for adjacent cells (on WorksheetModel)
+    set self._colspan = val
+  }
+
+  {getter public open {colspan}:int
+    {return self._colspan}
+  }
+
+
+}
+
+{doc-next
+    {purpose The data model for a {docref Worksheet}.}
+}
+{define-class public open WorksheetModel {inherits DataSource, CalcMixin}
+
+  def public any-domain:Domain = {StandardAnyDomain}
+  def public int-domain:Domain = {StandardIntDomain}
+  def public double-domain:Domain = d3-domain
+  def public currency-domain:Domain = {CurrencyDomain}
+  def public date-domain:Domain =
+      {LocaleDateDomain default-value = {DateTime.date}}
+  def public string-domain:Domain = {StandardStringDomain}
+
+  field protected _data-version:String = ""
+  field protected _model-name:String = ""
+
+  field public-get protected-set change-count:int
+
+  field public-get protected-set vals:ValueArray
+
+  field public-get protected-set row-tree:GroupTree
+
+  field public-get protected-set col-tree:GroupTree
+
+  {getter public open {rows}:int
+    {return self.vals.rows}
+  }
+
+  {getter public open {cols}:int
+    {return self.vals.cols}
+  }
+
+  field protected cellrefs:{OrderedSet-of CellRef}
+||--  field protected rangerefs:{Array-of RangeRef}
+||--
+||--  field protected sources:{HashTable-of String, DataSource}
+
+||--  {method protected {init-cell row:int, col:int}:CellValue
+||--    {if self.vals[row, col] == null then
+||--        set self.vals[row, col] = {CellValue}
+||--    }
+||--    {return {unchecked-non-null self.vals[row, col]}}
+||--  }
+
+  {getter public open {row-map}:{Array-of int}
+    {return {self.row-tree.get-map self.rows}}
+  }
+
+  {getter public open {col-map}:{Array-of int}
+    {return {self.col-tree.get-map self.cols}}
+  }
+
+  {doc-next
+    {purpose Create an {docref WorksheetModel} with an initial size
+        of {param rows} by {param cols}.
+    }
+  }
+  {constructor public {default
+                          rows:int,
+                          cols:int
+                      }
+    {construct-super.DataSource}
+    {construct-super.CalcMixin}
+    set self.vals = {ValueArray rows, cols}
+    set self.row-tree = {GroupTree}
+    set self.col-tree = {GroupTree}
+    set self.cellrefs = {new {OrderedSet-of CellRef}}
+    {for ri = 0 below rows do
+        {for ci = 0 below cols do
+            set self.vals[ri, ci] = {CellValue}
+        }
+    }
+
+||--    set self.rangerefs = {new {Array-of RangeRef}}
+
+||--    || To support refs to "foreign" DataSources FIXME: NYI
+||--    set self.sources = {new {HashTable-of String, DataSource}}
+
+||--    set self.calcs = {new {HashTable-of CellRef, Formula}}
+||--    set self.ordered-calcs = {new {Array-of Formula}}
+  }
+
+  let private constant np:NumberParser =
+      {NumberParser
+        allow-grouping? = true,
+        allow-exponent? = false,
+        whitespace-char-class = {CharClass " $,\t"}
+      }
+
+
+  {define-proc public {get-default-domain v:any}:Domain
+    let domain:Domain = WorksheetModel.string-domain
+    {if {number? v} then
+        set domain = WorksheetModel.double-domain
+     elseif v == "" then
+        || assume string
+     else
+        {type-switch v
+         case nt:Null do
+            WorksheetModel.any-domain
+         case i:int do
+            WorksheetModel.int-domain
+         case d:double do
+            WorksheetModel.double-domain
+         case dt:DateTime do
+            set domain = WorksheetModel.date-domain
+         case s:StringInterface do
+            set domain = WorksheetModel.string-domain
+         case v:Visual do
+            set domain = WorksheetModel.any-domain
+         case b:bool do
+            bool asa Domain
+         case t:Time do
+            Time asa Domain
+         else
+            {try
+                def ret = {WorksheetModel.np.parse-double v asa String}
+                set domain = WorksheetModel.double-domain
+             catch e:Exception do
+                {try
+                    def d = {DateTime v}
+                    set domain = WorksheetModel.date-domain
+                 catch e:Exception do
+                    || Ignored - no change to domain
+                }
+            }
+        }
+    }
+    {return domain}
+  }
+
+  {method public open {insert-rows first:int, count:int}:void
+    {self.row-tree.adjust first, count}
+    {self.vals.insert-rows first, count}
+    {for ri = 0 below count do
+        {for ci = 0 below self.cols do
+            set self.vals[first + ri, ci] = {CellValue}
+        }
+    }
+    {for cr in self.cellrefs do
+        {cr.adjust first, count, 0, 0}
+    }
+  }
+
+  {method public open {insert-cols first:int, count:int}:void
+    {self.col-tree.adjust first, count}
+    {self.vals.insert-cols first, count}
+    {for ri = 0 below self.rows do
+        {for ci = 0 below count do
+            set self.vals[ri, ci + first] = {CellValue}
+        }
+    }
+    {for cr in self.cellrefs do
+        {cr.adjust 0, 0, first, count}
+    }
+  }
+
+  ||FIXME: make sure the relative and absolute semantics are well specified!
+  {doc-next
+    {purpose Create a reference to a cell or range of cells in
+        the cell array.
+    }
+    {details
+        There are several ways to specify a cell or range of
+        cells.
+
+        The simplest way to specify the cell is to use the
+        row and column keyword arguments
+
+        {ctext def ref = {wks.get-ref row = 1, column = 4}}
+
+        Rows and columns are numbered from 0, so this will create an
+        absolute reference to the cell on the second row, fifth
+        column.
+
+        A cell may be also be specified as a string, using the same
+        notation as Excel.  The following call is another way to
+        specify the same reference:
+
+        {ctext def ref = {wks.get-ref "E2"}}
+
+        You can also specify a reference as relative to some other
+        reference. For example, this is a reference to the cell
+        above {param ref}.
+
+        {ctext def above-ref = {wks.get-ref ref, row = -1}}
+
+    }
+  }
+  {method public open {get-ref
+                          ...
+                      }:SheetRef
+    let ref-str:String = ""
+    let row:int = CellRef.all
+    let col:int = CellRef.all
+    let ref:#CellRef = null
+    let absolute?:bool = true
+    let argn:int
+    {for (a,k) in ... do
+        {if-non-null k then
+            {if k == "row" then
+                set row = a asa int
+             elseif k == "column" or k == "col" then
+                set col = a asa int
+             elseif k == "absolute?" then
+                set absolute? = a asa bool
+            }
+         else
+            {type-switch a
+             case n:int do
+                {if argn == 0 or (ref != null and argn == 1) then
+                    set row = n
+                 elseif argn == 1 or (ref != null and argn == 2) then
+                    set col = n
+                 else
+                    {error
+                        {hlmessage
+                            Unexpected int parameter
+                        }
+                    }
+                }
+             case s:String do
+                set ref-str = s
+             case cr:CellRef do
+                {if argn != 0 then
+                    {error
+                        {hlmessage
+                            For a relative reference, the CellRef must
+                            be the first argument.
+                        }
+                    }
+                }
+                set row = 0
+                set col = 0
+                set ref = cr
+            }
+        }
+        {inc argn}
+    }
+    def cell-ref =
+        {if ref-str != "" then
+            {if {ref-str.find ':'} >= 0 then
+                {RangeRef.from-String self, ref-str, ref}
+             else
+                {CellRef.from-String self, ref-str, ref}
+            }
+         elseif ref != null then
+            {CellRef.relative-to {non-null ref}, row, col}
+         elseif absolute? then
+            {CellRef
+                self,
+                row, row-abs? = absolute?,
+                col, col-abs? = absolute?
+            }
+         elseif row != CellRef.all or col != CellRef.all then
+            {error
+                {hlmessage
+                    Specify a cell using a string, or keywords row and
+                    column, and a reference cell if specifying a
+                    relative reference.
+                }
+            }
+         else
+            {error {hlmessage Invalid CellRef}}
+        }
+    {type-switch cell-ref
+     case cr:CellRef do
+        {if cr.row >= self.rows or cr.col >= self.cols then
+            {error
+                {hlformat
+                    "Reference out of bounds: row=%1!s! col=%2!s!",
+                    cr.row, cr.col
+                }
+            }
+        }
+        {self.cellrefs.insert cr}
+     case rr:RangeRef do
+        ||FIXME
+    }
+    {return cell-ref}
+  }
+
+  || Call this if some attribute of a cell changes. If the cell value changes,
+  || call self.refresh.
+  {method public open {note-cell-changed}:void
+    {inc self.change-count}
+    {self.notify-observers}
+  }
+
+  {method public open {request-notification
+                          ref:DataRef, obs:Observer
+                      }:void
+    ||FIXME: NYI (or drop this?)
+  }
+
+  || Stop notifications for ref. If ref is null, stop all notifications to obs
+  {method public open {suspend-notification
+                          ref:#DataRef, obs:Observer
+                      }:void
+    ||FIXME: NYI (or drop this?)
+  }
+
+
+  || ---------------------
+  || Cell get/set methods
+  || ---------------------
+
+  {method public open {get-value row:int, col:int}:any
+    {return self.vals[row, col].value}
+  }
+
+  {method public open {set-value row:int, col:int, val:any}:void
+    {if self.vals[row, col].value != val then
+        set self.vals[row, col].value = val
+        {inc self.change-count}
+        {self.update}
+    }
+  }
+
+||--  {method public open {get-locked? row:int, col:int}:bool
+||--    {return self.vals[row, col].locked?}
+||--  }
+||--
+||--  {method public open {set-locked? row:int, col:int, val:bool}:void
+||--    set self.vals[row, col].locked? = val
+||--    {self.note-cell-changed}
+||--  }
+||--
+||--  {method public open {get-editing? row:int, col:int}:bool
+||--    {return self.vals[row, col].editing?}
+||--  }
+||--
+||--  {method public open {set-editing? row:int, col:int, val:bool}:void
+||--    set self.vals[row, col].editing? = val
+||--  }
+||--
+||--  {method public open {get-domain row:int, col:int}:Domain
+||--    {return self.vals[row,col].domain}
+||--  }
+||--
+||--  {method public open {set-domain row:int, col:int, val:#Domain}:void
+||--    set self.vals[row, col].domain = val
+||--    {self.note-cell-changed}
+||--  }
+||--
+||--  {method public open {get-rowspan row:int, col:int}:int
+||--    {return self.vals[row, col].rowspan}
+||--  }
+||--
+||--  {method public open {set-rowspan row:int, col:int, val:int}:void
+||--    set self.vals[row, col].rowspan = val
+||--    {self.note-cell-changed}
+||--  }
+||--
+||--  {method public open {get-colspan row:int, col:int}:int
+||--    {return self.vals[row, col].colspan}
+||--  }
+||--
+||--  {method public open {set-colspan row:int, col:int, val:int}:void
+||--    set self.vals[row, col].colspan = val
+||--    {self.note-cell-changed}
+||--  }
+||--
+
+  {method public open {set-style row:int, col:int, key:String, val:any}:void
+    def d = self.vals[row, col].styles
+    def (old, found?) = {d.get-if-exists key}
+    {if found? then
+        {if old == val then
+            || No real change
+            {return}
+        }
+    }
+    def styles = self.vals[row, col].settable-styles
+    set styles[key] = val
+    {self.note-cell-changed}
+  }
+
+  {method public open {get-styles row:int, col:int}:Dictionary
+    {return self.vals[row, col].styles}
+  }
+
+  {method public open {make-formula-at
+                          row:int, col:int, 
+                          formula:CalcProc,
+                          domain:Domain,
+                          ...:DataRef
+                      }:void
+    {self.make-formula
+        {CellRef.absolute self, row, col}, domain, formula, ...}
+  }
+
+  {method public open {make-formula
+                          target:DataRef,
+                          domain:Domain,
+                          formula:CalcProc,
+                          ...:DataRef
+                      }:Formula
+    {type-switch target
+     case cell-target:CellRef do
+        ||FIXME: better error checking/message for target?
+        {assert cell-target.absolute?}
+        {self.cellrefs.insert cell-target}
+        def row = cell-target.row
+        def col = cell-target.col
+        def cv = self.vals[row, col]
+        set cv.domain = domain
+||--        set val.style["background"] = Worksheet.calculated-bg
+        def f = {super.make-formula target, domain, formula, ...}
+        set cv.formula = f
+        {self.note-cell-changed}
+        {return f}
+     case r:RangeRef do
+        {error {hlmessage The target of a formula must be a CellRef0.}}
+     else
+        ||FIXME: what about other cases? Is it an error?
+        {error {hlmessage The target of a formula must be a CellRef0.}}
+||--        def f = {super.make-formula target, formula, ...}
+||--        {return f}
+    }
+  }
+
+  {method protected open {handle-observer-message
+                             sender:Observable,
+                             message:any
+                         }:void
+||--    {dump sender, message, self, self._refresh-requested?}
+    {self.recalc} || no notification
+||--    {self.refresh}
+  }
+
+  {doc-next
+    {purpose
+        Bring the model up to date by evaluating all formulas in
+        order, then calling {docref Observable.notify-observers}.
+    }
+    {details
+        This method is called when no event is being handled
+        if an update was requested (see {docref RefreshMixin}).
+    }
+  }
+  {method public open {refresh}:void
+    {self.recalc}
+    {self.notify-observers}
+  }
+
+  {doc-next
+    {purpose Bring all values in the cell array up to date.}
+    {details
+        First go through the cell array in row-major order. If any
+        cell is a data reference, update the cell value. Next, evaluate
+        all formulas in order. Finally, update cell vaues that are
+        data references once more.
+    }
+  }        
+  {method public open {recalc}:void
+    {for ri = 0 below self.rows do
+        {for ci = 0 below self.cols do
+            def cv = self.vals[ri, ci]
+            {if-non-null ref = cv.dataref then
+                set cv.value = {ref.get-value}
+            }
+        }
+    }
+    {for f in self.ordered-calcs do
+        {self.eval f.formula, f.target, {splice f.args}}
+    }
+    {for ri = 0 below self.rows do
+        {for ci = 0 below self.cols do
+            def cv = self.vals[ri, ci]
+            {if-non-null ref = cv.dataref then
+                set cv.value = {ref.get-value}
+            }
+        }
+    }
+  }
+
+  {doc-next
+    {purpose The version string to be saved with the data.}
+  }
+  {setter public open {data-version v:String}:void
+    set self._data-version = v
+  }
+  {doc-next
+    {purpose Return a version string to be saved with the data.}
+  }
+  {getter public open {data-version}:String
+    {return self._data-version}
+  }
+
+  ||FIXME: Do we really need this? (if so, add to the spec)
+  {doc-next
+    {purpose A name that identifies the model.}
+  }
+  {getter public open {model-name}:String
+    {return self._model-name}
+  }
+  {setter public open {model-name v:String}:void
+    set self._model-name = v
+  }
+
+  {doc-next
+    {purpose
+        If necessary, upgrade data to the format required by the
+        current version of the worksheet. If impossible, return null.
+    }
+    {details
+        If {param data} has an entry "data-version" and it is the same
+        as {ctext self.data-version}, or if there is no entry for
+        "data-version", then simply return {param data}.  Otherwise
+        return {ctext {migration data}}.
+
+        In each new release of an application based on a
+        {docref WorksheetModel}, you can maintain a migration proc
+        to upgrade from older versions (or downgrade from newer
+        versions).
+    }
+  }   
+  {method public open {migrate
+                          data:JsonObject,
+                          migration:{proc-type {data:JsonObject}:#JsonObject}
+                      }:#JsonObject
+    {return {migration data}}
+  }
+
+  {doc-next
+    {purpose Return a JSON representation of the data model.}
+  }
+  {method public open {get-data}:JsonObject
+    def data = {JsonObject
+                   "data-version", self.data-version,
+                   "model-name", self.model-name
+               }
+    def forms = {JsonObject}
+    set data["forms"] = forms
+    {for ri = 0 below self.rows do
+        {for ci = 0 below self.cols do
+            def ref = {format "$%c$%s", 'A' + ci, ri}
+            def cv = self.vals[ri, ci]
+            {if-non-null fs = cv.field-spec then
+                {if-non-null erf = cv.embedded-form then
+                    set forms[ref] =
+                        {RecordSet-to-Json erf.record-source}
+                }
+             else
+                {if (cv.editable? and cv.value != null)
+                    and cv.init-proc == null
+                 then
+                    set data[ref] = {cv.domain.format cv.value}
+                }
+            }
+        }
+    }
+    {return data}
+  }
+
+  {doc-next
+    {purpose Clear all data from the data model (usuallyl so it can
+        be reloaded from saved data).
+    }
+  }
+  {method public open {clear-data}:void
+    {for ri = 0 below self.rows do
+        {for ci = 0 below self.cols do
+            def cv = self.vals[ri, ci]
+            {if-non-null fs = cv.field-spec then
+                {if-non-null erf = cv.embedded-form then
+                    {erf.record-source.delete-all}
+                }
+             else
+                {if cv.editable? or cv.init-proc != null then
+                    set cv.value = null
+                }
+            }
+        }
+    }
+  }
+
+  {doc-next
+    {purpose Repopulate the data model from {param data}.}
+    {details
+        First call {ctext {self.migrate data}} in case
+        the {docref-abbr WorksheetModel.data-version} of the data
+        differs from the current version. Then call {docref-abbr
+        WorksheetModel.clear-data} to clear out the model. Next,
+        iterate recursively through {param data} and update the data
+        model. Finally, notify observers that there has been an update.
+    }
+    {return-vals
+        Returns true if the update is successful. A result of false
+        means that the data could not be migrated to the current
+        version.  An error may be thrown if there is an error of
+        some kind detected when the model is being repopulated.
+    }
+  }
+  {method public open {put-data data:JsonObject}:bool
+    {if-non-null data = {self.migrate data, WorksheetModel.default-migration}
+     then
+        {self.clear-data}
+        let forms:JsonObject = data["forms"] asa JsonObject
+        {for ri = 0 below self.rows do
+            {for ci = 0 below self.cols do
+                def cv = self.vals[ri, ci]
+                def ref = {format "$%c$%s", 'A' + ci, ri}
+                let (v:any, exists?:bool) = {data.get-if-exists ref}
+                {if exists? then
+                    set cv.value = {cv.domain.parse v asa String}
+                }
+                set (v, exists?) = {forms.get-if-exists ref}
+                {if exists? then
+                    def records = (v asa JsonObject)["records"] asa JsonArray
+                    {if-non-null erf = cv.embedded-form then
+                        {RecordSet-from-Json erf.record-source, records}
+                     else
+                        {error "Internal error"} ||RecordSet data but no form
+                    }
+                    {if-non-null fs = cv.field-spec then
+                     else
+                        set cv.value = {cv.domain.parse v asa String}
+                    }
+                }
+            }
+        }
+        {self.update}
+        {return true}
+    }
+    {return false}
+  }
+
+  def public default-migration =
+      {proc {data:JsonObject}:#JsonObject
+        {return data}
+      }
+
+
+}
+
+|| -------------------------------------------------------------------------
+
+|| Proc to handle certain events on any GridCell
+{define-proc package {handle-grid-cell-event
+                         gc:GridCell, e:GuiEvent, g:Graphic
+                     }:void
+    {type-switch e
+||--     case foe:FocusOut do
+||--        {dump foe, g, gc.row, gc.col, gc.refreshing?}
+||--        {if not gc.refreshing? then
+||--            {gc.activate-cell false}
+||--        }
+||--     case fie:FocusIn do
+||--        {dump fie, g, gc.row, gc.col, gc.refreshing?}
+||--        {if not gc.refreshing? then
+||--            {gc.activate-cell true}
+||--        }
+     case vfe:ValueFinished do
+||--        {dump "ValueFinished, commit"}
+        {gc.commit}
+    }
+}
+
+{doc-next
+    {purpose The {docref Graphic} that displays one cell in a {docref
+        Worksheet}.
+    }
+}
+{define-class public open GridCell {inherits BaseFrame}
+
+  {getter public open {style-element}:String
+    {if self._style-element == "" then
+        {return "GridCell"} ||""
+     else
+        {return self._style-element}
+    }
+  }
+
+  {getter package {event-hook}:EventHandler
+    {return
+        {on e:GuiEvent at g:Graphic do
+            {handle-grid-cell-event self, e, g}
+        }
+    }
+  }
+
+  ||FIXME: Is there  a way to make the ui available to a formula?
+  ||maybe some syntax to get to it, such as A1`ui
+
+  field public-get protected-set frame:Frame
+  field public-get private-set ui:#Graphic || use insert-ui to set
+  field public-get protected-set worksheet:Worksheet
+  field public-get protected-set row:int
+  field public-get protected-set col:int
+  field public-get protected-set refreshing?:bool = false
+  field public-get protected-set discloser?:bool = false
+
+  || Store last value displayed so that changes can be recognized
+  field public-get protected-set value:any
+
+  {getter public open {cell-value}:CellValue
+    {return self.worksheet.model.vals[self.row, self.col]}
+  }
+
+  || Store last row/colspan seen so self can notice changes and react
+  field protected last-rowspan:int
+  field protected last-colspan:int
+
+  {getter public open {active?}:bool
+    {return
+        self.worksheet.active-col == self.col and
+        self.worksheet.active-row == self.row
+    }
+  }
+
+  {getter public open {editable?}:bool
+    {return self.worksheet.model.vals[self.row, self.col].editable?}
+  }
+
+  {doc-next
+    {purpose If {ctext self.ui} is a {docref ValueControl} then return it.
+        Otherwise, return null.
+    }
+  }
+  {getter public open {editor}:#ValueControl
+    {type-switch self.ui
+     case ctl:ValueControl do
+        {return ctl}
+    }
+    {return null}
+  }
+
+  {doc-next
+    {purpose Initialize a {docref GridCell} for the value at {param row}
+        and {param col} of {param worksheet}.
+    }
+  }
+  {constructor public {default
+                          worksheet:Worksheet,
+                          row:int,
+                          col:int,
+                          ...
+                      }
+    set self.worksheet = worksheet
+    set self.row = row
+    set self.col = col
+    set self.last-rowspan = 1
+    set self.last-colspan = 1
+    ||FIXME: set these options using a style sheet
+    set self.frame =
+        {Frame
+            _style-element = "GridCell/frame",
+            margin = self.worksheet._cell-margin,
+            opaque-to-events? = true,
+            discrete-select-in-range? = true,
+            {click-recognizer consume? = false},
+            {on e:Click at f:Frame do
+||--                {dump "Click to activate-cell"}
+                {self.activate-cell true}
+            }
+        }
+    {self.add-internal self.frame}
+    {construct-super
+        discrete-select-in-range? = true,
+        {splice ...},
+        width = {make-elastic}
+    }
+  }
+
+  {method public open {clear}:void
+    set self.ui = null
+    {self.frame.clear}
+  }
+
+  {method public open {reset}:void
+    {self.clear-editor commit? = false}
+    {unset self.data-binding-context}
+    set self.ui = null
+    {self.frame.clear}
+    set self.value = null
+  }
+
+  {method public {add g:any, ...}:#Visual
+    {return {self.frame.add replace? = true, g, {splice ...}}}
+||--    {if-non-null child = self.child.graphic then
+||--        {if child != g then
+||--            {return {child.add-internal replace? = true, g, {splice ...}}}
+||--         else
+||--            {return child}
+||--        }
+||--    }
+||--    {error {hlmessage Internal Error}}
+  }
+
+  {doc-next
+    {purpose Remove the editor and replace it with the formatted value.}
+  }
+  {method protected open {clear-editor commit?:bool = true}:void
+    def cv = self.cell-value
+    {if commit? then
+||--        {dump "clear-editor, commit"}
+        {self.commit}
+    }
+
+    || If there is an editor, and it isn't locked, remove it.
+    {if-non-null editor = self.editor then
+        {if not cv.locked? then
+            set self.value = null  || Force refresh from cell value
+            {(self.editor asa Graphic).detach}
+            set self.ui = null
+        }
+    }
+
+    ||FIXME: Internal frame is for our options, etc. Can we drop it?
+    {if self.ui == null then
+        set self.frame.margin = self.worksheet._cell-margin
+    }
+
+    {if cv.value != self.value then
+        {type-switch cv.value
+         case n:Null do
+            {self.clear}
+         case v:Visual do
+            {self.add replace? = true, v}
+         else
+            {self.add replace? = true, {cv.domain.format cv.value}}
+        }
+        set self.value = cv.value
+    }
+  }
+
+  {method public open {adjust-editor ctl:ValueControl}:void
+    set ctl.control-appearance-changeable? = true
+    set ctl.color = ctl.look-and-feel.color
+||--    set ctl.background = ctl.look-and-feel.background    
+  }
+
+  || Create the editor for a GridCell that is about to become active
+  || (called from gc.refresh when there is no editor but there should be)
+  {method protected open {get-editor cv:CellValue}:ValueControl
+    {assert self.ui == null}  || should not be any Graphic in the cell yet
+    {assert cv.editable?}     || Must be editable to ask for editor
+    {assert not cv.covered?}  || Should not ask for editor if covered
+
+    let domain:Domain = cv.domain
+    def px = {any-to-Distance 1px}
+||--    def ctl-width = self.worksheet.cell-widths[self.col] - 0*px
+    def ctl-width = {self.worksheet.ruler.get-notifier self.col}.width
+    def ctl-height =
+        (self.worksheet.row-headers[self.row].layout asa BasicLayout
+        ).cell-bounds.height - px
+||--    {dump ctl-height/1pt}
+    
+    || If there is a suitable ui-spec, use it to create the editor
+    def ui-spec =
+        {type-switch cv.ui-spec
+         case nt:Null do
+            null
+         case p:{proc-type {gc:GridCell}:ValueControl} do
+            {p self}
+         case p:{proc-type {}:ValueControl} do
+            {p}
+         case t:ClassType do
+            {if-non-null maker = {t.get-instance-maker "default"} then ||""
+                {maker.new} asa ValueControl
+             else
+                {error {hlformat "No default constructor for %1!s!", t}}
+            }
+         else
+            {error {hlformat "Unexpected type of ui-spec: %s", cv.ui-spec}}
+        }
+    let vc:ValueControl =
+        {if-non-null ui-spec then
+            ui-spec
+         else
+            {switch cv.domain.type
+             case DateTime do
+                def df =
+                    {DateField
+                        width = ctl-width
+||--,                        height = ctl-height
+                    }
+                set df.value-as-any = cv.value
+                df
+             else
+                {TextField
+                    width = ctl-width,
+||--                    height = ctl-height,
+                    value = {domain.format cv.value}
+                }
+            }
+        }
+    {self.adjust-editor vc}
+
+    {vc.add-event-handler
+        {validate-with {WorksheetDomainValidator cv.domain}}
+    }
+||--        {vc.add-event-handler
+||--            {on e:ValidationComplete do
+||--||--                {if e.current? and not e.partial? and not vc.valid? then
+||--||--                    set vc.value-as-any = ""
+||--||--                }
+||--            }
+||--        }
+||--    }
+||--    def vcw = {vc.any-to-Distance (vc asa Graphic).width}/1pt
+||--    {dump "get-editor (new)", self.row, self.col, vc, vcw}
+    {return vc}
+  }
+
+  {doc-next
+    {purpose Display an object that is not a control.}
+  }
+  {method public open {insert-ui ui:Graphic}:void
+    set self.frame.margin = 0pt
+||--    set self.frame.vstretch? = true
+||--    set self.frame.hstretch? = true
+    set self.ui = ui
+    {self.add self.ui}
+  }
+
+  {method protected open {insert-editor ctl:ValueControl}:void
+    def cv = self.cell-value
+||--    {dump "insert-editor", ctl, ctl.value-as-any, cv.value}
+    {self.insert-ui ctl}
+    {try
+        set ctl.value-as-any = cv.value
+     catch ignore:Exception do
+        || ignored
+    }
+    {ctl.add-event-handler self.event-hook}
+    set self.value = cv.value
+  }
+
+  {method private {refresh-discloser row?:bool}:void
+    let gs:#GroupSpec = null
+    def discloser? =
+        {if row? then
+            def group-tree = self.worksheet.model.row-tree
+            {if-non-null rgs = {group-tree.get-group self.col, self.row, self.row} then
+                set gs = rgs
+                self.col == gs.level and gs.first == self.row
+             else
+                false
+            }
+         else
+            def group-tree = self.worksheet.model.col-tree
+            {if-non-null cgs = {group-tree.get-group 0, self.col, self.col} then
+                set gs = cgs
+                self.row == gs.level and gs.first == self.col
+             else
+                false
+            }
+        }
+    {if discloser? and not self.discloser? then
+        set self.discloser? = true
+        def discloser =
+            {DefaultDiscloser
+                margin = 2pt,
+                animation-rate = 0Hz,
+                orientation =
+                    {if gs.row? then "vertical" else "horizontal"},
+                state = {if gs.expanded? then
+                            DisclosureState.expanded
+                         else
+                            DisclosureState.collapsed
+                        },
+                {on e:Adjustment at t:Discloser do
+                    {if t.state != DisclosureState.changing then
+                        set gs.expanded? = t.state == DisclosureState.expanded
+                        {self.refresh-from-discloser gs}
+                        {self.worksheet.update}
+||--                        {self.worksheet.rebuild-cell-grid}
+                    }
+                }
+            }
+        {self.add-internal replace? = true,
+            {HBox discloser, {Fill width = 2pt}, self.frame}
+        }
+||--        {self.refresh-from-discloser gs}
+||--     elseif not discloser? and self.discloser? then
+||--        set self.discloser? = false
+||--        {self.add-internal replace? = true, self.frame}
+||--        {self.refresh-from-discloser gs}
+    }
+  }
+
+  {method protected open {refresh-from-discloser gs:#GroupSpec}:void
+    {if gs == null then
+        set gs = 
+            {self.worksheet.model.row-tree.get-group self.col, self.row, self.row}
+    }
+    {if gs == null then
+        set gs = 
+            {self.worksheet.model.col-tree.get-group self.row, self.col, self.col}
+    }
+    {if-non-null gs then
+        {if gs.row? and self.row != gs.first or
+            not gs.row? and self.col != gs.first
+         then
+            {return}
+        }
+        def cv = self.cell-value
+        {if gs.expanded? then
+            {if gs.row? then
+                set cv.rowspan = gs.last - gs.first + 1
+             else
+                set cv.colspan = gs.last - gs.first + 1
+            }
+         else
+            {if gs.row? then
+                set cv.rowspan = 1
+             else
+                set cv.colspan = 1
+            }
+        }
+    }
+  }
+
+  {method public open {refresh-editor}:void
+    {if-non-null editor = self.editor then
+        def cv = self.cell-value
+||--        {dump "refresh-editor", editor, self.row, self.col, cv.value}
+        {if cv.field-spec != null then
+            def form = {non-null self.data-binding-context} asa RecordForm
+            {form.refresh editor}
+         else
+            def ev =
+                {self.worksheet.convert-value editor.value-as-any, self.row, self.col}
+            {if ev != cv.value then
+                {if {type-of cv.value} == {type-of editor.value-as-any} then
+                    set editor.value-as-any = cv.value
+                 else
+                    def nv = {cv.domain.format cv.value}
+                    set self.editor.value-as-any = nv
+                }
+                {self.editor.become-active-from-traversal forward? = true}
+            }
+        }
+    }
+  }
+
+  {method public open {commit}:void
+    {if-non-null editor = self.editor then
+||--        {dump "commit", self.row, self.col, editor.value-as-any}
+        {self.worksheet.set-value self.row, self.col, editor.value-as-any}
+    }
+  }
+
+  {method protected open {refresh}:void
+    def cv = self.cell-value
+    {assert not self.refreshing?}
+
+    ||FIXME:: this lockout is probably not needed.
+    {assert not self.refreshing?}
+    {if self.refreshing? then 
+||--        {dump "busy", self.row, self.col}
+||--        {return}
+    }
+    set self.refreshing? = true
+    def ar = self.worksheet.active-row
+    def ac = self.worksheet.active-col
+    def active? = self.row == ar and self.col == ac
+
+    {self.refresh-discloser true}
+    {self.refresh-discloser false}
+    {if (self.worksheet.selection-context-active? and
+         {self.worksheet.selection.contains-cell? self.row, self.col}
+        )
+        and not (active? and cv.editable?)
+     then
+        set self.frame.background = self.selected-background
+        set self.frame.color = self.selected-color
+     else
+        {unset self.frame.color}
+        {if cv.editable? then
+            set self.frame.background = Worksheet.editable-bg
+         else
+            {unset self.frame.background}
+        }
+    }
+
+    || Adjust to change in rowspan or colspan
+    {if cv.rowspan != self.last-rowspan or cv.colspan != self.last-colspan
+     then
+        || Adjust cells affected by change in rowspan or colspan
+        {for ri = 0 below {max self.last-rowspan, cv.rowspan} do
+            {for ci = 0 below {max self.last-colspan, cv.colspan} do
+                def r = self.row + ri
+                def c = self.col + ci
+                def covered? =
+                    (r > self.row and ri < cv.rowspan)
+                    or (c > self.col and ci < cv.colspan)
+                set self.worksheet.model.vals[r, c].covered? = covered?
+                set self.worksheet.cells[r, c].visible? = not covered? 
+            }
+        }
+
+        || Detach and re-attach to the correct fiducials
+        {self.detach}
+        {self.worksheet.attach-cell self.row, self.col}
+        set self.last-rowspan = cv.rowspan
+        set self.last-colspan = cv.colspan
+    }
+
+    {if cv.editing? then
+        || Model says this cell should be editing, so create a control, etc.
+||--        {dump "refresh, editing?=true", self.row, self.col, self.editor}
+        {if active? then
+            {if self.editor != null then
+                || There is an editor already, just refresh it
+                {self.refresh-editor}
+             elseif self.ui != null then
+                || This is a Visual or Graphic that isn't a ValueControl
+                || nothing to do - self.ui was inserted when first seen
+                {assert cv.locked?}
+             elseif cv.field-spec != null then
+                {if-non-null erf = cv.field-spec.embedded-form then
+                    {if-non-null vc = {erf.get-field-editor cv, self} then
+                        {self.insert-editor vc}
+                    }
+                 else
+                    {error {hlmessage Internal error}}
+                }
+             else
+                || not editing yet... Create and add the editor
+                {self.worksheet.select-nothing}
+                {self.insert-editor {self.get-editor cv}}
+            }
+            {type-switch self.ui
+             case lb:ListBox do
+                ||FIXME: ListBox will throw ArrayBoundsException of no delay
+                {after 0s do
+                    || Delay until this event handled (problem with ListBox)
+                    {lb.become-active-from-traversal}
+                }
+             case t:ActiveTraversor do
+                {t.become-active-from-traversal}
+            }
+        }
+     else
+        || Should not be editing
+||DEBUG
+||--        {if ar == self.row and ac == self.col then
+||--            {dump "clear-editor for current cell", self.row, self.col}
+||--        }
+        {self.clear-editor}
+    }
+    set self.refreshing? = false
+
+    || Remember the current value in order to detect a change later
+    set self.value = cv.value
+  }
+
+  {method public open {activate-cell
+                          active?:bool
+                      }:void
+    def ar = self.worksheet.active-row
+    def ac = self.worksheet.active-col
+    def cv = self.cell-value
+||--    {dump "activate-cell", self.row, self.col, ar, ac, cv.editing?, active?}
+
+    {if active? then
+        {if self.row != ar or self.col != ac then
+            || De-activate prior cell
+            {self.worksheet.cells[ar, ac].activate-cell false}
+         else
+            ||FIXME: make this an error or assert
+            || This can happen with the window regains focus after losing it
+||--            {dump "?? activate-cell called to activate current cell!"}
+        }
+    }
+
+    {if not active? then
+        {if not (self.row == ar and self.col == ac) then
+            {return}
+        }
+        {if cv.editing? then
+            {if not cv.locked? then
+                set cv.editing? = false
+            }
+        }
+        {self.worksheet.update}
+        {return}
+    }
+
+    || Now activate self
+    {self.worksheet.set-active self.row, self.col}
+    {if cv.editable? then
+        set cv.editing? = true
+    }
+    {self.worksheet.update}
+  }
+
+  {method public open {get-range-as-selected-text
+                          into:StringBuf,
+                          start-bound:#GuiMark=null,
+                          end-bound:#GuiMark=null
+                      }:void
+    {type-switch self.ui
+     case vc:ValueControl do
+        {type-switch  vc.form-value
+         case str:String do
+            {into.concat str}
+         case a:StringArray do
+            {for s key si in a do
+                {if si > 0 then
+                    {into.append ' '}
+                }
+                {into.concat s}
+            }
+         else
+            || null means nothing. But some controls seem to be
+            || buggy. For example DateField doesn't return any text.
+            || Use the formatted value.
+            def cv = self.cell-value
+            {if-non-null cv.value then
+                {into.concat {cv.domain.format cv.value}}
+            }
+        }
+     else
+        {super.get-range-as-selected-text into, start-bound = start-bound,
+            end-bound = end-bound
+        }
+    }
+  }
+
+} ||GridCell
+
+
+{doc-next
+    {purpose
+        A rectangular grid of cells with automatic calculations invoked
+        when cell values are changed.
+    }
+    {notes
+        {bold This is a preview release. The API is subject to change}
+    }
+}
+{define-class public open Worksheet
+  {inherits
+    SelectionContext, ContainerDragScroller, CommandContext,
+    StandardActiveTraversalContainer, Observer,
+    RefreshMixin
+  }
+
+  {doc-next
+    {purpose
+        Determines if the contents of cells can be changed.
+    }
+  }
+  {local-option public editable?:bool = true}
+
+  {local-option public row-selector-width:Distance = 1cm}
+  {local-option public column-selector-height:any = 1em}
+
+  def public calculated-bg = "#f4f4f4" asa FillPattern
+  def public readonly-bg = "#f0f0f0" asa FillPattern
+  def public editable-bg = "white" asa FillPattern
+  def public header-bg = "#f0f0f070" asa FillPattern
+  def public header-color = "#ccc" asa FillPattern
+
+  field public-get protected-set ruler:WorksheetRuler
+
+||--  {local-option public minimum-cell-width:Distance = .5in
+||--  }
+||--
+||--  {local-option public minimum-cell-height:Distance = 8pt
+||--  }
+
+||--  {nonlocal-option public font-size:any
+||--  }
+
+  {nonlocal-option public grid-line-color:FillPattern
+    set self.border-color = grid-line-color
+  }
+
+  field public-get protected-set model:WorksheetModel =
+      {uninitialized-value-for-type WorksheetModel}
+
+  field public-get protected-set active-row:int
+  field public-get protected-set active-col:int
+
+  || Selection support
+  field protected _selection:WorksheetSelection
+  field protected selecting?:bool = false
+  field protected point-row:int
+  field protected point-col:int
+  field protected anchor-row:int
+  field protected anchor-col:int
+
+  field private _context-row:int = -2
+  field private _context-column:int = -2
+
+
+  field protected grid:Grid
+  field protected row-header-right:GridFiducial =
+      {uninitialized-value-for-type GridFiducial}
+  field protected col-header-bottom:GridFiducial =
+      {uninitialized-value-for-type GridFiducial}
+
+  field protected row-headers:{Array-of Graphic} = {new {Array-of Graphic}}
+  field protected col-headers:{Array-of Graphic} = {new {Array-of Graphic}}
+
+  || Right edge of every column. 0 is row-header-right
+  field protected col-edges:{Array-of GridFiducial} =
+      {new {Array-of GridFiducial}}
+
+  || Bottom edge of every row. 0 is col-header-bottom
+  field protected row-edges:{Array-of GridFiducial} =
+      {new {Array-of GridFiducial}}
+
+  {getter public open {row-count}:int
+||--    {assert self.row-edges.size - 1 == self.model.rows}
+    {return self.model.rows}
+  }
+
+  {getter public open {col-count}:int
+||--    {assert self.col-edges.size - 1 == self.model.cols}
+    {return self.model.cols}
+  }
+
+  field protected cells:{ResizableArray-of GridCell} =
+      {uninitialized-value-for-type {ResizableArray-of GridCell}}
+
+  {method public open {get-cell row:int, col:int}:#GridCell
+    def rmap = self.model.row-map
+    def cmap = self.model.col-map
+    def ri = rmap[row]
+    def ci = cmap[col]
+    {if ri >= 0 and ci >= 0 then
+        {return self.cells[ri, ci]}
+    }
+    {return null}
+  }
+
+  field protected _cell-margin:PixelDistance = 5px
+
+  field private last-row-edit-count:int
+  field private last-col-edit-count:int
+  field private last-ruler:WorksheetRuler
+  field private argn:int
+  field private irows:int
+  field private model?:bool
+
+  {doc-next
+    {purpose
+        Create a new {docref Worksheet}.
+    }
+    {notes
+        {bold This is a preview release. The API is subject to change}
+    }
+    {details
+        This constructor is designed to allow the {ctext Worksheet} to
+        be created in the declarative style so far as possible. As a
+        consequence it takes several keyword arguments, some of which
+        can be repeated (this is similar to {docref Canvas.add}). In
+        addition, the handling of non-keyword arguments will depend on
+        the data type.
+
+        The first one or two parameters will define the data model and
+        can be either a {docref WorksheetModel} or a pair of integers
+        representing the number of rows and number of columns in the
+        model. 
+
+        The next argument may be a call to the procedure {docref
+        widths}, which returns a {docref WorksheetRuler}. This will
+        determines the widths of the columns. If this is ommitted,
+        the default column width of 2cm is used.
+
+        The following arguments define the cells in the worksheet.
+        Use {param row \= int} and {param col \= int} to specify the
+        insertion position. The keyword arguments {param rowspan \=
+        int} and {param colspan \= int} affect the next cell inserted.
+        After a value is inserted, the insertion column position is
+        automatically advanced to the next available cell,
+        taking {param colspan} into account.
+
+        You can also use a {docref CellRef} to determine the location
+        where the next cell will be inserted.  The keyword
+        argument {param cell \= String} is handled by calling {ctext
+        self.model.get-ref} to obtain a {docref CellRef}. You can also
+        use {param cell \= CellRef} to specify a {ctext CellRef} you
+        have already constructed or obtained by calling {docref
+        WorksheetModel.get-ref}. This is useful when you have set a
+        variable to a {ctext CellRef} and want to define the cell at
+        that location.
+
+        The non-keyword arguments are handled according to their
+        data type.
+
+        The calls {docref row-group} and {docref col-group} return
+        a {docref GroupProto}. These are used to define the hierarchy
+        of row and column groups. They must be specified from the top
+        down, with the highest level {ctext row-group}s in column 0
+        and the highest level {ctext col-group}s in row 0.
+
+        The following calls are used to create a cell of the
+        indicated type:
+
+        {docref currency-cell}: The cell will use the {docref
+        CurrencyDomain} and be right justified.
+
+        {docref formula-cell}: The cell contains a formula.
+        The domain is {docref WorksheetModel.double-domain} by default.
+
+        {docref cell-spec}: Used when none of the above procedures
+        is applicable.
+
+        In addition, any of the fields of {docref WksCellSpec} may
+        be passed as arguments to these procedures.
+
+        Finally any other argument is used as the value of the next
+        available cell. Such a cell will not be editable, and will
+        have a domain chosen according to the data type.
+
+        {bold Worksheet Example}
+
+        The following example defines a simple worksheet. The numbers
+        in the Hours column are editable. They are added up to get
+        the value in the total cell.
+
+        The first Date field is editable. The remaining dates, and
+        the names of the days, are computed from the value you choose.
+
+        The line items are grouped under the headings. Click the
+        small triangle to expand and contract the group.
+
+        The formulas use relative cell references so the same formulas
+        can be used on each line. Note that the formula for column 2
+        has to be entered before the formula for column 1, because
+        formulas are computed in the order that they are added.
+
+        At the bottom of the worksheet there is a button that will
+        call {docref WorksheetModel.get-data} and display the result.
+        Note that only editable cells are captured in the JSON
+        representation. Other cells will be recomputed when the data
+        is restored (using {docref WorksheetModel.put-data}).
+    }
+    {example
+        title = "Weekly Time Sheet Example",
+        {import * from CURL.IO.JSON}
+        {import * from COM.CURL.EXT.WORKSHEET}
+        || A procedure to sum a range of cells
+        {def sum =
+            {proc {dest:DataRef, src:DataRef}:void
+                let sum:double = 0.0
+                {for v in src do
+                    {inc sum, {if-non-null v then v asa double else 0.0}}
+                }
+                {dest.set-value sum}
+            }
+        }
+
+        || A procedure to compute the next day from a cell containing a date
+        {def next-day =
+            {proc {dest:DataRef, src:DataRef}:void
+                {dest.set-value {src.get-value} + 1d}
+            }
+        }
+
+        || A procedure to compute the day name from a cell containing a date
+        {def day-name =
+            {proc {dest:DataRef, src:DataRef}:void
+                {dest.set-value
+                    ({src.get-value} asa DateTime).info.locale-weekday
+                }
+            }
+        }
+
+        || A procedure that concatenates any number of cell values
+        {def concat =
+            {proc {dest:DataRef, ...:DataRef}:void
+                def buf = {StringBuf}
+                {for r in ... do
+                    {buf.concat {r.get-String}}
+                }
+                {dest.set-value {buf.to-String}}
+            }
+        }
+
+        || A cell with a formula to compute the next day from the cell above
+        {def next-date-cell =
+            {formula-cell
+                domain = WorksheetModel.date-domain, next-day, {RelativeCellRef -1, 0}
+            }
+        }
+
+        || A cell with a formula to compute the day name from the cell to the right
+        {def day-cell =
+            {formula-cell domain = String, day-name, {RelativeCellRef 0, 1}}}
+
+        {Worksheet
+            10, 6,
+            {widths 1.5in, 1in, 1.2in},
+            colspan = 2, {bold Example Worksheet},
+
+            row = 1, col = 0, {row-group 6},
+            {formula-cell domain = String, 
+                concat, {ValueRef "Week of "}, {RelativeCellRef 1, 2}
+            },
+            "Day", "Date", "Hours",
+
+            row = 2, col = 1,
+            {formula-cell domain = String, day-name, {RelativeCellRef 0, 1}},
+            {editable-cell {DateTime.date "2010-10-11"}},
+            {editable-cell halign = "right", 7},
+
+            row = 3,
+            col = 2, next-date-cell,
+            col = 1, day-cell,
+            col = 3, {editable-cell halign = "right", 9},
+
+            row = 4,
+            col = 2, next-date-cell,
+            col = 1, day-cell,
+            col = 3, {editable-cell halign = "right", 8},
+
+            row = 5, 
+            col = 2, next-date-cell,
+            col = 1, day-cell,
+            col = 3, {editable-cell halign = "right", 9},
+
+            row = 6,
+            col = 2, next-date-cell,
+            col = 1, day-cell,
+            col = 3, {editable-cell halign = "right", 4},
+
+            row = 7, col = 2,
+            "Total:", {formula-cell halign = "right", sum, {Ref "D3:D7"}},
+
+            row = 9, col = 0,
+            {CommandButton
+                label = "Show Json Data",
+                {on e:Action at cb:CommandButton do
+                    {type-switch cb.selection-context
+                     case wks:Worksheet do
+                        {popup-message
+                            title = "Time Sheet Data",
+                            {Frame margin = 6pt,
+                                text-preserve-whitespace? = true,
+                                {JsonValue-to-String 
+                                    {wks.model.get-data}, prettify? = true
+                                }
+                            }
+                        }
+                    }                    
+                }
+            }
+        }
+    }
+    ||FIXME: Does it make sense to have these clauses?
+||--    {parameter {italic model:WorksheetModel}, If a {ctext WorksheetModel}
+||--        is passed as the first argument, it is used as the data
+||--        model. Otherwise the first two parameters must be {param
+||--        row:int} and {param col:int}.
+||--    }
+||--    {parameter cs:WksCellSpec, Specifies the contents of a cell}
+  }
+  {constructor public {default
+                          ...
+                      }
+    || Initialize the base classes
+    {construct-super.RefreshMixin}
+    {construct-super.ContainerDragScroller}
+    {construct-super.SelectionContext}
+    {construct-super.Observer}
+
+    || Initialize the data structures that hold items passed in as rest args
+    set self.ruler = {WorksheetRuler}
+    set self.last-ruler = self.ruler
+
+    set self.grid =
+        {Grid
+            _style-element = "Worksheet",
+            horigin = 0.0, vorigin = 0.0
+        }
+    {self.add self.grid}
+
+    {construct-super.StandardActiveTraversalContainer
+        {splice ...}
+    }
+
+    {self.observe self.model}
+    set self._selection = {WorksheetSelection.empty self}
+    set self.selection-context = self
+
+    {self.rebuild-cell-grid}
+    {after 0s do
+        {self.model.update}
+        {self.handle-event {SelectionChanged}}
+    }        
+  }
+
+  {method public open {set-size lc:LayoutContext, bounds:GRect}:void
+    {super.set-size lc, bounds}
+  }
+
+  field protected insert-row:int = 0
+  field protected insert-col:int = 0
+  field protected insert-rowspan:int = 1
+  field protected insert-colspan:int = 1
+
+  ||FIXME: need to look out for cells that span multiple rows/cols
+  ||maybe increment to first cell after rowspan and colspan
+  || Need to specify the correct behavior and implement it. 
+  || Right now we only increment the column position
+  {method private {increment-insertion-pos}:void
+    def cv = self.model.vals[self.insert-row, self.insert-col]
+    {inc self.insert-col, cv.colspan}
+    {if self.insert-col >= self.model.cols then
+||--        set self.insert-col = 0
+||--        {inc self.insert-row, cv.rowspan}
+    }
+    set self.insert-rowspan = 1
+    set self.insert-colspan = 1
+  }
+
+  {method private {verify-cell-empty}:void
+    {if self.insert-row < self.model.rows and
+        self.insert-col < self.model.cols
+     then
+        def cv = self.model.vals[self.insert-row, self.insert-col]
+        {if cv.value != null then
+            {error
+                {hlformat
+                    "Cell at row=%1!s! col=%2!s! already contains value='%3!s!'",
+                    self.insert-row, self.insert-col, cv.value
+                }
+            }
+        }
+    }
+  }
+
+  || Add something to the current cell location
+  {method public open {non-keyword-init-arg a:any}:void
+    let editable?:bool = false
+    let rowspan:int = self.insert-rowspan
+    let colspan:int = self.insert-colspan
+    let domain:#Domain
+    let value:any = a
+    let ui-spec:any = null
+    let args:#Arguments = null
+    let refs:#{Array-of DataRef} = null
+    {inc self.argn}
+
+    {type-switch value
+     case i:int do
+        {if self.argn == 1 then
+            set self.irows = i
+            {return}
+         elseif self.argn == 2 then
+            set self.model = {WorksheetModel self.irows, i}
+            set self.model? = true
+            {self.make-cell-array}
+            {return}
+||--         else
+||--            {error
+||--                {hlmessage The first two arguments may be of type int
+||--                    to specify the model rows and columns.
+||--                }
+||--            }
+        }
+     case model:WorksheetModel do
+        {if self.model? then
+            {error {hlmessage A model has already been specified}}
+        }
+        {if self.irows > 0 then
+            {error {hlmessage A model should not be specified after the
+                       rows have been specified.
+                   }
+            }
+        }
+        set self.model = model
+        set self.model? = true
+        {self.make-cell-array}
+        {return}
+     case cs:WksCellSpec do
+        set editable? = cs.editable?
+        set rowspan = cs.rowspan
+        set colspan = cs.colspan
+        set domain = cs.domain
+        set value = cs.v
+        set ui-spec = cs.ui-spec
+        set args = cs.args
+        set refs = cs.refs
+     case ruler:WorksheetRuler do
+        set self.ruler = ruler
+        {return}
+    }
+
+    {type-switch value
+     case gp:GroupProto do
+        {self.insert-group self.insert-row, self.insert-col, gp}
+     case erf:EmbeddedRecordForm do
+        {self.verify-cell-empty}
+        {self.init-cell
+            self.insert-row, self.insert-col, value,
+            domain = domain,
+            rowspan = rowspan, colspan = colspan,
+            editable? = editable?, args = args, refs = refs
+        }
+        def n = {erf.insert-embedded-form self.insert-row, self.insert-col}
+        {inc self.insert-row, erf.total-row-count}
+        set self.insert-col = 0
+     else
+        {self.verify-cell-empty}
+        {self.init-cell
+            self.insert-row, self.insert-col, value,
+            ui-spec = ui-spec, domain = domain,
+            rowspan = rowspan, colspan = colspan,
+            editable? = editable?, args = args, refs = refs
+        }
+        {self.increment-insertion-pos}
+    }
+  }
+
+  {method protected {keyword-init-arg key:String, value:any}:void
+    {if key == "row" then ||""
+        set self.insert-row = value asa int
+     elseif key == "col" or key == "column" then ||""
+        set self.insert-col = value asa int
+     elseif key == "rowspan" then ||""
+        set self.insert-rowspan = value asa int
+     elseif key == "colspan" then ||""
+        set self.insert-colspan = value asa int
+     elseif key == "cell" then ||""
+        let ref:#CellRef = null
+        {type-switch value
+         case cr:CellRef do
+            set ref = cr
+         case s:String do
+            def sr = {self.model.get-ref s}
+            {if sr isa CellRef then
+                set ref = sr asa CellRef
+             else
+                {error 
+                    {hlformat "Expected a CelLRef: '%s'", value}
+                }
+            }
+         else
+            {error 
+                {hlformat "Unexpected argument: '%s'", value}
+            }
+        }
+        def insert-cell = {CellRef self.model, self.insert-row, self.insert-col}
+        def rref = {{non-null ref}.resolve insert-cell} asa CellRef
+        set self.insert-col = rref.col
+        set self.insert-row = rref.row
+     else
+        {super.keyword-init-arg key, value}
+    }
+  }
+
+  {method public open {insert-group row:int, col:int, gp:GroupProto}:void
+    def cv = self.model.vals[row, col]
+    {if gp.row? then
+        set cv.rowspan = gp.span
+        {self.model.row-tree.insert-group
+            {GroupSpec
+                true, col, row,
+                row + gp.span - 1,
+                expanded? = gp.expanded?
+            }
+        }
+     else
+        set cv.colspan = gp.span
+        {self.model.col-tree.insert-group
+            {GroupSpec
+                false, row, col,
+                col + gp.span - 1,
+                expanded? = gp.expanded?
+            }
+        }
+    }
+  }
+
+  {method public open {insert-rows first:int, count:int}:void
+    {self.model.insert-rows first, count}
+    {self.cells.insert-rows first, count}
+    {self.refresh-headers}
+
+    {for ri = 0 below count do
+        {for ci = 0 below self.col-count do
+            {self.make-cell first + ri, ci}
+        }
+    }
+    {for ri = 0 below self.row-count do
+        {for ci = 0 below self.col-count do
+            {if ri < first or ri >= first + count then
+                def cell = self.cells[ri, ci]
+                set cell.row = ri
+                set cell.col = ci
+                {self.attach-cell ri, ci}
+            }
+        }
+    }
+
+  }
+
+  {method public open {insert-cols first:int, count:int}:void
+    {self.model.insert-cols first, count}
+    {self.cells.insert-cols first, count}
+    {self.refresh-headers}
+
+    {for ri = 0 below self.row-count do
+        {for ci = 0 below count do
+            {self.make-cell ri, first + ci}
+        }
+    }
+    {for ri = 0 below self.row-count do
+        {for ci = 0 below self.col-count do
+            {if ci < first or ci >= first + count then
+                def cell = self.cells[ri, ci]
+                set cell.row = ri
+                set cell.col = ci
+                {self.attach-cell ri, ci}
+            }
+        }
+    }
+  }
+
+
+
+  || Add more things just the way you would in the constructor
+  {method public open {add-items
+                          ...
+                      }:void
+    {for (arg,k) in ... do
+        {if-non-null k then
+            {self.keyword-init-arg k, arg}
+         else
+            {self.non-keyword-init-arg arg}
+        }
+    }
+  }
+
+||--  {method protected {ensure-cell-fits
+||--                          row:int, col:int,
+||--                          rowspan:int = 1, colspan:int = 1
+||--                    }:void
+||--    def r = row + rowspan
+||--    def c = col + colspan
+||--    {if r > self.model.rows then
+||--        {self.insert-rows self.model.rows, r - self.model.rows}
+||--    }
+||--    {if c > self.model.cols then
+||--        {self.insert-cols self.model.cols, c - self.model.cols}
+||--    }
+||--
+||--  }
+
+  || All arguments must be stored in the CellValue to ensure that the
+  || UI can be properly rebuilt from a serialized version, etc.
+  {method public open {init-cell
+                          row:int, col:int,
+                          value:any,
+                          ui-spec:any = null,
+                          domain:#Domain = null,
+                          rowspan:int = 1, colspan:int = 1,
+                          editable?:bool = false,
+                          args:#Arguments = null,
+                          field-spec:#WksCellSpec = null,
+                          init-proc:#{proc-type {r:#Record}:any} = null,
+                          refs:#{Array-of DataRef} = null
+                      }:GridCell
+||--    {self.ensure-cell-fits row, col, rowspan = rowspan, colspan = colspan}
+    {if row + rowspan >= self.model.rows then
+        {self.insert-rows self.model.rows, row + rowspan - self.model.rows + 1}
+||--        {error
+||--            {hlformat
+||--                "Item at row %1!s! with rowspan=%2!s! exceeds model size",
+||--                row, rowspan
+||--            }
+||--        }
+    }
+    {if col + colspan >= self.model.cols then
+        {self.insert-cols self.model.cols, col + colspan - self.model.cols + 1}
+||--        {error
+||--            {hlformat
+||--                "Item at column %1!s! with colspan=%2!s! exceeds model size",
+||--                col, colspan
+||--            }
+||--        }
+    }
+
+    ||FIXME: Using methods on gc here mean if you create a new cell
+    || and refresh it, something might be missing.
+    def gc = self.cells[row, col]
+    def cv = self.model.vals[row, col]
+
+    set cv.value = value
+    set cv.ui-spec = ui-spec
+    set cv.editing? = false
+    set cv.formula = null
+    set cv.domain = domain
+    set cv.dataref = null
+    set cv.rowspan = rowspan
+    set cv.colspan = colspan
+    set cv.field-spec = field-spec
+    set cv.init-proc = init-proc
+    set cv.editable? = editable?
+    {if cv.ui-spec != null then
+        set cv.editable? = true
+    }
+    || If it is not editable, lock it in that state
+    set cv.locked? = not cv.editable?
+
+    ||FIXME: need an extensible mechanism... at a minimum, a
+    ||method on WksCellSpec so a subclass could be created...
+
+    || non-null refs means inserting a Formula
+    {if {proc? value} then
+        {self.model.make-formula-at
+            self.insert-row, self.insert-col,
+            value asa CalcProc,
+            cv.domain,
+            {splice refs}
+        }
+        set cv.value = cv.domain.default-value
+     else
+        {type-switch value
+         case vc:ValueControl do
+            set cv.editable? = true
+            set cv.editing? = true
+            set cv.locked? = true
+            set cv.value = {self.convert-value vc.value-as-any, row, col}
+            {gc.insert-editor vc}
+         case erg:EmbeddedRecordGrid do
+            set erg.worksheet = self
+            set erg.grid-cell = gc
+            ||FIXME: Not sure we should treat this as a special case...
+            set erg.grid-cell.frame.vstretch? = true
+            set erg.grid-cell.frame.hstretch? = true
+            {gc.insert-ui erg}
+         case ctl:Control do
+            {gc.insert-ui ctl}
+            set cv.locked? = true
+            ||FIXME: document or remove
+            || says if user says editable? then we add hook for ValueFinished
+            || could do that in insert-ui
+            {if cv.editable? then
+                {ctl.add-event-handler gc.event-hook}
+            }
+         case erf:EmbeddedRecordForm do
+            set cv.embedded-form = erf
+            set erf.worksheet = self
+            set domain = WorksheetModel.any-domain
+            set cv.value = null
+         case v:Visual do
+            set cv.locked? = true
+            set cv.editing? = v isa ActiveTraversor
+            {gc.insert-ui v asa Graphic}
+         case ref:DataRef do
+            set cv.dataref = ref
+            set cv.value = {ref.get-value}
+        }
+    }
+
+    set cv.domain = {if-non-null domain then
+                        domain
+                     else
+                        {WorksheetModel.get-default-domain cv.value}
+                    }
+
+||FIXME: now handled in style sheet
+||--    {if not {option-set-by-name? gc.frame, "halign"} then
+||--        {if {number? cv.value} then
+||--            set gc.frame.halign = "right"
+||--         else
+||--            set gc.frame.halign = "left"
+||--        }
+||--    }
+
+    ||FIXME: need to store these on the CellValue or they might get lost
+    {if-non-null args then
+        {for (arg,k) in args do
+            {if-non-null k then
+                {gc.frame.set-option-by-name k, arg}
+             else
+                {error "Internal error"} || Should have been caught earlier
+            }
+        }
+    }
+
+||--    ||NOTE: The ui-spec is actually instantiated in gc.get-editor
+||--    def ui-spec =
+||--        {type-switch cv.ui-spec
+||--         case p:{proc-type {gc:GridCell}:ValueControl} do
+||--            {p gc}
+||--         case p:{proc-type {}:ValueControl} do
+||--            {p}
+||--         case t:ClassType do
+||--            {if-non-null maker = {t.get-instance-maker "default"} then ||""
+||--                {maker.new} asa ValueControl
+||--             else
+||--                {error {hlmessage "No default constructor for %1!s!", t}}
+||--            }
+||--         else cv.ui-spec
+||--        }
+||--
+||--    {type-switch ui-spec
+||--     case nt:Null do
+||--        || ignore it
+||--     case ctl:ValueControl do
+||--        {gc.insert-editor ctl}
+||--        set cv.locked? = true
+||--        set cv.editing? = gc.ui isa ActiveTraversor
+||--     else
+||--        {gc.insert-ui ui-spec}
+||--        set cv.locked? = true
+||--        set cv.editing? = gc.ui isa ActiveTraversor
+||--    }
+    {return gc}
+  }
+
+  {method public open {get-width-notifier col:int}:SizeNotifier
+    {return {self.ruler.get-notifier col}}
+  }
+
+  {method public open {get-value row:int, col:int}:any
+    def val = {self.model.get-value row, col}
+||--    {dump "get-value", row, col, val}
+    {return val}
+  }
+
+||--  || Decide what to do with a value to be stored in a cell
+||--  || if it begins with a single quote, the rest is a string literal
+||--  || if it parses as a date, then it's a DateTime
+||--  || if it parses as a double, then it's a double
+||--  || anything else goes in just as it is
+  ||FIXME: better name?
+  {method public {convert-value val:any, row:int, col:int}:any
+    let nv:any = val
+    {type-switch val
+     case s:String do
+        def cv = self.model.vals[row, col]
+        {try
+            set nv = {cv.domain.parse s}
+         catch e:Exception do
+||--            {popup-message e.message}
+            set nv = cv.value
+        }
+    }
+    {return nv}
+  }
+
+  {method public open {set-value row:int, col:int, val:any}:void
+    def cv = self.model.vals[row, col]
+
+    let nv:any = {self.convert-value val, row, col}
+||--    {dump "set-value", row, col, val, nv, cv.value}
+    {if-non-null spec = cv.field-spec then
+        {if-non-null rf = spec.form then
+||--            {dump "rf.update"}
+            {rf.update}
+        }
+     elseif nv != cv.value then
+        {if-non-null ref = cv.dataref then
+            {ref.set-value val}
+||--            set cv.value = val
+            ||FIXME: Is this redundant?
+||--            {self.model.set-value row, col, nv}
+         else
+            {self.model.set-value row, col, nv}
+        }
+
+||--    def gc = self.cells[row, col]
+||--    ||FIXME: this may be redundant.
+||--    {gc.refresh}
+    }
+  }
+
+  {method protected open {refresh-cells}:void
+    {for ri = 0 below self.row-count do
+        {for ci = 0 below self.col-count do
+            {self.attach-cell ri, ci}
+            set self.cells[ri, ci].value = null
+        }
+    }
+  }
+
+  {method public open {rebuild-cell-grid}:void
+    {self.refresh-headers}
+    {self.refresh-cells}
+  }
+
+  {method public open {refresh}:void
+    def rows = self.row-count
+    def cols = self.col-count
+
+    {if self.last-row-edit-count != self.model.row-tree.edit-count
+        or self.last-col-edit-count != self.model.col-tree.edit-count
+        or self.last-ruler != self.ruler
+     then
+        {self.rebuild-cell-grid}
+    }
+    {for ri = 0 below rows do
+        {for ci = 0 below cols do
+            {self.cells[ri, ci].refresh}
+        }
+    }
+  }
+
+  || Rebuild the entire grid if the model size changed
+  ||FIXME: avoid doing a full rebuild on resize
+  {method protected open {refresh-headers}:void
+||--    {if self.col-headers.size == self.col-count
+||--        and self.row-headers.size == self.row-count
+||--     then
+||--        {self.reset-cell-sizes}
+||--        {return}
+||--    }
+
+    set self.last-row-edit-count = self.model.row-tree.edit-count
+    set self.last-col-edit-count = self.model.col-tree.edit-count
+    set self.last-ruler = self.ruler
+    {self.grid.clear}
+    {self.row-headers.clear}
+    {self.col-headers.clear}
+    {self.row-edges.clear}
+    {self.col-edges.clear}
+
+    set self.row-header-right =
+        {self.grid.make-fiducial orientation = Orientation.vertical}
+    {self.col-edges.append self.row-header-right}
+
+    set self.col-header-bottom =
+        {self.grid.make-fiducial orientation = Orientation.horizontal}
+    {self.row-edges.append self.col-header-bottom}
+    
+||--    {self.grid.add self.ruler,
+||--        left = {self.grid.left}, right = {self.grid.right},
+||--        top = {self.grid.top}, bottom = self.row-edges[0]
+||--    }
+
+    {for ri:int = 0 below self.row-count do
+        def mrow = self.model.row-map[ri]
+        {if mrow >= 0 then
+            def header = {self.make-row-header ri}
+            {self.row-headers.append header}
+            {self.row-edges.append
+                {self.grid.make-fiducial orientation = Orientation.horizontal}
+            }
+            {self.grid.add header,
+                left = {self.grid.left}, right = self.col-edges[0],
+                top = self.row-edges[mrow], bottom = self.row-edges[mrow + 1]
+            }
+        }
+    }
+    {self.grid.add self.ruler,
+        left = {self.grid.left}, right = {self.grid.right},
+        top = {self.grid.top}, bottom = self.row-edges[0]
+    }
+
+    {for ci:int = 0 below self.col-count do
+        def mcol = self.model.col-map[ci]
+        {if mcol >= 0 then
+            def header = {self.make-col-header ci}
+            {self.col-headers.append header}
+            {self.col-edges.append
+                {self.grid.make-fiducial orientation = Orientation.vertical}
+            }
+            {self.grid.add header,
+                left = self.col-edges[mcol], right = self.col-edges[mcol + 1],
+                top = {self.grid.top}, bottom = self.col-header-bottom
+            }
+        }
+    }
+
+    {if self.cells.rows != self.model.vals.rows
+        or self.cells.cols != self.model.vals.cols
+     then
+        {error {hlmessage Internal error}} || Forgot to insert
+    }
+  }
+
+||--  {method protected {get-right-fiducial row:int, col:int}:GridFiducial
+||--    def cv = self.model.vals[self.row, self.col]
+||--
+||--  }
+
+  {method public open {attach-cell
+                          row:int, col:int
+                      }:void
+    let cell:GridCell = self.cells[row, col]
+    {cell.refresh-from-discloser null}
+    def cv = self.model.vals[row, col]
+    def rmap = self.model.row-map
+    def cmap = self.model.col-map
+    def mrow = rmap[row]
+    def mcol = cmap[col]
+||--    {if cell.discloser? then
+||--        {if-non-null rgs = {self.model.row-tree.get-group col, row, row} then
+||--            {if not rgs.expanded? then
+||--                set rowspan = 1
+||--            }
+||--        }
+||--        {if-non-null rgs = {self.model.col-tree.get-group row, col, col} then
+||--            {if not rgs.expanded? then
+||--                set colspan = 1
+||--            }
+||--        }
+||--    }
+    {if mrow >= 0 and mcol >= 0 then
+        {self.grid.add cell,
+            left = self.col-edges[mcol], right = self.col-edges[mcol + cv.colspan],
+            top = self.row-edges[mrow], bottom = self.row-edges[mrow + cv.rowspan]
+        }
+    }
+||--    {self.grid.add cell,
+||--        left = self.col-edges[col], right = self.col-edges[col + colspan],
+||--        top = self.row-edges[row], bottom = self.row-edges[row + rowspan]
+||--    }
+  }
+
+  {method protected open {make-cell-array}:void
+    set self.cells = {new {ResizableArray-of GridCell},
+                         self.row-count, self.col-count
+                     }
+    {for ri = 0 below self.row-count do
+        {for ci = 0 below self.col-count do
+            set self.cells[ri, ci] = {GridCell self, ri, ci}
+        }
+    }
+  }
+
+  || Add a cell (Graphic) to the Grid
+  {method protected open {make-cell row:int, col:int}:GridCell
+    def cell = {GridCell self, row, col}
+    set self.cells[row, col] = cell
+    {self.attach-cell row, col}
+    {return cell}
+  }
+
+  {method protected open {make-col-header ci:int}:Frame
+    def sn = {self.ruler.get-notifier ci}
+    set sn.halign = "center"
+    set sn.background = Worksheet.header-bg
+    set sn.color = Worksheet.header-color
+    set sn.margin = self._cell-margin
+    set sn.border-spec = {BorderSpec left-border-width = 1in/300}
+    {sn.add replace? = true, {bold {format "%c", 'A' + ci}}}
+    {return sn}
+  }
+
+  {method protected open {make-row-header ri:int}:Frame
+    let label:Visual = {bold {format "%s", ri + 1}}
+    {return {SizeNotifier
+                ri, true,
+                width = self.row-selector-width,
+                halign = "right",
+                background = Worksheet.header-bg,
+                color = Worksheet.header-color,
+                margin = self._cell-margin,
+                border-spec = {BorderSpec top-border-width = 1in/300},
+||--                border-style = BorderStyle.dot,
+                label
+            }
+    }
+  }
+
+  {method private {check-cell-parms
+                          row:int, row-count:int,
+                          col:int, col-count:int
+                      }:void
+    {if row >= self.row-count then
+        {error {hlmessage Can't insert row beyond bottom edge}}
+    }
+    {if col >= self.col-count then
+        {error {hlmessage Can't insert colomn beyond right edge}}
+    }
+    {if row < 0 then
+        {error {hlmessage Row index must be zero or more.}}
+    }
+    {if col < 0 then
+        {error {hlmessage Column index must be zero or more.}}
+    }
+  }
+
+  {method private {adjust-embedded-forms rsds:RecordSetDataSource}:bool
+    let deleted?:bool = false
+    def rows = self.model.rows
+    {for ri = 0 below self.model.rows do
+        {for ci = 0 below self.model.cols do
+            def cv = self.model.vals[ri, ci]
+            {if-non-null erf = cv.embedded-form then
+                {if erf.data-source == rsds then
+                    {erf.insert-embedded-form ri, ci}
+                    {if self.model.rows < rows then
+                        set deleted? = true
+                    }
+                }
+            }
+            {if-non-null fs = cv.field-spec then
+                {if-non-null rf = fs.form then
+                    {assert self.cells[ri, ci].data-binding-context == rf}
+                    {if-non-null cr = rf.current-record then
+                        set cv.value = cr[fs.v asa String]
+                        set self.cells[ri, ci].value = null
+||--                        {dump "update from rsds", ri, ci, cv.value}
+                    }
+                }
+            }
+        }
+        {if deleted? then
+            {return true}
+        }
+    }
+    {return false}
+  }
+
+  {method protected open {handle-observer-message
+                             sender:Observable,
+                             message:any
+                         }:void
+||--    {dump sender, message, self}
+    ||FIXME: need an interface to support this cleanly
+    {type-switch sender
+     case rsds:RecordSetDataSource do
+        let more?:bool = true
+        {while more? do
+            set more? = {self.adjust-embedded-forms rsds}
+        }
+    }
+    {self.update}
+  }
+
+
+  {method public open {set-active row:int, col:int}:void
+||--    {dump "set-active", row, col}
+    {if self.active-row != row or self.active-col != col then
+        set self.active-row = row
+        set self.active-col = col
+||FIXME: for now, active-row/col is just for find-next-active
+||--        {self.note-cell-changed}
+    }
+  }
+
+  {method private {traversable? cv:CellValue}:bool
+    {if-non-null v = cv.value then
+        {type-switch v
+         case at:ActiveTraversor do
+            {return at.takes-focus?}
+         case v:Visual do
+            {return false}
+        }
+    }
+    {return cv.editable?}
+  }
+
+  {method public open {find-next-active forward?:bool = true}:(row:int, col:int)
+    {if forward? then
+||--        {dump forward?, self.active-row, self.active-col}
+        let first-col:int = self.active-col + 1
+        || Look for an editable cell after the current cell
+        {for ri = self.active-row below self.row-count do
+            {for ci = first-col below self.col-count do
+                def cv = self.model.vals[ri, ci]
+                {if {self.traversable? cv} then
+                    {return (ri, ci)}
+                }
+            }
+            set first-col = 0
+        }
+
+        || Not found yet. Wrap to the first cell and keep looking
+        {for ri = 0 to self.active-row do
+            {for ci = 0 below self.col-count do
+                {if ri == self.active-row and ci == self.active-col then
+                    {break}
+                }
+                def cv = self.model.vals[ri, ci]
+                {if {self.traversable? cv} then
+                    {return (ri, ci)}
+                }
+            }
+        }
+     else
+        || Iterate in reverse, with wraparound
+        let first-row:int = self.active-row
+        let first-col:int = self.active-col - 1
+        {if self.active-col <= 0 then
+            set first-col = self.col-count - 1
+            set first-row = self.active-row - 1
+        }
+
+        || Look for an editable cell before the current cell
+        {for ri = first-row downto 0 do
+            {for ci = first-col downto 0 do
+                def cv = self.model.vals[ri, ci]
+                {if {self.traversable? cv} then
+                    {return (ri, ci)}
+                }
+            }
+            set first-col = self.col-count - 1
+        }
+
+        || Not found yet. Wrap to the last cell (lower right)
+        {for ri = self.row-count - 1 downto first-row do
+            {for ci = self.col-count - 1 downto 0 do
+                {if ri == self.active-row and ci == self.active-col then
+                    {break}
+                }
+                def cv = self.model.vals[ri, ci]
+                {if {self.traversable? cv} then
+                    {return (ri, ci)}
+                }
+            }
+        }
+    }
+    {return (self.active-row, self.active-col)}
+  }
+
+  {method public open {traverse forward?:bool = true}:bool
+    def (row, col) = {self.find-next-active forward? = forward?}
+||--    {dump "traverse", row, col}
+    {if row == self.active-row and col == self.active-col then
+        || Nothing to traverse to
+        {return false}
+     else
+        def cell = self.cells[row, col]
+        {cell.activate-cell true}
+    }
+    {return true}
+  }
+
+  || ---------------
+  || Event Handling
+  || ---------------
+
+
+||--  {method public open {note-selection-context-activated}:void
+||--  }
+
+  ||FIXME: better name
+  {method package {map-point
+                      x:Distance,
+                      y:Distance
+                  }:(target:Graphic,
+                     record-index:int,
+                     column-index:int
+                    )
+    {self.validate-layout}
+    {type-switch 
+        {self.find-graphic-at x, y,
+            {proc {g:Graphic}:bool
+                {return
+                    {type-switch g
+                     case g:GridCell do true
+                     case g:SizeNotifier do true
+                     else false
+                    }
+                }
+            } 
+        }
+     case gc:GridCell do
+        {if-non-null d =
+            {self.find-graphic-at x, y,
+                {proc {g:Graphic}:bool
+                    {return g isa Discloser}
+                }
+            }
+         then
+            {return (d, gc.row, gc.col)}
+        }
+        {return (gc, gc.row, gc.col)}
+
+     case sn:SizeNotifier do
+        {return (sn,
+                 {if sn.row? then sn.pos else -1},
+                 {if sn.row? then -1 else sn.pos}
+                )
+        }
+     else
+        {return (self, -1, -1)}
+    }
+  }
+
+  {method private {init-pending-selection row:int, col:int}:void
+    set self.anchor-row = row
+    set self.anchor-col = col
+    set self.point-row = row
+    set self.point-col = col
+  }
+
+  ||NOTE: based on TextEditPanel
+  {method public open {on-focus-in e:FocusIn}:void
+    ||FIXME: not needed?
+    {self.selection-context-request-activate}
+    {super.on-focus-in e}
+  }
+
+  {method public open {on-focus-out e:FocusOut}:void
+    || True loss of key focus indicates we should give up ASC as well. 
+    || However, if just the FocusManager itself is losing focus do 
+    || nothing; Focus will eventually return to this object. This is critical 
+    || to allowing the browser's menus to refer to the ASC (lwexler 5/04)
+    {if-non-null fm:FocusManager = {self.get-focus-manager} then
+        {if fm.active-selection-context == self and
+            fm.have-keyboard-focus?
+         then
+            set fm.active-selection-context = null
+        }
+    }
+    
+    {super.on-focus-out e}
+  }
+
+  {method public open {on-pointer-envelope-event 
+                          ev:PointerEnvelopeEvent
+                      }:void
+    
+    {if ev.consumed? then {return}}
+    {if ev.contents.consumed? then {return}}
+    
+    def (ex, ey, view) =
+        {self.transform-from-graphical-root-coordinates ev.contents.x, ev.contents.y}
+
+    {type-switch ev.contents
+     case pp:PointerPress do
+        {self.selection-context-request-activate}
+        let (g:#Graphic, row:int, column:int) = {self.map-point ex, ey}
+        {if pp.button == right-button then
+            set self._context-row = row
+            set self._context-column = column
+         elseif pp.button == left-button then
+||--            {dump "PointerPress: clear selection"}
+            {self.reset-selection}
+        }
+     case pr:PointerRelease do
+        {if pr.button == left-button then
+            {if not self.selecting? then
+                let (g:Graphic, row:int, column:int) =
+                    {self.map-point ex, ey}
+                {if not g isa Discloser then
+                    {if not {self._selection.contains-cell? row, column} then
+                        {self.init-pending-selection row, column}
+                        {self.update-selection}
+                    }
+                }
+            }
+        }
+
+     case cme:ContextMenuEvent do
+        let (g:#Graphic, row:int, column:int) = {self.map-point ev.x, ev.y}
+        {if row != self._context-row or column != self._context-column then
+            {ev.consume}
+        }
+    } 
+    {super.on-pointer-envelope-event ev}
+  }
+
+  {method public open {on-pointer-press ev:PointerPress}:void
+    {if ev.consumed? or 
+        not self.enabled?
+     then
+        {super.on-pointer-press ev}
+        {return}
+    }
+    let g:Graphic = self
+    set (g, self.anchor-row, self.anchor-col) = {self.map-point ev.x, ev.y}
+    set self.point-row = self.anchor-row
+    set self.point-col = self.anchor-col
+    {super.on-pointer-press ev}
+  }
+
+  || For ContainerDragScroller
+
+  {method public open {on-drag-started ev:DragStarted}:void
+    {if self.enabled? and
+        not ev.consumed? and
+        ev.state-mask.button-1?
+     then
+        {ev.consume}
+        {self.start-dragscroll ev}
+    }
+    {super.on-drag-started ev}
+  }
+
+  {method public open {note-dragscroll-started x:Distance, y:Distance}:void
+    {self.reset-selection}
+    set self.selecting? = true
+    let g:Graphic = self
+    set (g, self.point-row, self.point-col) = {self.map-point x, y}
+    set self.anchor-row = self.point-row
+    set self.anchor-col = self.point-col
+    {super.note-dragscroll-started x, y}
+  }
+
+  {method public open {note-dragscroll-continued  x:Distance, y:Distance}:void
+||--    {self.adjust-point x, y}
+    let g:Graphic = self
+    let row:int
+    let col:int
+    set (g, row, col) = {self.map-point x, y}
+    {if self.point-row == -1 and self.point-col == -1 then
+        || ignore because everything is already selected
+     elseif self.anchor-col == -1 then
+        || selecting entire columns
+        set self.anchor-row = row
+     elseif self.point-row == -1 then
+        || selecting entire rows
+        set self.anchor-col = col
+     else
+        set self.anchor-row = row
+        set self.anchor-col = col
+    }
+    {super.note-dragscroll-continued x, y}
+    {self.update-selection}
+  }
+
+  {method public open {note-dragscroll-ended}:void   
+    {self.update-selection}
+    set self.selecting? = false
+    {super.note-dragscroll-ended}
+  }
+
+  || ----------
+  || Overrides
+  || ----------
+
+  {method public open {create-command name:String}:#Command
+    
+    {return
+        {switch name
+         case "delete" do ||""
+            {WorksheetDelete self}
+         case "select-all" do ||""
+            {WorksheetSelectAll self}
+         case "copy" do ||""
+            {WorksheetCopy self}
+         case "paste" do ||""
+            {WorksheetPaste self}
+||--         case "grid-move-next" do ||""
+||--            {WorksheetMoveNextCommand self}
+||--         case "grid-move-previous" do ||""
+||--            {WorksheetMovePreviousCommand self}
+||--         case "grid-move-to" do ||""
+||--            {WorksheetMoveToCommand self}
+         else
+            {super.SelectionContext.create-command name}
+        }
+    }
+  }
+  
+
+  {method public open {insist-active at:#ActiveTraversor}:void
+    {super.insist-active at}
+    {type-switch at
+     case erg:EmbeddedRecordGrid do
+        {if-non-null cg = erg.grid-cell then
+            {self.set-active cg.row, cg.col}
+        }
+    }
+  }
+
+
+  {method public open {get-range-as-selected-text
+                          into:StringBuf,
+                          start-bound:#GuiMark=null,
+                          end-bound:#GuiMark=null
+                      }:void
+    let sel:GuiRangeSelection = {GuiRangeSelection}
+    {sel.adjust-to self, {non-null start-bound}, {non-null end-bound}}
+    let inside?:bool = false
+    {if-non-null range = sel.range then
+        {for ri = 0 below self.row-count do
+            {for ci = 0 below self.col-count do
+                def gc = self.cells[ri, ci]
+                {if {range.intersects-graphic? gc} then
+                    set inside? = true
+                    {if-non-null editor = gc.editor then
+                        def cv = self.model.vals[ri, ci]
+                        {into.concat {cv.domain.format cv.value}}
+                     else
+                        {gc.get-range-as-selected-text into}
+                    }
+                    {into.append '\t'}
+                }
+            }
+            {if inside? then
+                {into.append '\n'}
+            }
+            set inside? = false
+        }
+        {if into.size > 0 and into[into.size - 1] == '\n' then
+            set into.size = into.size - 1
+        }
+    }
+  }
+
+  || SelectionContext
+||--  {getter public abstract open {selection}:Selection}
+||--  {method public abstract open {select-nothing}:void}  
+||--  {method public open {overdraw-selection g:Graphic,  gc:Renderer2d}:void}
+
+
+  {getter public open {selection}:WorksheetSelection
+    {return self._selection}
+  }  
+
+  {getter public open {container}:Graphic
+    {return self}
+  }
+
+  || Reset the selection but do not notify
+  {method protected open {reset-selection}:void
+    set self._selection = {WorksheetSelection.empty self}
+  }
+
+  {method protected open {update-selection}:void
+    def nsel = {WorksheetSelection.from-corners
+                   self,
+                   self.anchor-row, self.anchor-col,
+                   self.point-row, self.point-col
+               }
+    {if not {nsel.equal? self._selection} then
+        set self._selection = nsel
+        def new-selection =
+            {format "%d,%d -> %d,%d (%d x %d)",
+                nsel.first-row, nsel.first-column,
+                nsel.row-anchor, nsel.column-anchor,
+                nsel.row-count, nsel.column-count
+            }
+||--        {dump new-selection}
+        {self.handle-event {SelectionChanged}}
+    }
+  }
+
+  {method public open {select-nothing}:void
+    {if not self._selection.empty? then
+        set self._selection = {WorksheetSelection.empty self}
+        {self.handle-event {SelectionChanged}}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Select all records, columns, and/or regions.
+    }
+  }
+  {method public open {select-all}:void
+    {if not self._selection.all-cells? then
+        set self._selection = {WorksheetSelection.all self}
+        {self.handle-event {SelectionChanged}}
+    }
+  }
+
+  {doc-next 
+    {purpose
+        Delete the current selection.
+    }
+  }
+  {method public open {delete-selection}:void
+||--    {if not self.editable? then
+||--        {error
+||--            {hlmessage 
+||--                Attempted to delete selection in non-editable RecordGrid.
+||--            }
+||--        }   
+||--    }
+    let selection:WorksheetSelection = self._selection
+    ||FIXME: NYI delete-selection
+  }
+  
+  {method public open {on-selection-changed sc:SelectionChanged}:void
+    {self.update}
+    {self.request-update-commands}
+  }
+
+    
+}
+
+|| -------------------------------------------------------------------------
+
+|| Embedded RecordGrid
+|#
+  - A SizeNotifier notifies listeners when the width option changes
+  - The top of the Worksheet is a WorksheetRuler, which as a SizeNotifier for
+    each column
+  - An EmbeddedGridHeader will observe a SizeNotifier and change the width option
+  - The header-spec on an embedded RecordGrid will create a EmbeddedGridHeader
+    to contain the header text while tracking the column size.
+#|
+
+{doc-next
+    {purpose 
+        A {docref Frame} that observes a column header so that it can
+        set the RecordGridColumn width to match.
+    }
+}
+{define-class public open EmbeddedGridHeader {inherits Frame, Observer}
+
+  field public-get protected-set pos:int
+  field public-get protected-set rgc:RecordGridColumn
+  field public-get protected-set worksheet:Worksheet
+
+  {nonlocal-option public vertical-grid-line-width:any
+    def notifier = {self.worksheet.get-width-notifier self.pos}
+    {self.adjust-size notifier}
+  }
+
+  {constructor public {default
+                          worksheet:Worksheet,
+                          rgc:RecordGridColumn,
+                          pos:int,
+                          ...
+                      }
+    {construct-super.Observer}
+    {construct-super.Frame _style-element = "EmbeddedGridHeader", {splice ...}}
+    set self.worksheet = worksheet
+    set self.rgc = rgc
+    set self.pos = pos
+    def notifier = {self.worksheet.get-width-notifier pos}
+    {self.adjust-size notifier}
+    {notifier.add-observer self}
+  }
+
+  {method protected {adjust-size notifier:SizeNotifier}:void
+    def dx = {self.any-to-Distance self.vertical-grid-line-width}
+    set self.rgc.width = notifier.cell-width - dx
+  }
+
+  {method protected {handle-observer-message
+                        source:Observable, message:any
+                    }:void
+    {type-switch source
+     case sn:SizeNotifier do
+        {if not sn.row? then
+||--            {dump "observed", self.pos, sn.cell-width/1pt, sn.cell-height/1pt}
+            {self.adjust-size sn}
+        }
+    }
+  }
+}
+
+
+{doc-next
+    {purpose
+        When set-size is called, notify observers of the new bounds.
+    }
+}
+{define-class public open SizeNotifier {inherits Observable, Frame}
+
+  field public pos:int
+  field public row?:bool
+
+  {getter public open {style-element}:String
+    {if self._style-element == "" then
+        {return "SizeNotifier"} ||""
+     else
+        {return self._style-element}
+    }
+  }
+
+  {getter public open {cell-width}:Distance
+    {return (self.layout asa BasicLayout).cell-bounds.width}
+  }
+
+  {getter public open {cell-height}:Distance
+    {return (self.layout asa BasicLayout).cell-bounds.height}
+  }
+
+  {constructor public {default
+                          pos:int,
+                          row?:bool,
+                          ...
+                      }
+    {construct-super.Observable}
+    {construct-super.Frame opaque-to-events? = true, {splice ...}}
+    set self.pos = pos
+    set self.row? = row?
+  }
+
+  {method public open {set-size lc:LayoutContext, bounds:GRect}:void
+    {super.set-size lc, bounds}
+||--    {dump self.pos, self.row?, bounds.width/1pt, bounds.height/1pt}
+    {self.notify-observers}
+  }
+
+}
+
+
+
+{doc-next
+    {purpose Possible states of the layout process.}
+    {details
+        This enumeration is used to represent the state of the layout
+        process for an object that uses percentage sizes, such
+        as {docref WorksheetRuler}.
+
+        When sizes are expressed as a percent of the total, the total
+        size must be computed first, then the percentages can be
+        evaluated.
+    }
+}
+{define-enum public LayoutState
+    unknown, measuring, done
+}
+
+{doc-next
+    {purpose
+        An object used in a {docref Worksheet} to determine the widths
+        of the columns.
+    }
+}
+{define-class public open WorksheetRuler {inherits HBox}
+
+  {local-option public default-width:any =
+      2cm
+||--      {make-elastic preferred-size = 1cm}
+  }
+
+  {doc-next
+    {purpose The state of the layout process.}
+    {details
+        The initial state of an object that supports percentage sizes
+        will be {ctext LayoutState.unknown}. When {docref
+        Graphic.set-size} is invoked, it can check to see if there are
+        any sizes expressed as a percent of the total. If not, the
+        state is set to {ctext LayoutState.done} and the process is complete.
+
+        If there are percentage sizes, they are replaced with
+        elastics, the state is changed to
+        {ctext LayoutState.measuring}, and another layout is requested.
+
+        When that layout is complete the total size is known and the
+        elastics can be replaced with rigid elastics of the correct
+        size. A final layout is then requested.
+    }
+  }
+  field protected state:LayoutState
+
+  field protected spacers:{Array-of SizeNotifier}
+  field protected fractions:{Array-of double}
+  field protected final-width:Distance
+
+  {constructor public {default ...}
+    set self.state = LayoutState.unknown
+    set self.spacers = {new {Array-of SizeNotifier}}
+    set self.fractions = {new {Array-of double}}
+    {construct-super ...}
+  }
+
+||--  {constructor public {empty
+||--                          ...
+||--                      }
+||--    set self.state = LayoutState.unknown
+||--    set self.spacers = {new {Array-of SizeNotifier}}
+||--    set self.fractions = {new {Array-of double}}
+||--    {construct-super ...}
+||--  }
+
+  {method public {clear}:void
+    set self.state = LayoutState.unknown
+    {self.spacers.clear}
+    {self.fractions.clear}
+    {super.clear}
+  }
+
+  {method public {add a:any, ...}:#Visual
+    def spacer =
+        {type-switch a
+         case e:Elastic do
+            {self.fractions.append -1.0}
+            {SizeNotifier self.spacers.size, false, width = e}
+         case d:Distance do
+            {self.fractions.append -1.0}
+            {SizeNotifier self.spacers.size, false, width = d}
+         case pd:PixelDistance do
+            {self.fractions.append -1.0}
+            {SizeNotifier self.spacers.size, false, width = pd}
+         else
+            {if {number? a} then
+                def x = a asa double
+                {if x >= 0.0 then
+                    {self.fractions.append a asa double}
+                    {SizeNotifier self.spacers.size, false}
+                 else
+                    {error
+                        {hlformat "Value must be positive: %s", a}
+                    }
+                }
+             else
+                {error
+                    {hlformat "Unexpected argument: %s", a}
+                }
+            }
+        }
+    {self.spacers.append spacer}
+    {return {super.add spacer}}
+  }
+
+  {method public open {non-keyword-init-arg a:any}:void
+||--    {super.non-keyword-init-arg self.spacers[self.spacers.size - 1]}
+      {self.add a}
+  }
+
+  {method public open {set-column-width i:int, a:any}:void
+    {self.get-notifier i}
+    {type-switch a
+     case e:Elastic do
+        set self.fractions[i] = -1.0
+        set self.spacers[i].width = e
+     case d:Distance do
+        set self.fractions[i] = -1.0
+        set self.spacers[i].width = d
+     case pd:PixelDistance do
+        set self.fractions[i] = -1.0
+        set self.spacers[i].width = pd
+     else
+        {if {number? a} then
+            def x = a asa double
+            {if x >= 0.0 then
+                set self.fractions[i] = a asa double
+                set self.spacers[i].width = {make-elastic}
+             else
+                {error
+                    {hlformat "Value must be positive: %s", a}
+                }
+            }
+         else
+            {error
+                {hlformat
+                    "Value must be percentage, distance, or elastic: %s", a
+                }
+            }
+        }
+    }
+  }
+
+  {method protected {adjust-spacing}:void
+    def total-width = (self.layout asa BasicLayout).bounds.width
+||--    {dump self.state, total-width}
+    {if self.state == LayoutState.unknown then
+        || Unknown sizes, so reset percentage widths
+        let percent?:bool = false
+        {for spacer key i in self.spacers do
+            {if self.fractions[i] >= 0.0 then
+                set spacer.width = {make-elastic}
+                set percent? = true
+            }
+        }
+        set self.state =
+            {if percent? then LayoutState.measuring else LayoutState.done}
+     elseif self.state == LayoutState.measuring then
+        || Just finished a layout with everything in flux
+        {for spacer key i in self.spacers do
+            {if self.fractions[i] >= 0.0 then
+                set spacer.width = self.fractions[i] * total-width
+                set spacer.background = "white"
+            }
+        }
+        set self.state = LayoutState.done
+     elseif self.state == LayoutState.done then
+        || set-size after final width computed. Need to start again?
+        def ex = {abs self.final-width - total-width}
+||--        {dump self.state, ex}
+        {if ex > .01mm then
+            set self.state = LayoutState.measuring
+            {self.adjust-spacing}
+        }
+||DEBUG
+||--        {for spacer key i in self.spacers do
+||--            {if i mod 2 == 0 then
+||--                set spacer.background = "white"
+||--             else
+||--                set spacer.background = "yellow"
+||--            }
+||--            {dump i, spacer.width}
+||--        }
+    }
+  }
+
+  {method public open {get-notifier n:int}:SizeNotifier
+    {if n >= self.spacers.size then
+        {for i = self.spacers.size - 1 below n do
+            {self.add self.default-width}
+        }
+    }
+    {return self.spacers[n]}
+  }
+
+  {method protected {keyword-init-arg key:String, value:any}:void
+      {super.keyword-init-arg key, value}
+  }
+
+
+  {method public open {set-size lc:LayoutContext, bounds:GRect}:void
+    {super.set-size lc, bounds}
+    {self.adjust-spacing}
+  }
+}
+
+|| -------------------------------------------------------------------------
+
+{doc-next
+    {purpose
+        Subclass of RecordGrid that can be embedded in a {docref Worksheet}.
+    }
+}
+{define-class public open EmbeddedRecordGrid {inherits RecordGrid}
+
+  field public-get protected-set worksheet:#Worksheet
+  field public-get protected-set grid-cell:#GridCell
+
+  {constructor public {default
+                          worksheet:#Worksheet = null,
+                          record-source:#RecordSet = null,
+                          sort:#RecordSort  = null,
+                          filter:#RecordFilter = null,
+                          key-spec:any = null,
+                          header-options:RecordGridRowOptions =
+                              {RecordGridRowOptions},
+                          ui-object:#RecordGridUI =
+                              {ProtoSkinnableRecordGridUI},
+                          ...
+                      }
+    set self.worksheet = worksheet
+    {construct-super
+        record-source = record-source,
+        sort = sort,
+        filter = filter,
+        key-spec = key-spec,
+        header-options = header-options,
+        ui-object = ui-object,
+
+||--        halign = 1.0,
+        display-record-selectors? = false,
+        display-navigation-panel? = false,
+        display-filler-column? = false,
+        region-selection-enabled? = true,
+        {splice ...},
+||--        header-spec = {proc {rgc:RecordGridColumn}:Graphic
+||--                          {return {self.make-header rgc}}
+||--                      },
+        display-column-headers? = true
+    }
+
+    ||HACK
+    || Need to wait for the record grid columns to stabilize
+    {after 0s do || .1s is too little
+||--        {dump "+Add notifiers to RGC"}
+        set self.header-spec =
+            {proc {rgc:RecordGridColumn}:Graphic
+                {return {self.make-header rgc}}
+            }
+    }
+||--    {after .2s do || .1s is too little
+||--        {dump "Add notifiers to RGC"}
+||--        set self.header-spec =
+||--            {proc {rgc:RecordGridColumn}:Graphic
+||--                {return {self.make-header rgc}}
+||--            }
+||--    }
+  }
+
+  {method public open {make-header rgc:RecordGridColumn}:Graphic
+    {if-non-null worksheet = self.worksheet then
+||--        let pos:int = {self.record-source.fields.get-index rgc.field-name}
+        let pos:int = {self.columns.find rgc}
+        {if-non-null gc = self.grid-cell then
+            {inc pos, gc.col}
+        }
+        {return
+            {EmbeddedGridHeader
+                worksheet,
+                rgc,
+                pos,
+                halign = "right",
+                font-weight = "bold",
+                font-size = 8pt,
+                rgc.field.caption
+            }
+        }
+     else
+        {error 
+            {hlmessage
+                Attempt to use an EmbeddedRecordGrid before setting
+                the 'worksheet' field.
+            }
+        }
+    }
+  }
+
+  {method public open {test-record action:String, ...}:void
+    {super.test-record action, ...}
+||--    {dump action, {splice ...}}
+  }
+
+  {method public open {become-active forward?:bool=true}:bool
+||--    {dump "become-active", self}
+    {return {super.become-active forward? = forward?}}
+  }
+
+  {method public open {become-active-from-traversal forward?:bool=true}:bool
+||--    {dump "become-active-from-traversal", self}
+    {return {super.become-active-from-traversal forward? = forward?}}
+  }
+
+}
+
+|| -------------------------------------------------------------------------
+
+{doc-next
+    {purpose
+        Store parameters for adding an object to the {docref WorksheetModel}.
+    }
+}
+{define-class public final WksCellSpec
+  field public constant editable?:bool
+  field public constant rowspan:int
+  field public constant colspan:int
+  field public domain:#Domain
+  field public constant ui-spec:any
+  field public constant v:any
+  field public constant args:Arguments
+
+  || For formula
+  field package refs:#{Array-of DataRef}
+
+  || For EmbeddedRecordForm (could use a subclass instead)
+  field package form:#RecordForm
+  field package embedded-form:#EmbeddedRecordForm
+  || self.v is the field name to bind to
+
+  {constructor public {default
+                          editable?:bool = false,
+                          rowspan:int = 1,
+                          colspan:int = 1,
+                          domain:#Domain = null,
+                          refs:#{Array-of DataRef} = null,
+                          ui-spec:any = null,
+                          v:any,
+                          ...
+                      }
+    set self.editable? = editable?
+    set self.colspan = colspan
+    set self.rowspan = rowspan
+    set self.domain = domain
+    set self.refs = refs
+    set self.ui-spec = ui-spec
+    set self.v = v
+    {for (arg,k) in ... do
+        {if-non-null k then
+            || OK
+         else
+            {error 
+                {hlformat "Extra argument: '%1!s!'", arg}
+            }
+        }
+    }
+    set self.args = {Arguments ...}
+  }
+
+  {constructor public {clone cs:WksCellSpec}
+    set self.editable? = cs.editable?
+    set self.rowspan = cs.rowspan
+    set self.colspan = cs.colspan
+    set self.domain = cs.domain
+    set self.v = cs.v
+    set self.ui-spec = cs.ui-spec
+    set self.args = cs.args    
+    set self.refs = cs.refs
+    set self.form = cs.form
+||FIXME: is this correct? If it is, maybe this should be stored somewhere else.
+||--    set self.embedded-form = cs.embedded-form
+  }
+
+}
+
+{define-proc public {widths ...}:WorksheetRuler
+    {return {WorksheetRuler ...}}
+}
+
+|| Specify parameters to be used when g is added to the Worksheet
+|| The rest args are evenutally applied to the GridCell
+{define-proc public {cell-spec
+                        rowspan:int = 1,
+                        colspan:int = 1,
+                        domain:#Domain = null,
+                        editable?:bool = false,
+                        v:any,
+                        ...
+                    }:WksCellSpec
+    {return
+        {WksCellSpec
+            rowspan = rowspan, colspan = colspan,
+            domain = domain, editable? = editable?,
+            v, {splice ...}
+        }
+    }
+}
+
+{define-proc public {currency-cell
+                        rowspan:int = 1,
+                        colspan:int = 1,
+                        editable?:bool = false,
+                        v:any,
+                        ...
+                    }:WksCellSpec
+    {return
+        {WksCellSpec
+            editable? = editable?, domain = WorksheetModel.currency-domain,
+            rowspan = rowspan, colspan = colspan,
+            v,
+            halign = "right", {splice ...}
+        }
+    }
+}
+
+{define-proc public {formula-cell
+                        rowspan:int = 1,
+                        colspan:int = 1,
+                        domain:Domain = WorksheetModel.double-domain,
+                        formula:CalcProc,
+                        ...
+                    }:WksCellSpec
+    def args = {Arguments}
+    def refs = {new {Array-of DataRef}}
+    {if formula == null or not {proc? formula} then
+        {error {hlmessage The formula parameter must be a procedure.}}
+    }
+    {for (a,k) in ... do
+        {if-non-null k then
+            {args.append a, keyword = k}
+         else
+            {type-switch a
+||FIXME: self is undefined in this proc
+||--             case s:String do
+||--                {refs.append {(self asa DataSource).get-ref s}}
+             case cr:DataRef do
+                {refs.append cr}
+             else
+                {error
+                    {hlformat "Unexpected argument: '%s'", a}
+                }
+            }
+        }
+    }
+    {return
+        {WksCellSpec
+            editable? = false,
+            rowspan = rowspan, colspan = colspan,
+            domain = domain,
+            refs = refs,
+            formula,
+            {splice args}
+        }
+    }
+}
+
+||FIXME: drop this?
+{define-proc public {editable-cell
+                        rowspan:int = 1,
+                        colspan:int = 1,
+                        v:any,
+                        ...
+                    }:WksCellSpec
+    {return
+        {WksCellSpec
+            editable? = true,
+            rowspan = rowspan, colspan = colspan, v, {splice ...}
+        }
+    }
+}
+
+{define-proc public {row-group
+                        rows:int,
+                        expanded?:bool = true
+                    }:GroupProto
+    {return
+        {GroupProto true, rows, expanded? = expanded?}
+    }
+}
+{define-proc public {col-group
+                        cols:int,
+                        expanded?:bool = true
+                    }:GroupProto
+    {return
+        {GroupProto false, cols, expanded? = expanded?}
+    }
+}
+
+{doc-next
+    {purpose
+        Define a {docref RecordForm} that will be repeated in a
+        {docref Worksheet} for each record in a {docref RecordSetDataSource}.
+    }
+}
+{define-class public open EmbeddedRecordForm {inherits InitRestArgParser}
+
+  field public-get protected-set row:int = -1 field public-get
+  protected-set col:int = -1 field protected _worksheet:#Worksheet
+
+  field protected data-source:RecordSetDataSource
+  {getter protected {_record-source}:#RecordSet
+    {return self.data-source.record-set}
+  }
+
+  field protected id-field:String
+
+  field protected items:{Array-2-of #WksCellSpec}
+
+  ||FIXME: Only used during construction. Should be private?
+  field protected insert-row:int
+  field protected insert-col:int
+  field protected insert-rowspan:int = 1
+  field protected insert-colspan:int = 1
+  field protected init-rows:int
+  field protected init-cols:int
+  field protected _init?:bool = false
+
+  field private _internal-view:RecordView
+
+  field protected forms:{Array-of RecordForm}
+
+  {getter public open {row-count}:int
+    def (form-rows, form-cols) = {self.items.size}
+    {return form-rows}
+  }
+
+  {getter public open {total-row-count}:int
+    def (form-rows, form-cols) = {self.items.size}
+    {return form-rows * self.forms.size}
+
+  }
+
+  {constructor public {default
+                          data-source:RecordSetDataSource,                          
+                          worksheet:#Worksheet = null,
+                          id-field:String = "id",
+                          sort:#RecordSort = null,
+                          filter:#RecordFilter = null,
+                          ...
+                      }
+    set self.id-field = id-field
+    set self.data-source = data-source
+    {if-non-null ws = worksheet then
+        set self.worksheet = ws
+    }
+    {if-non-null record-source = self._record-source then
+        {if record-source.load-state == RecordSetLoadState.unloaded 
+         then
+            {record-source.load}
+        }
+    }
+    || Count the cells so we can allocate the items array
+    {with self._init? = true do
+        {self.process-rest-args ...}
+    }
+    set self.items =
+        {new {Array-2-of #WksCellSpec}, self.init-rows, self.init-cols}
+
+    set self.forms = {new {Array-of RecordForm}}
+
+    set self.insert-row = 0
+    set self.insert-col = 0
+    set self.insert-rowspan = 1
+    set self.insert-colspan = 1
+    {self.process-rest-args ...}
+    set self._internal-view = 
+        {RecordView
+            self.record-source,
+            sort = sort,
+            filter = filter
+        }
+
+  }
+
+  ||FIXME: same method in Worksheet. Refactor into a mixin?
+  {method private {increment-insertion-pos}:void
+    {inc self.insert-col, self.insert-colspan}
+    {if-non-null worksheet = self.worksheet then
+        {if self.insert-col >= worksheet.col-count then
+            set self.insert-col = 0
+            {inc self.insert-row, self.insert-rowspan}
+        }
+    }
+    set self.insert-rowspan = 1
+    set self.insert-colspan = 1
+  }
+
+  {method protected {keyword-init-arg key:String, value:any}:void
+    {switch key
+     case "row" do
+        set self.insert-row = value asa int
+     case "col", "column" do
+        set self.insert-col = value asa int
+     case "rowspan" do ||""
+        set self.insert-rowspan = value asa int
+     case "colspan" do ||""
+        set self.insert-colspan = value asa int
+     else
+        {if true or not self._init? then
+            {super.keyword-init-arg key, value}
+        }
+    }
+  }
+
+  {method public open {non-keyword-init-arg a:any}:void
+    def spec =
+        {type-switch a
+         case cs:WksCellSpec do
+            {assert cs.rowspan != 0 and cs.colspan != 0}
+            cs
+         else
+            {WksCellSpec
+                a,
+                rowspan = self.insert-rowspan,
+                colspan = self.insert-colspan
+            }
+        }
+
+    {if self._init? then
+        || During initialization; need to count the rows and columns
+        set self.init-rows = {max self.init-rows, self.insert-row + spec.rowspan}
+        set self.init-cols = {max self.init-cols, self.insert-col + spec.colspan}
+     else
+        set self.items[self.insert-row, self.insert-col] = spec
+    }
+    {self.increment-insertion-pos}
+  }
+
+  {getter public open {worksheet}:#Worksheet
+    {return self._worksheet}
+  }
+
+  {setter public open {worksheet w:Worksheet}:void
+    {if self._worksheet == null then
+        set self._worksheet = w
+        {self.worksheet.observe self.data-source}
+     elseif self._worksheet != w then
+        {error {hlmessage worksheet already set}}
+    }
+  }
+
+  {getter public open {record-source}:RecordSet
+    {if-non-null src = self._record-source then
+        {return src}
+     else
+        {return {EmptyRecordSet}}
+    }
+  }
+
+||FIXME: can't set RecordView.record-source
+||--  {setter public open {record-source val:#RecordSet}:void
+||--    {if val != self._record-source then
+||--        {if val != null and
+||--            val.load-state == RecordSetLoadState.unloaded
+||--         then
+||--            {val.load}
+||--        }
+||--        
+||--        set self._record-source = val
+||--        set self._internal-view.record-source =
+||--            {if-non-null val then val else {EmptyRecordSet}}
+||--        
+||--        set self.current-index = 0  || Setter keeps in bounds.
+||--    }
+||--  }
+
+  {doc-next
+    {purpose 
+        Records currently being displayed.
+    }
+    {details
+        Represents the view of the data being actually shown.
+        
+        Modify this {docref RecordView}'s properties in order 
+        to change the data being shown.
+    }
+  }
+  {getter public open {records}:RecordView
+    {return self._internal-view}
+  }
+
+  {doc-next
+    {purpose Sort to be applied to the {ctext records}.}
+    {details 
+        The default implementation of this method simply 
+        sets the property with the same name on the 
+        {ctext records} collection.
+    }
+    {override Not typically overridden}
+  }
+  {getter public open {sort}:#RecordSort
+    {return self.records.sort}
+  }
+  {setter public open {sort value:#RecordSort}:void
+    set self.records.sort = value
+  }
+        
+    
+  {doc-next
+    {purpose Filter to be applied to the {ctext records}.}
+    {details 
+        The default implementation of this method simply
+        sets the property with the same name on 
+        the {ctext records} collection.
+    }
+    {override Not typically overridden}
+  }
+  {getter public open {filter}:#RecordFilter
+    {return self.records.filter}
+  }
+  {setter public open {filter value:#RecordFilter}:void
+    set self.records.filter = value
+  }
+
+  || Create an editor for a field, unless there is one already
+  {method public open {get-field-editor
+                          cv:CellValue,
+                          gc:GridCell
+                      }:#ValueControl
+    def spec = {non-null cv.field-spec}
+    def field-name = spec.v asa String
+    def form = {non-null gc.data-binding-context} asa RecordForm
+    {if spec.editable? then
+        def vc = {gc.get-editor cv}
+||--        set vc.value-as-any = cv.value
+||--        set cv.editing? = gc.active?
+||--        set cv.locked? = false
+        ||FIXME: should allow subclasses of String too?
+        {if vc.value-type == String then
+            {vc.add-data-binding
+                {bind value to field-name,
+                    {format v:any as {cv.domain.format v}},
+                    {parse v:String as
+                        {try
+                            {cv.domain.parse v}
+                         catch e:Exception do
+                            cv.value
+                        }
+                    }
+                }
+            }
+         else
+            {vc.add-data-binding
+                {bind value to field-name}
+            }
+        }
+        || Make sure the control matches the data it is bound to
+        {form.refresh vc}
+        {return vc}
+     else
+        {assert cv.editing? == false}
+        {assert cv.locked? == true}
+    }
+    {return null}
+  }
+
+  {method private {clear-forms}:void
+    def (form-rows,form-cols) = {self.items.size}
+    {for rf:RecordForm key ri in self.forms do
+        {for fri = 0 below form-rows do
+            {for fci = 0 below form-cols do
+                def frow = self.row + ri * form-rows + fri
+                def fcol = self.col + fci
+                {if-non-null spec = self.items[fri, fci] then
+                    {self.worksheet.model.vals[frow, fcol].clear-form-info}
+                    def gc = self.worksheet.cells[frow, fcol]
+                    {gc.reset}
+                }
+            }
+        }
+    }
+    {self.forms.clear}
+  }
+
+  {method private {validate-forms}:bool
+    let valid?:bool = true
+    {for form in self.forms do
+        {if form.current-record == null then
+            set valid? = false
+            {break}
+        }
+    }
+    {return valid?}
+  }
+
+  || Called when an EmbeddedRecordForm is added to the Worksheet
+  || Add info to the model so that all records can be edited
+  || There is a RecordForm for each Record
+  {method public open {insert-embedded-form
+                          row:int, col:int
+                      }:int
+
+    || Somewhat of a kludge. The Worksheet constructor syntax uses one
+    || row to specify the EmbeddedRecordForm. So that is one less row
+    || to insert.
+    ||FIXME: add a method init-embedded-form to be called from constructor
+    let rows-reserved:int = 0
+
+    {if self.row == -1 then
+        set self.row = row
+        set self.col = col
+        set rows-reserved = 1
+     else
+        {assert row == self.row and col == self.col}
+    }
+    def old-nrecs = self.forms.size
+    def nrecs = self.records.size
+    {if old-nrecs == nrecs and {self.validate-forms} then
+||--        {dump "insert-embedded-form: no new records"}
+        {return nrecs}
+    }
+    ||FIXME: if all records are the same, return (otherwise would be
+    || rebuilding the form on every field change!
+
+    {self.clear-forms}
+    {if nrecs == 0 then
+        {return 0}
+    }
+
+    def (form-rows,form-cols) = {self.items.size}
+||--    {if old-nrecs != 0 and nrecs != old-nrecs  then
+    {if nrecs != old-nrecs  then
+||--    {if old-nrecs != 0 and nrecs > old-nrecs  then
+        def nrows = (nrecs - old-nrecs) * form-rows
+        {self.worksheet.insert-rows
+            row + old-nrecs + rows-reserved, nrows - rows-reserved
+        }
+        {if old-nrecs == 0 and rows-reserved == 0 then
+            || Move the EmbeddedRecordForm back to it's original location
+            def tcv = self.worksheet.model.vals[row + nrows, col]
+            set self.worksheet.model.vals[row + nrows, col] =
+                self.worksheet.model.vals[row, col]
+            set self.worksheet.model.vals[row, col] = tcv
+        }
+    }
+
+    {for r:Record key ri in self.records do
+        def filter = {RecordData}
+        set filter[self.id-field] = r[self.id-field] || this record only
+        def form = {RecordForm
+                       record-source = self.record-source,
+                       filter = filter,
+                       display-navigation-panel? = false
+                   }
+        {form.request-current-record-change 0}
+        {self.forms.append form}
+        {for fri = 0 below form-rows do
+            {for fci = 0 below form-cols do
+                def frow = row + ri * form-rows + fri
+                def fcol = col + fci
+||--                {self.worksheet.ensure-cell-fits frow, fcol}
+                {if-non-null spec = self.items[fri, fci] then
+                    def gc = self.worksheet.cells[frow, fcol]
+                    set gc.data-binding-context = form
+                    def cv = self.worksheet.model.vals[frow, fcol]
+                    || If this is a field reference, stash info needed later in cv
+                    ||FIXME: If there were an explicit field object this could
+                    || be done in init-cell, which would be much better
+                    let fs:#WksCellSpec = null
+                    let value:any = spec.v
+                    let domain:Domain = cv.domain
+                    let init-proc:#{proc-type {r:#Record}:any} = null
+                    {type-switch value
+                     case field-name:String do
+                        set fs = {WksCellSpec.clone spec}
+                        set fs.embedded-form = self
+                        set fs.form = form ||FIXME: not needed now?
+                        set domain =
+                            self.record-source.fields[field-name].domain
+                        set fs.domain = domain
+                        set value = r[field-name]
+                     case p:{proc-type {r:#Record}:any} do
+                        set init-proc = p
+                        set value = {init-proc form.current-record}
+                     case v:Visual do
+                        set value = {v.clone-appearance}
+                    }
+                    {self.worksheet.init-cell
+                        frow, fcol, value,
+                        domain = domain,
+||--                        rowspan = cv.rowspan, colspan = cv.colspan,
+                        rowspan = spec.rowspan, colspan = spec.colspan,
+                        editable? = spec.editable?, args = spec.args,
+                        field-spec = fs, init-proc = init-proc
+                    }
+                    {assert cv.locked? == (not spec.editable?)} || or else assign here
+||--                    set cv.editing? =
+||--                        self.worksheet.model.active-col == fcol and
+||--                        self.worksheet.model.active-row == frow
+                }
+            }
+        }
+    }
+    {return form-rows * self.records.size}
+  }
+}
+
+|| ---------------------------------------------------------------------------
+
+{doc-next
+    {purpose 
+        Selection returned by a {docref Worksheet}.
+    }    
+    {details
+        NOTE: Applications should {italic not} attempt to make 
+        changes or call modifying methods on this object.  In order
+        to change the contents of this selection, call methods 
+        directly on the related {docref RecordGrid} instead.  See 
+        {docref Selection} for more information.
+    }
+}
+{define-class public open WorksheetSelection 
+  {inherits Selection}
+
+
+  field public-get protected-set worksheet:Worksheet
+
+  {doc-next
+    {purpose
+        Index of the first row in this region.
+    }
+  }
+  field public-get protected-set first-row:int
+
+  {doc-next
+    {purpose
+        Index of the first column in this region.
+    }
+  }
+  field public-get protected-set first-column:int
+
+  {doc-next
+    {purpose
+        Number of rows included in this region.
+    }
+  }
+  field public-get protected-set row-count:int
+  
+  {doc-next
+    {purpose
+        Number of columns included in this region.
+    }
+  }
+  field public-get protected-set column-count:int
+
+  {doc-next
+    {purpose
+        The row index of maximal interest.
+    }
+    {details
+        Must be one of the four corners of the region.
+    }
+  }
+  field public-get protected-set row-anchor:int
+
+  {doc-next
+    {purpose
+        The column index of maximal interest.
+    }
+    {details
+        Must be one of the four corners of the region.
+    }
+  }
+  field public-get protected-set column-anchor:int
+
+  {doc-next
+    {purpose
+        Construct this object.
+    }
+    {parameter first-row,
+        Index of the first record in this region.
+    }
+    {parameter first-column,
+        Index of the first column in this region.
+    }
+    {parameter row-count,
+        Number of rows included in this region.
+        A value of -1 means all rows.
+    }
+    {parameter column-count,
+        Number of columns included in this region.
+        A value of -1 means all columns.
+    }
+    {parameter row-anchor,
+        Row index of maximal interest.
+    }
+    {parameter column-anchor,
+        Column index of maximal interest.
+    }
+  }
+  {constructor public {default
+                          worksheet:Worksheet,
+                          first-row:int,
+                          first-column:int,
+                          row-count:int,
+                          column-count:int,
+                          row-anchor:int = -1,
+                          column-anchor:int = -1
+                      }
+    {if first-row < 0 or first-column < 0 then
+        {error {hlmessage Invalid WorksheetSelection specification.}}
+    }
+
+    set self.worksheet = worksheet
+    set self.first-row = first-row
+    set self.first-column = first-column
+    set self.row-count = row-count
+    set self.column-count = column-count
+    set self.row-anchor =
+        {min {max row-anchor, first-row}, first-row + row-count - 1}
+    set self.column-anchor =
+        {min {max column-anchor, first-column}, first-column + column-count - 1}
+  }
+
+
+  {doc-next
+    {purpose
+        Construct this object from two corner points.
+    }
+    {parameter row-anchor,
+        Index of the start record in this region.
+    }
+    {parameter column-anchor,
+        Index of the start column in this region.
+    }
+    {parameter row-point,
+        Index of the end record in this region.
+    }
+    {parameter column-point,
+        Index of the end column in this region.
+    }
+    {since 7.0}
+  }
+  {constructor public {from-corners
+                          worksheet:Worksheet,
+                          row-anchor:int,
+                          column-anchor:int,
+                          row-point:int,
+                          column-point:int
+                      }
+||--    {if row-anchor < 0 or column-anchor < 0 or
+||--        row-point < 0 or column-point < 0
+||--     then
+||--        {error {hlmessage Invalid WorksheetSelection specification.}}
+||--    }
+
+    set self.worksheet = worksheet
+    set self.first-row = {min row-anchor, row-point}
+    set self.first-column = {min column-anchor, column-point}
+    set self.row-count = {abs row-anchor - row-point} + 1
+    set self.column-count = {abs column-anchor - column-point} + 1
+    set self.row-anchor = row-anchor
+    set self.column-anchor = column-anchor
+  }
+
+  {constructor public {empty
+                          worksheet:Worksheet
+                      }
+    set self.worksheet = worksheet
+    set self.first-row = 0
+    set self.first-column = 0
+    set self.row-count = 0
+    set self.column-count = 0
+    set self.row-anchor = 0
+    set self.column-anchor = 0
+  }
+
+  {constructor public {all
+                          worksheet:Worksheet
+                      }
+    set self.worksheet = worksheet
+    set self.first-row = -1
+    set self.first-column = -1
+    set self.row-count = -1
+    set self.column-count = -1
+    set self.row-anchor = 0
+    set self.column-anchor = 0
+  }
+
+  {doc-next
+    {purpose
+        Determine whether two {ctext WorksheetSelection}s are equal.
+    }
+    {parameter r,
+        the selection to be compared with {ctext self}.
+    }
+  } 
+  {method public open {equal? r:WorksheetSelection}:bool
+    {return
+        self.worksheet == r.worksheet and
+        self.first-row == r.first-row and
+        self.first-column == r.first-column and
+        self.row-count == r.row-count and
+        self.column-count == r.column-count
+    }
+  }
+
+  {doc-next
+    {purpose
+        Determine whether this region contains a cell location.
+    }
+    {parameter row-index,
+        {ctext int}. Row index of cell of interest. 
+    }
+    {parameter column-index,
+        {ctext int}. Column index of cell of interest. 
+    }
+    {return-vals 
+        {ctext true} if this cell location is within the region.
+        Otherwise {ctext false}.
+    }
+  }
+  {method public open {contains-cell? 
+                          row-index:int,
+                          column-index:int
+                      }:bool
+    {return
+        {if self.all-cells? then
+            true
+         elseif self.all-rows? then
+            column-index >= self.first-column and
+            column-index < self.first-column + self.column-count
+         elseif self.all-cols? then
+            row-index >= self.first-row and
+            row-index < self.first-row + self.row-count
+         else
+            row-index >= self.first-row and 
+            row-index < self.first-row + self.row-count and
+            column-index >= self.first-column and 
+            column-index < self.first-column + self.column-count
+        }
+    }
+  }
+
+  {getter public open {empty?}:bool
+    {return self.row-count == 0 and self.column-count == 0}
+  }
+
+  {getter public open {all-rows?}:bool
+    {return self.first-row == -1}
+  }
+  {getter public open {all-cols?}:bool
+    {return self.first-column == -1}
+  }
+  {doc-next 
+    {purpose 
+        Return true when the selection covers the entire {docref Worksheet}.
+    }
+  }
+  {getter public open {all-cells?}:bool
+    {return self.first-column == -1 and self.first-row == -1}
+  }
+
+  {getter public open {begin-row}:int
+    {return {max 0, self.first-row}}
+  }
+  {getter public open {end-row}:int
+    {return {if self.first-row < 0 then
+                self.worksheet.row-count - 1
+             else
+                self.first-row + self.row-count - 1
+            }
+    }
+  }
+  {getter public open {begin-column}:int
+    {return {max 0, self.first-column}}
+  }
+  {getter public open {end-column}:int
+    {return {if self.first-column < 0 then
+                self.worksheet.col-count - 1
+             else
+                self.first-column + self.column-count - 1
+            }
+    }
+  }
+
+}
+
+|| -------------------------------------------------------------------------
+||--{define-proc public {make-header rgc:RecordGridColumn}:Graphic
+||--    {return
+||--        {EmbeddedGridHeader
+||--            worksheet, rgc,
+||--            {rs.fields.get-index rgc.field-name},
+||--            font-weight = "bold",
+||--            font-size = 8pt,
+||--            rgc.field.caption
+||--        }
+||--    }
+||--}
+
+|| Register EmbeddedRecordGrid with the LookAndFeel
+{define-proc package {register-control-group
+                         control-type:Type,
+                         skinnable-ui-type:Type,
+                         control-skin:#Type,
+                         control-feel:#Type
+                     }:void
+||--    || Debug code:
+||--    {if not {control-type.subtype-of? Control} or
+||--        not {skinnable-ui-type.subtype-of? SkinnableControlUI} or
+||--        not {skinnable-ui-type.subtype-of? ControlUI}
+||--     then
+||--        {error}
+||--    }
+||--    {if-non-null control-skin then
+||--        {if not {control-skin.subtype-of? ControlSkin} then
+||--            {error}
+||--        }
+||--    }
+||--    {if-non-null control-feel then
+||--        {if not {control-feel.subtype-of? ControlFeel} then
+||--            {error}
+||--        }
+||--    }
+    def lnf = the-standard-look-and-feel
+    {type-switch skinnable-ui-type
+     case ct:ClassType do
+        {if-non-null maker = {ct.get-constructor "default"} then ||""
+            {lnf.register-ui-proc
+                control-type,
+                {proc {}:ControlUI
+                    {return {maker.new} asa ControlUI}
+                }
+            }
+            {if-non-null control-feel then
+                {lnf.register-control-feel skinnable-ui-type, control-feel}
+            }
+            {if-non-null control-skin then
+                {lnf.register-control-skin skinnable-ui-type, control-skin}
+            }
+        }
+    }
+    
+    || FIXME: error on fall-through?
+}
+
+{do
+    def lnf = the-standard-look-and-feel
+    def skinnable-ui-type =  ProtoSkinnableRecordGridUI
+    {register-control-group
+        EmbeddedRecordGrid,
+        ProtoSkinnableRecordGridUI,
+        ProtoRecordGridSkin,
+        StandardRecordGridFeel
+||--            ProtoRecordGridSkin,
+||--            ProtoRecordGridFeel
+    }
+||--    {lnf.register-control-feel skinnable-ui-type, ProtoRecordGridFeel}
+||--    {lnf.register-control-skin skinnable-ui-type, ProtoRecordGridSkin}
+
+    ||FIXME: need ability to add these rules to user's rules
+    {install-style-sheet
+        {StyleSheet
+||--            {StyleRule "TextField",
+||--                border-spec =
+||--                    {BorderSpec top-margin = 1px, bottom-margin = 1px}
+||--            },
+            {StyleRule "RecordGrid/internal-grid",
+                border-spec = null
+            },
+            {StyleRule "RecordGrid", grid-line-color = "silver"},
+            {StyleRule "GridCell/frame.number",
+                halign = "right"
+            },
+            {StyleRule "GridCell/frame",
+                halign = "left"
+            },
+            {StyleRule "GridCell",
+                background = Worksheet.readonly-bg,
+                grid-line-color = "transparent",
+||--            border-style = BorderStyle.dot,
+                border-color = "silver",
+                border-spec =
+                    {BorderSpec
+                        left-border-width = 1in/300,
+                        top-border-width = 1in/300
+                    }
+            },
+            {StyleRule "Worksheet",
+                background = Worksheet.readonly-bg,
+                grid-line-color = "transparent",
+                border-color = "silver",
+                border-spec =
+                    {BorderSpec
+                        left-border-width = 1in/300,
+                        right-border-width = 1in/300,
+                        top-border-width = 1in/300,
+                        bottom-border-width = 1in/300
+                    }
+            },
+            {StyleRule "SizeNotifier",
+                background = Worksheet.header-bg,
+                color = Worksheet.header-color
+            }
+        }
+    }
+}

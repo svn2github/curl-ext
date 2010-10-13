@@ -9,5 +9,6 @@
 {import public * from COM.CURL.EXT.CALCULATED-RECORDSET}
 {import public * from COM.CURL.EXT.GANTT}
 {import public * from COM.CURL.EXT.GUI}
+{import public * from COM.CURL.EXT.WORKSHEET}
 {import public * from COM.CURL.EXT.TILED-WINDOWS}
 

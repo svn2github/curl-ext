@@ -293,8 +293,12 @@
   {constructor public {default ...}
     {construct-super
         opaque-to-events? = true,
-        vorigin = "center", {splice ...} ||""
+        {splice ...}
     }
+  }
+
+  {local-option public orientation:Orientation = Orientation.vertical
+    {self.refresh-icon}
   }
 
   {doc-next
@@ -361,9 +365,31 @@
         state of a tree node (open or closed). As such it is a solid
         triangle with a color given by the {docref-abbr Visual.color}
         option (which will consequently match the color of text in the
-        same container. The triangle can also be drawn in a third
+        same container). The triangle can also be drawn in a third
         state, halfway between the other two. This is used as a
         transient state to show that the node is opening or closing.
+        There is a fourth state that shows that the node has no
+        children and therefore can't be opened or closed.
+
+        If this object is in the "expanded" state or the "collapsed"
+        state, when a mouse click is detected this object, changes to
+        the oposite state. This is done in multiple steps so that the
+        change can be animated. Multiple {docref Adjustment} events
+        are fired as the state is changed.
+
+        If {docref DefaultDiscloser.animation-rate} is 0Hz, there are
+        just two steps: first the state is changed to {docref-abbr
+        DisclosureState.changing} and an {ctext Adjustment} event is
+        fired with a value of 0.0 if the initial state was "collapsed"
+        or 1.0 if the initial state was "expanded". Then, almost
+        immediately, another {ctext Adjustment} is fired to indicate
+        that the discloser is in the final state. The value will be
+        0.0 if self.state is {docref-abbr DisclosureState.collapsed}
+        and 1.0 if it is {docref-abbr DisclosureState.expanded}.  If
+        the {ctext animation-rate} is greater than 0Hz, 4 additional
+        {ctext Adjustment} events are fired with intermediate values
+        between 0.2 and 0.8. When these events are fired, the
+        {ctext state} will be "changing".
 
         Subclass this class if you want to create a custom discloser
         using images.
@@ -371,7 +397,15 @@
 }
 {define-class public open DefaultDiscloser {inherits Discloser}
 
-  field protected cell:RecordGridCell
+
+  {doc-next
+    {purpose Controls the rate at which {docref Adjustment} events
+        are fired to animate the change of state. Use 0Hz for no
+        animation. (See {docref DefaultDiscloser} for more information.)
+    }
+  }
+  {local-option public animation-rate:Frequency = 30Hz
+  }
 
   field protected empty-pixmap:Pixmap
   field protected current-pixmap:Pixmap
@@ -380,6 +414,10 @@
   field protected _changing-pixmap:#Pixmap
   field protected _expanded-pixmap:#Pixmap
   field protected _singleton-pixmap:#Pixmap
+
+  field private adj-event:Adjustment = {Adjustment}
+  field private dv:double = 0.0
+  field private y0:int
 
   {getter protected open {collapsed-pixmap}:#Pixmap
     {if-non-null pm = self._collapsed-pixmap then
@@ -422,6 +460,7 @@
   field protected last-enabled?:bool
   field protected last-color:FillPattern
   field protected last-disabled-color:FillPattern
+  field protected last-orientation:Orientation
 
   {doc-next
     {purpose Initialize this object. The rest args are any options
@@ -429,9 +468,8 @@
         passed to the superclass.
     }
   }
-  {constructor public {default cell:RecordGridCell, ...}
-    {construct-super {splice ...}}
-    set self.cell = cell
+  {constructor public {default ...}
+    {construct-super vorigin = 0.8, {splice ...}}
     set self.empty-pixmap = {Pixmap 9, 9, ignore-alpha? = false}
     set self.current-pixmap = self.empty-pixmap
     set self.last-state = self.state
@@ -439,11 +477,70 @@
     set self.last-enabled? = self.enabled?
     set self.last-color = self.color
     set self.last-disabled-color = self.disabled-color
+    set self.last-orientation = self.orientation
+    {self.add-event-handler
+        {click-recognizer consume? = false}
+    }
+    {self.add-event-handler
+        {on e:Click at t:Discloser do
+            {if self.dv == 0.0 and t.state != DisclosureState.singleton then
+                def new-state =
+                    {if t.state == DisclosureState.collapsed then
+                        set self.adj-event.value = 0.0
+                        set self.dv = 0.2
+                        DisclosureState.expanded
+                     elseif t.state == DisclosureState.changing then
+                        || Shouldn't happen.
+                        DisclosureState.expanded
+                     elseif t.state == DisclosureState.singleton then
+                        DisclosureState.singleton
+                     else
+                        set self.adj-event.value = 1.0
+                        set self.dv = -0.2
+                        DisclosureState.collapsed
+                    }
+                def delay =
+                    {if self.animation-rate == 0Hz then
+                        0s
+                     else
+                        1/self.animation-rate
+                    }
+                {after 1 * delay do
+                    {set t.state = DisclosureState.changing}
+                    {self.handle-event self.adj-event}
+                }
+                {if delay > 0s and self.visible? then
+                    {after 3 * delay do
+                        {inc self.adj-event.value, self.dv}
+                        {self.handle-event self.adj-event}
+                    }
+                    {after 5 * delay do
+                        {inc self.adj-event.value, self.dv}
+                        {self.handle-event self.adj-event}
+                    }
+                    {after 6 * delay do
+                        {inc self.adj-event.value, self.dv}
+                        {self.handle-event self.adj-event}
+                    }
+                    {after 7 * delay do
+                        {inc self.adj-event.value, self.dv}
+                        {self.handle-event self.adj-event}
+                    }
+                }
+                {after 8 * delay do
+                    set t.state = new-state
+                    {if self.dv < 0.0 then
+                        set self.adj-event.value = 0.0
+                     else
+                        set self.adj-event.value = 1.0
+                    }
+                    set self.dv = 0.0
+                    {self.handle-event self.adj-event}
+                }
+            }
+        }
+    }
   }
-
-||--  {nonlocal-option public font-size:any
-||--      || Superclass handler will call refresh-icon
-||--  }
 
   {method protected open {options-changed?}:bool
     let changed?:bool = false
@@ -468,6 +565,10 @@
         set self.last-disabled-color = self.disabled-color
         set changed? = true
     }
+    {if self.orientation != self.last-orientation then
+        set self.last-orientation = self.orientation
+        set changed? = true
+    }
     {return changed?}
   }
 
@@ -481,16 +582,17 @@
   {method protected open {get-pixmap 
                              state:DisclosureState
                          }:#Pixmap
-    let dpx:int = 9
+    let dpx:int
     def d = self.last-font-size
-    set dpx = {floor ((d/{any-to-Distance 1px})) * 0.8} asa int
-      {if-non-null dc = self.display-context then
-        set dpx = {floor (d/dc.pixel-size) * 0.8} asa int
+    set dpx = {floor ((d/{any-to-Distance 1px})) * 1.0} asa int
+    {if-non-null dc = self.display-context then
+        set dpx = {floor (d/dc.pixel-size) * 1.0} asa int
     }
 ||--    {dump font-size, dpx}
     {if dpx < 5 then
         set dpx = 5
     }
+    set self.y0 = {floor dpx/10} asa int
 
     let background-pixel:Pixel = {Pixel.from-int 0, 0, 0, alpha = 0}
       let triangle-pixel:Pixel =
@@ -500,7 +602,7 @@
             {self.disabled-color.to-Pixel}
         }
 
-    let new-pixmap:Pixmap = {Pixmap dpx, dpx, ignore-alpha? = false}
+    let new-pixmap:Pixmap = {Pixmap dpx, dpx + self.y0, ignore-alpha? = false}
     {for row:int = 0 below new-pixmap.height do
         {for col:int = 0 below new-pixmap.width do
             set new-pixmap[col,row] = background-pixel
@@ -512,12 +614,13 @@
 
     {switch state
      case DisclosureState.collapsed do
+        {if self.orientation == Orientation.vertical then
             || point East
-            {for row = first to last do
-                {for col:int = (row - 1) to (new-pixmap.width - row) do
-                    set new-pixmap[row + 1, col] = triangle-pixel
-                }
-            }
+            {self.fill-triangle new-pixmap, triangle-pixel, down? = false}
+         else
+            {self.fill-triangle new-pixmap, triangle-pixel, down? = true}
+        }
+
      case DisclosureState.changing do
         || point SE
         set first = (new-pixmap.height * 27) div 100
@@ -529,14 +632,11 @@
         }
 
      case DisclosureState.expanded do
-        || point down
-        set first = new-pixmap.height div 5
-        set last = new-pixmap.height - first
-        {for row = first to last do
-            {for col:int = row - 1 to (new-pixmap.width - row) do
-                def ri = {min row + 2, new-pixmap.height - 1}
-                set new-pixmap[col, ri] = triangle-pixel
-            }
+        {if self.orientation == Orientation.vertical then
+            || point down
+            {self.fill-triangle new-pixmap, triangle-pixel, down? = true}
+         else
+            {self.fill-triangle new-pixmap, triangle-pixel, down? = false}
         }
 
      else
@@ -550,6 +650,31 @@
         }
     }
     {return new-pixmap}
+  }
+
+  {method private {fill-triangle
+                      new-pixmap:Pixmap,
+                      triangle-pixel:Pixel,
+                      down?:bool = false
+                  }:void
+    let first:int = new-pixmap.height div 5
+    let last:int = new-pixmap.height - first
+    {if down? then
+        || point down
+        {for row = first to last do
+            {for col:int = row - 1 to (new-pixmap.width - row) do
+                def ri = {min row + 2, new-pixmap.height - 1}
+                set new-pixmap[col, ri] = triangle-pixel
+            }
+        }
+     else
+        || point East
+        {for row = first to last do
+            {for col:int = (row - 1) to (new-pixmap.width - row) do
+                set new-pixmap[row + 1, col] = triangle-pixel
+            }
+        }
+    }
   }
 
   {method protected open {refresh-icon}:void
@@ -676,6 +801,102 @@
         }
         {break}
     }
+  }
+}
+
+|| ----------------------------------------------------------------------
+
+{define-class public open DisclosingFrame {inherits BaseFrame}
+
+  field public-get protected-set label:Graphic
+  field public-get protected-set content:Graphic
+  field public-get protected-set discloser:Discloser
+  field protected hbox:HBox
+
+  field protected content-height:Distance = 0m
+  field protected label-height:Distance = 0m
+  field protected fraction:double
+  field protected last-state:DisclosureState
+
+  {local-option public state:DisclosureState = DisclosureState.expanded
+    {if self.discloser.state != state and self.content-height > .01mm then
+        set self.discloser.state = state
+        {self.refresh}
+    }
+  }
+
+  {constructor public {default
+                          label:Graphic,
+                          content:Graphic,
+                          ...
+                      }
+    set self.label = label
+    set self.content = content
+    set self.discloser = 
+        {DefaultDiscloser state = DisclosureState.expanded,
+            {on e:Adjustment at d:Discloser do
+                set self.fraction = e.value
+                {self.refresh}
+            }
+        }
+    {construct-super ...}
+
+    || Must always start in the expanded state so we can measure 
+    || self.content in set-size. But if collapsed was specified in ...
+    || then we need to switch to the correct state.
+    {if self.state == DisclosureState.collapsed then
+        set self.state = DisclosureState.expanded
+        def visible? = self.visible?
+        set self.visible? = false
+        {after 0s do
+            set self.state = DisclosureState.collapsed
+            set self.visible? = visible?
+        }
+    }
+    set self.last-state = DisclosureState.expanded
+    set self.hbox = {HBox valign = "top", self.discloser, self.content}
+    {self.add-internal self.hbox}
+||--    {self.refresh}
+  }
+
+  {method public open {set-size lc:LayoutContext, bounds:GRect}:void
+    {super.set-size lc, bounds}
+    {if self.discloser.state == DisclosureState.expanded then
+||--    {dump self.content-height, self.fraction, self.discloser.state}
+        {if bounds.height > .01mm then
+            set self.content-height = bounds.height
+        }
+    }
+    {if self.discloser.state == DisclosureState.collapsed then
+        {if bounds.height > .01mm then
+            set self.label-height = bounds.height
+        }
+    }
+  }
+
+  {method public open {refresh}:void
+    {switch self.discloser.state
+     case DisclosureState.collapsed do
+        {unset self.height}
+        {self.content.detach}
+        {self.hbox.add self.label}
+     case DisclosureState.changing do
+        {if self.last-state == DisclosureState.collapsed then
+            {self.label.detach}
+            {self.hbox.add self.content}
+        }
+||--        {dump self.content-height, self.fraction}
+        {if self.content-height > self.label-height then
+            set self.height =
+                self.label-height +
+                (self.content-height - self.label-height) * self.fraction
+        }
+     case DisclosureState.expanded do
+        {unset self.height}
+            {self.label.detach}
+            {self.hbox.add self.content}
+    }
+    set self.last-state = self.discloser.state
   }
 }
 

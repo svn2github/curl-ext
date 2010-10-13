@@ -1,0 +1,356 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0 applet}
+
+{applet manifest = "../manifest.mcurl", locale = "en"}
+
+{import * from COM.CURL.EXT.DATA-ACCESS}
+{import * from COM.CURL.EXT.WORKSHEET}
+{import * from CURL.GUI.CHARTS}
+{import * from CURL.RUNTIME.HOST-ENVIRONMENT}
+{import * from CURL.LANGUAGE.FORMAT}
+
+{set-document-properties
+    font-size = 10pt
+}
+
+{let max-files:int = 10}
+
+|| ------------------------------------
+{title EmbeddedRecordForm with RecordGrid}
+|| ------------------------------------
+
+{def number-domain = {NumberDomain precision = 0}}
+
+{def file-info-fields =
+    {RecordFields
+        {RecordField "id",
+            domain = int,
+            modifiable? = false,
+            index-type = RecordFieldIndexType.unique
+        },
+        {RecordField "path", domain = WorksheetModel.string-domain},
+        {RecordField "ext", domain = WorksheetModel.string-domain},
+        {RecordField "size", domain = number-domain},
+        {RecordField "modified", domain = DateTime}
+    }
+}
+
+|| One record per file
+{def file-rs = {RecordSet file-info-fields}}
+
+|| One record per file extension found
+{def ext-rs =
+    {RecordSet
+        {RecordFields
+            {RecordField "id",
+                domain = int,
+                modifiable? = false,
+                index-type = RecordFieldIndexType.unique
+            },
+            {RecordField "ext", domain = WorksheetModel.string-domain},
+            {RecordField "size", domain = number-domain}
+        }
+    }
+}
+
+|| Scan the users temporary files
+{define-proc {init-file-rs}:String
+    let (tmpdir, exists?) = {get-from-host-environment-if-exists "TMPDIR"}
+    {if not exists? then
+        set (tmpdir, exists?) = {get-from-host-environment-if-exists "TEMP"}
+    }
+    {if exists? then
+        def dpath = {StringBuf "file:///"}
+        {for c in tmpdir do
+            {if c == '\\' then
+                {dpath.append '/'}
+             else
+                {dpath.append c}
+            }
+        }
+        def tmp-url = {url {dpath.to-String}}
+        {get-file-stats file-rs, tmp-url, recurse? = true}
+    }
+    {return tmpdir}
+}
+
+
+{let id:int = 1}
+{define-proc package {get-id}:int
+    {inc id}
+    {return id}
+}
+
+{define-proc package {get-file-stats
+                         rs:RecordSet,
+                         url:Url,
+                         recurse?:bool = true
+                     }:void
+    let url-obj:any = {url.resolve}
+    def root-url = url
+    let path:String = {url.name-relative-to-url root-url}
+
+    {type-switch url-obj
+     case file:LocalFile do
+        {try
+            {if-non-null info = {file.info} then
+                {rs.append
+                    {RecordData
+                        id = {get-id},
+                        path = path,
+                        ext = url.extension,
+                        size = info.size,
+                        modified = info.modified
+                    }
+                }
+            }
+         catch ex:Exception do
+            {output "Error reading ", url, ": ", ex}
+        }
+     case directory:LocalDirectory do
+        {try
+            {get-directory-stats
+                rs,
+                directory,
+                root-url,
+                recurse? = recurse?
+            }
+         catch e:Exception do
+            {output "Error reading ", url, ": ", e.message}
+        }
+    }
+}
+
+{define-proc package {get-directory-stats
+                         rs:RecordSet,
+                         directory:Directory,
+                         root-url:Url,
+                         recurse?:bool = true
+                     }:void
+    {for key name:String in directory do
+        let url:Url = {directory.concat name}
+        let path:String = {url.name-relative-to-url root-url}
+        ||DEBUG
+        {if id > max-files then
+            {break}
+        }
+        {if not {name.prefix? "."} then
+            {type-switch directory[name]
+             case subdirectory:LocalDirectory do
+                {if recurse? then
+                    {get-directory-stats
+                        rs,
+                        subdirectory,
+                        root-url,
+                        recurse? = true
+                    }
+                }
+             case file:LocalFile do
+                {try
+                    def ext = url.extension
+                    {if-non-null info = {file.info} then
+                        {rs.append
+                            {RecordData
+                                id = {get-id},
+                                path = path,
+                                ext = ext,
+                                size = info.size,
+                                modified = info.modified
+                            }
+                        }
+                        def ext-rd = {RecordData ext = ext}
+                        {if-non-null r = {ext-rs.select-one filter = ext-rd} then
+                            set r["size"] = (r["size"] asa double) + info.size
+                         else
+                            set ext-rd["id"] = id
+                            set ext-rd["size"] = info.size
+                            {ext-rs.append ext-rd}
+                        }
+                    }
+                 catch ex:Exception do
+                    {errput "Error reading ", url, ": ", ex}
+                }
+            }
+        }
+    }
+}
+
+
+{def model = {WorksheetModel 30, 7}}
+
+
+|| Turn the RecordSet into a DataSource
+{def ext-rds = {RecordSetDataSource ext-rs}}
+{def file-rds = {RecordSetDataSource file-rs}}
+
+|| proc to sum values provided (as range or some other aggregate)
+{def compute-sum =
+    {proc {dest:DataRef, src:DataRef}:void
+        let sum:double = 0.0
+        {for v in src do
+            {inc sum, v}
+        }
+        {dest.set-value sum}
+    }
+}
+
+|| proc to multiply two arguments
+{def compute-product =
+    {proc {dest:DataRef, p:DataRef, q:DataRef}:void
+        {dest.set-value {p.get-double} * {q.get-double}}
+    }
+}
+
+|| -------------------------------------------------------------------------
+
+{def path-ref = {file-rds.get-ref "path"}}
+{def ext-ref = {file-rds.get-ref "ext"}}
+{def size-ref = {file-rds.get-ref "size"}}
+{def modified-ref = {file-rds.get-ref "modified"}}
+
+{def worksheet =
+    {Worksheet
+        model,
+        font-size = 9pt,
+        {widths 60pt, 2.5in, 1.0in, 1.2in, 0.25in},
+
+        row = 0, col = 0,
+        colspan = 4, "Files in your temporary directory, grouped by extension",
+
+        row = 1, col = 0, "Location",
+        {cell-spec colspan = 4, font-family = "Courier New", ""},
+
+        row = 3, col = 1, 
+        "path",
+        "size", 
+        "modified", ||"ext",
+
+        row = 4, col = 1,
+        {cell-spec
+            rowspan = 7, colspan = 4,
+            {EmbeddedRecordGrid
+                takes-focus? = true,
+                width = 6in, 
+                height = 2.0in,
+                record-source = file-rs,
+                region-selection-enabled? = true,
+                automatic-columns? = false,
+                {RecordGridColumn width = 2in, "path"},
+                {RecordGridColumn width = 72pt, halign = "right", "size"},
+                {RecordGridColumn width = 120pt, "modified"}
+            }
+        },
+
+        row = 12,
+        col = 0, "Totals",
+        col = 2, {formula-cell domain = number-domain, compute-sum, size-ref},
+
+        row = 15, col = 0, 
+        {cell-spec
+            {EmbeddedRecordForm
+                ext-rds,
+                id-field = "id",
+                sort = "size DESC",
+
+                row = 0, col = 0, rowspan = 2,
+                {proc {r:#Record}:any
+                    {if-non-null r then
+                        {return {bold {big {value r["ext"]}}}}
+                    }
+                    {return "(empty)"}
+                },
+
+                row = 2, col = 0,
+                {cell-spec {bold Total bytes:}},
+
+                row = 3, col = 0,
+                {cell-spec
+                    halign = "right", 
+                    {proc {r:#Record}:any
+                        let ext-total:double = 0.0
+                        {if-non-null r then
+                            def rv = {RecordView
+                                         file-rs,
+                                         filter = {RecordData ext = r["ext"]}
+                                     }
+                            {for er:Record in rv do
+                                {inc ext-total, er["size"] asa double}
+                            }
+                        }
+                        {return {number-domain.comma-formatter.format ext-total}}
+                    }
+                },
+
+                row = 0, col = 1, colspan = 4, rowspan = 5,
+                {proc {r:#Record}:any
+                    {if-non-null r then
+                        {return {EmbeddedRecordGrid
+                                    width = 5.1in, height = 1in,
+                                    display-navigation-panel? = false,
+                                    display-record-selectors? = false,
+                                    sort = "size DESC",
+                                    filter =
+                                        {RecordData
+                                            ext = r["ext"]
+                                        },
+                                    record-source = file-rs,
+                                    automatic-columns? = false,
+                                    {RecordGridColumn width = 2.0in, "path"},
+                                    {RecordGridColumn width = 72pt, halign = "right", "size"},
+                                    {RecordGridColumn width = 120pt, "modified"}
+                                }
+                        }
+                    }
+                    {return "(empty)"}
+                },
+
+                row = 5, col = 1, 
+                {cell-spec {text }}
+            }
+        }
+    }
+}
+
+This applet will display the names, sizes, and modification times for
+files and folders in your Windows TEMP directory.  It first loads 10
+files. After a few seconds, it loads 10 more.
+
+The RecordGrid at the top includes all files. Below are files grouped by
+file type (extension).
+
+The applet stores all file info in one RecordSet (one record per file
+or folder). A second RecordSet is used to store list of file types
+(one record per file type).
+
+
+|| Add the formulas and display the complete Worksheet
+{value
+    {def tmp-ref = {worksheet.model.get-ref "$B$2"}}
+    {tmp-ref.set-value {init-file-rs}}
+    {worksheet.model.update}
+    
+    worksheet || display the worksheet
+}
+
+{after 3.01s do
+    set worksheet.vertical-grid-line-width = 4pt
+    set max-files = 2000
+    {init-file-rs}
+    {worksheet.model.update}
+}

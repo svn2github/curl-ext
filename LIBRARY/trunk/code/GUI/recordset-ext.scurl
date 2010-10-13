@@ -1,0 +1,310 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+|#
+
+Requirements
+  o Write to (url, TextOutputStream, String)
+    Use cases
+    - Save, save-as, POST to web server
+    - Save into file along with other data
+    - Convert to String to be dealt with separately
+
+  o Read from (url, TextInputStream, String)
+    Use cases
+    - Read from file or HTTP server
+    - Read from middle of some file with other stuff
+    - Read from String that was stored somewhere, or generated
+
+  o Modified since last written?
+    - Need a method
+
+  o Create a new record with unique id
+    - name of id field
+    - new-id - return an unused id
+    - get-by-id - get a record given the id number
+#|
+
+{doc-next
+    {purpose Reset object state.
+    }
+}
+{define-class abstract public open RecordSetManager
+
+  {doc-next
+    {purpose The field that uniquely identifies each record, if any.}
+    {details
+        If this field is non blank, the method {docref
+        CsvRecordSetB.new-id} will return an id value that is higher
+        than any other among the records contained in this recordset.
+    }
+  }
+  field public id-field:String
+
+  field protected _record-set:EventManagingRecordSet =
+      {uninitialized-value-for-type EventManagingRecordSet}
+
+  field protected _event-handler:#EventHandler
+
+  {getter public open {record-set}:EventManagingRecordSet
+    {return self._record-set}
+  }
+
+  {setter public open {record-set rs:EventManagingRecordSet}:void
+    {if-non-null handler = self._event-handler then
+        {self._record-set.remove-event-handler handler}
+    }
+    set self._record-set = rs
+    set self._event-handler = {self.make-event-handler}
+    {rs.add-event-handler {non-null self._event-handler}}
+  }
+
+  {method protected open {make-event-handler}:EventHandler
+    {return
+        {on e:RecordModified at rs:RecordSet do
+            {inc self.change-count}
+        }
+    }
+  }
+
+  field public-get protected-set change-count:int
+  field public-get protected-set change-count-when-saved:int
+
+  {doc-next
+    {purpose 
+        Return {ctext true} if the {ctext record-set} has been
+        changed since it was last saved.
+    }
+  }
+  {getter public open {changed?}:bool
+    {return self.change-count-when-saved != self.change-count}
+  }
+
+  {doc-next
+    {purpose Set to true to indicate that a change was made, false
+        to indicate that all changes have been stored.
+    }
+    {details
+        An error will be thrown if {ctext changed?} is set to {ctext true}
+        and there are uncommitted changes.
+    }
+  }
+  {setter public open {changed? value:bool}:void
+    {if value then
+        {inc self.change-count}
+     else
+        ||FIXME: if this is not workable, remove it and doc above
+        {assert not self._record-set.pending-update?}
+        set self.change-count-when-saved = self.change-count
+    }
+  }
+
+  {doc-next
+    {purpose Create and initialize a new {docref RecordSetManager}.}
+  }
+  {constructor public {default
+                          record-set:#EventManagingRecordSet = null,
+                          fields:#RecordFields = null,
+                          id-field:String = ""
+                      }
+    set self.id-field = id-field
+    {if (record-set == null and fields == null)
+        or (record-set != null and fields != null)
+     then
+        {error
+            {hlmessage
+                You must supply either a RecordSet or a RecordFields
+                but not both
+            }
+        }
+    }
+    set self.record-set =
+        {if-non-null record-set then
+            record-set
+         else
+            {LocalRecordSet {non-null fields}, modifiable? = true}
+        }
+||--    {self.reset}
+  }
+
+||--  {doc-next
+||--    {purpose Reset object state.
+||--    }
+||--  }
+||--  {method public open {reset}:void
+||--    set self.changed? = self.record-set.pending-update?
+||--  }
+
+  {doc-next
+    {purpose Adjust the state of this object to match the state of
+        the recordset.
+    }
+  }
+  {method public open {refresh}:void
+    ||FIXME: refresh or reset?
+    set self.changed? = self._record-set.pending-update?
+  }
+
+  {doc-next
+    {purpose
+        Get the contents of the {docref RecordSetManager.record-set}
+        in some format defined by a subclass.
+    }
+  }
+  {method public open {get out:any = null}:any
+    {type-switch out
+     case ja:JsonArray do
+        {return {self.get-Json}}
+     case rda:{Array-of RecordData} do
+        {return {self.get-record-data}}
+     else
+        {error
+            {hlmessage Unknown data type}
+        }
+    }
+  }
+
+  {doc-next
+    {purpose
+        Discard the current contents of {docref RecordSetManager.record-set}
+        and replace it with {param data}.
+    }
+  }
+  {method public open {put data:any}:void
+    {type-switch data
+     case ja:JsonArray do
+        {self.put-Json ja}
+     case rda:{Array-of RecordData} do
+        {self.put-records rda}
+     else
+        {error
+            {hlmessage Unknown data type}
+        }
+    }
+  }
+
+  ||FIXME: This is not very efficient but maybe it doesn't matter
+  || since it is only called when a new record is added, which is
+  || relatively rare.
+  {doc-next
+    {purpose Return a new unique id value.}
+  }
+  {method public open {new-id}:int
+
+    || Find the highest ID currently in use
+    let last-id:int = 0
+    {for r:Record in self.record-set do
+        let recid:int = r[self.id-field] asa int
+        {if recid > last-id then
+            set last-id = recid
+        }
+    }
+    || Return the next unused id
+    {return last-id + 1}
+  }
+
+  field private id-filter:RecordData = {RecordData}
+
+  {doc-next
+    {purpose Return the {docref Record} identified by {param id}.}
+  }
+  {method public open {get-by-id id:int}:#Record
+    {self.id-filter.clear}
+    set self.id-filter[self.id-field] = id
+    {return {self.record-set.select-one filter = self.id-filter}}
+  }
+
+  || Allocate a new record with a unique id
+  {method public open {new-record}:Record
+    let nr:Record = {self.record-set.new-record}
+    {if self.id-field != "" then
+        set nr[self.id-field] = {self.new-id}
+    }
+    {return nr}
+  }
+
+  field private buf:StringBuf = {StringBuf}
+
+  {method public open {escape-quotes s:String}:String
+    {if {s.find '\"'} == -1 then
+        {return s}
+    }
+    {self.buf.clear}
+    {for c in s do
+        {if c == '\"' then
+            {self.buf.append '\\'}
+        }
+        {self.buf.append c}
+    }
+    {return {self.buf.to-String}}
+  }
+
+  || From worksheet.scurl, should be in EXT.DATA-ACCESS
+  {method public open {get-Json}:JsonObject
+    def data = {JsonObject}
+    def records = {JsonArray}
+    set data["records"] = records
+    {for r in self.record-set do
+        def rdata = {JsonObject}
+        {for f in self.record-set.fields do
+            set rdata[f.name] =
+                {self.escape-quotes {f.domain.format r[f.name]}}
+        }
+        {records.append rdata}
+    }
+    {return data}
+  }
+
+  {method public open {get-record-data}:{Array-of RecordData}
+    def rda = {new {Array-of RecordData}}
+    {for r in self.record-set do
+        def rdata = {RecordData}
+        {for f in self.record-set.fields do
+            set rdata[f.name] = r[f.name]
+        }
+        {rda.append rdata}
+    }
+    {return rda}
+  }
+
+  {method public open {put-Json records:JsonArray}:void
+    {with self.record-set.batch-events? = true do
+        {self.record-set.delete-all}
+        {self.record-set.commit}
+        {for rd in records do
+            def rdo = rd asa JsonObject
+            def r = {self.record-set.new-record}
+            {for f in self.record-set.fields do
+                set r[f.name] = {f.domain.parse rdo[f.name] asa String}
+            }
+            {self.record-set.append r}
+        }
+        {self.record-set.commit}
+    }
+  }
+
+  {method public open {put-records records:{Array-of RecordData}}:void
+    {with self.record-set.batch-events? = true do
+        {self.record-set.delete-all}
+        {self.record-set.commit}
+        {for rd in records do
+            {self.record-set.append rd}
+        }
+        {self.record-set.commit}
+    }
+  }
+}

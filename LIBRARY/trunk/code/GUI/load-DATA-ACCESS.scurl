@@ -41,16 +41,113 @@
 {import * from CURL.LANGUAGE.REGEXP}
 {import * from CURL.GUI.CONTROL-HELPERS}
 {import * from CURL.UTIL.OBSERVER}
+{import * from CURL.IO.JSON}
 
 {import * from COM.CURL.EXT.GUI}
 
 {include "treegrid.scurl"} ||""
+{include "recordset-ext.scurl"} ||""
 
 || ------------------------------------------------------------------------
 
 || --------
 || Domains
 || --------
+
+{doc-next
+    {purpose {docref Domain} for double values with fixed precision and
+        commas separators for large values.
+    }
+}
+{define-class public open NumberDomain
+  {inherits {StandardDomain-of double}}
+  
+  field public comma-formatter:NumberFormatter =
+      {NumberFormatter locale = {get-host-locale}, use-grouping? = true}
+
+  {doc-next
+    {purpose The number of decimal places to be used when formatting
+        a value as a string.  If negative, it specifies the number of
+        places after the decimal point. If positive, it specifies the
+        number of significant digits.
+    }
+  }
+  field public constant precision:int
+
+  {doc-next 
+    {purpose Construct this object.}
+    {parameter default-value, provides the initial value for
+        {docref-abbr DoubleDomain.default-value}
+    }
+    {parameter min-allowable, provides the initial value for
+        {docref-abbr Domain.min-allowable}
+    }
+    {parameter max-allowable, provides the initial value for
+        {docref-abbr Domain.max-allowable}
+    }
+    {parameter precision, provides the initial value for
+        {docref-abbr DoubleDomain.precision}
+    }
+    {parameter allowable-values, provides the initial value for
+            {docref-abbr Domain.allowable-values}
+    }
+  }
+  {constructor public {default
+                          default-value:any = 0.0,
+                          min-allowable:any = null,
+                          max-allowable:any = null,
+                          precision:int = -5,
+                          use-grouping?:bool = true,
+                          allowable-values:#{Array-of double} = null
+                      }
+    {construct-super 
+        default-value, 
+        min-allowable, 
+        max-allowable, 
+        allowable-values
+    }
+    set self.precision = precision
+    {if precision < 0 then
+        set self.comma-formatter.min-fraction-digits = -precision
+     else
+        set self.comma-formatter.min-precision = precision
+    }
+  }
+
+
+  {method public open {parse x:String}:any
+    let str:String = {x.trim-clone}
+    let (val:double, n:int) = 
+        {try
+            {str.to-double}
+         catch e:Exception do
+            {throw {ValidationException e.message}}
+        }
+    {if not str.empty? and n == str.size then
+        {return val}
+    }
+    {return {super.parse x}}
+  } 
+  
+  {method public open {format x:any}:String
+    def fs = {self.comma-formatter.format x asa double}
+    {return fs}
+  }
+
+  {method public open {compare x:any, y:any}:int
+    {if {nan? x asa double} then
+        {if {nan? y asa double} then
+            {return 0}
+         else
+            {return 1}
+        }
+     elseif {nan? y asa double} then
+        {return -1}
+    }
+    {return {signum (x asa double) - (y asa double)} asa int}
+  }
+}
+
 
 {doc-next
     {purpose A domain that can be used on a {docref RecordField}
@@ -353,6 +450,93 @@
 ||--        }
 ||--    }
 
+{doc-next
+    {purpose
+        Domain that scales, formats, and parses currency values.
+    }
+    {details
+        This domain assumes that the value it is used with is an int
+        scaled by a factor of 100 so that "penny" amounts are not
+        rounded. It uses a {docref NumberFormatter} and 
+        {docref NumberParser} for the working locale for parsing
+        and formatting values.
+    }
+}
+{define-class public open CurrencyDomain
+  {inherits {StandardDomain-of int}}
+  
+  let public constant formatter:NumberFormatter =
+      {NumberFormatter.create-currency-formatter
+        locale = {get-working-locale}
+      }
+
+  let public constant parser:NumberParser =
+      {NumberParser
+        allow-grouping? = true,
+        allow-exponent? = false,
+        whitespace-char-class = {CharClass " $\\\t"}
+      }
+
+
+  {doc-next 
+    {purpose Construct this object.}
+    {parameter default-value, provides the initial value for
+        {docref-abbr DoubleDomain.default-value}
+    }
+    {parameter min-allowable, provides the initial value for
+        {docref-abbr Domain.min-allowable}
+    }
+    {parameter max-allowable, provides the initial value for
+        {docref-abbr Domain.max-allowable}
+    }
+    {parameter precision, provides the initial value for
+        {docref-abbr DoubleDomain.precision}
+    }
+    {parameter allowable-values, provides the initial value for
+            {docref-abbr Domain.allowable-values}
+    }
+  }
+  {constructor public {default
+                          default-value:any = 0,
+                          min-allowable:any = null,
+                          max-allowable:any = null,
+                          allowable-values:#{Array-of int} = null
+                      }
+    {construct-super 
+        default-value,
+        min-allowable,
+        max-allowable,
+        allowable-values
+    }
+  }
+
+
+  {method public open {parse x:String}:any
+    let (val:double, n:int) =
+        {try
+            {CurrencyDomain.parser.parse-double x}
+         catch e:Exception do
+            {throw {ValidationException e.message}}
+        }
+    {if not x.empty? and n == x.size then
+        {return {round val * 100}}
+    }
+    {return {super.parse x}}
+  } 
+  
+  {method public open {format x:any}:String
+    {if-non-null x then
+        {return {CurrencyDomain.formatter.format (x asa int)/100.0}}
+    }
+    {return ""}
+  }
+
+  {method public open {compare x:any, y:any}:int
+    {return {signum (x asa int) - (y asa int)} asa int}
+  }
+}
+
+
 {doc-next 
     {purpose A {docref Domain} for a foreign key field.}
     {details 
@@ -644,19 +828,7 @@
 
   {nonlocal-option public font-size:any
     set self.drag-graphic.font-size = font-size
-||--    let d:Distance = {self.any-to-Distance self.font-size,
-||--                         convert-font-relative-values? = true,
-||--                         for-font-size? = true
-||--                     }
-||--    set self.height = 
-||--        {add-stretch}
-||--        {make-elastic preferred-size = d * 1.0, ||minimum-size = d,
-||--            compress-order = rigid-stretch-order,
-||--            stretch-order = rigid-stretch-order
-||--        }
-||--    set self.width = self.height
   }
-
 
   {doc-next
     {purpose
@@ -988,24 +1160,17 @@
     {super.refresh-data}
 
     set self.halign = "left" ||""
-    let (val:any, valid?:bool) = {self.get-data}
-    {if valid? then
+    {if self.mover == null then
         set self.mover = {self.make-mover}
         {self.mover.marker.add-event-handler
-            {click-recognizer consume? = false}
-        }
-        {self.mover.marker.add-event-handler
-            {on e:Click at t:DefaultDiscloser do
-                {if-non-null r = self.record then
-                    let expand?:bool = r["_expand?"] asa bool ||""
-                    let parent?:bool = 
-                        r["_rn"] asa int > (r["_ln"] asa int) + 1 ||""
-                    {if parent? then
-                        {after .0s do
-                            {set t.state = DisclosureState.changing}
-                        }
-                        {after .1s do
-                            set r["_expand?"] = not expand? ||""
+            {on e:Adjustment at t:DefaultDiscloser do
+                let (val:any, valid?:bool) = {self.get-data}
+                {if valid? then
+                    {if-non-null r = self.record then
+                        let parent?:bool =
+                            r["_rn"] asa int > (r["_ln"] asa int) + 1 ||""
+                        {if parent? then
+                            set r["_expand?"] = t.state == DisclosureState.expanded
                         }
                     }
                 }
@@ -1013,7 +1178,6 @@
         }
         {self._marker-frame.add replace? = true, self.mover}
     }
-
   }
 
   {doc-next
@@ -1044,16 +1208,18 @@
 }
 {define-class public open RecordDiscloser {inherits DefaultDiscloser}
 
+  field protected cell:RecordGridCell
+
   {doc-next
     {purpose A procedure that can be called to obtain the image that
         reflects the current state of the discloser.
     }
   }
-  field protected icon-proc:{proc-type 
-                              {cell:RecordGridCell,
-                               state:DisclosureState
-                              }:Pixmap}
-
+  field protected icon-proc:#{proc-type 
+                               {cell:RecordGridCell,
+                                state:DisclosureState
+                               }:Pixmap}
+  
   {doc-next
     {purpose Initialize this object. The rest args are any options
         that can be applied to a {docref Graphic}.
@@ -1067,15 +1233,16 @@
   }
   {constructor public {default
                           cell:RecordGridCell,
-                          icon-proc:{proc-type
-                                        {cell:RecordGridCell,
-                                         state:DisclosureState
-                                        }:Pixmap
-                                    },
+                          icon-proc:#{proc-type
+                                         {cell:RecordGridCell,
+                                          state:DisclosureState
+                                         }:Pixmap
+                                     },
                           ...
                       }
     set self.icon-proc = icon-proc
-    {construct-super cell, ...}
+    set self.cell = cell
+    {construct-super animation-rate = 0Hz, {splice ...}}
   }
 
 ||--  {nonlocal-option public font-size:any
@@ -1091,9 +1258,11 @@
                              state:DisclosureState
                          }:#Pixmap
     {if-non-null record = self.cell.record then
-        {return {self.icon-proc self.cell, state}}
+        {if-non-null icon-proc = self.icon-proc then
+            {return {icon-proc self.cell, state}}
+        }
     }
-    {return null}
+    {return {super.get-pixmap state}}
   }
 }
 
@@ -1162,7 +1331,7 @@
         }
     }
     {if self.discloser == null then
-        set self.discloser = {DefaultDiscloser self}
+        set self.discloser = {RecordDiscloser self, null}
     }
     {return
         {RecordMover
@@ -2501,6 +2670,7 @@ How this evolved:
     }
 }
 
+|| ---------------------------------------------------------------------------
 
 {doc-next
     {purpose An enhanced version of {docref CsvRecordSet}.}
@@ -2531,6 +2701,7 @@ How this evolved:
   field protected when-last-modified:#DateTime
   field protected timer:Timer
 
+
   {doc-next
     {purpose The field that uniquely identifies each record, if any.}
     {details
@@ -2541,7 +2712,6 @@ How this evolved:
   }
   field public-get protected-set id-field:String = "" ||""
 
-
   field private id-filter:RecordData = {RecordData}
 
   {method protected open {update-last-modified}:void
@@ -2549,6 +2719,7 @@ How this evolved:
         set self.when-last-modified =
             ({self.url.instantiate-File} asa File).when-last-modified
      catch e:IOException do
+        set self.when-last-modified = null
         || ignore
     }
   }
@@ -2605,17 +2776,12 @@ How this evolved:
                           autoupdate-interval:Time = 5s,
                           ...:EventHandler
                       }
+    set self.id-field = id-field
     ||FIXME: support http in read-only mode
-    let modified:#DateTime = null
       
     set self.url = {if-non-null url then url else {get-base-url}}
-
-    {try
-        set modified = ({self.url.instantiate-File} asa File).when-last-modified
-     catch e:Exception do
-        || ignore
-    }
-    {if modified == null then
+    {self.update-last-modified}
+    {if self.when-last-modified == null then
         let header:StringArray = 
             {StringArray 
                 {format "Created %s", {DateTime}.info.iso-full} ||""
@@ -2660,7 +2826,43 @@ How this evolved:
     {if autoupdate-interval <= 0s then
         set self.timer.enabled? = false
     }
-    set self.id-field = id-field
+  }
+
+  ||FIXME: This is not very efficient but maybe it doesn't matter
+  || since it is only called when a new record is added, which is
+  || relatively rare.
+  {doc-next
+    {purpose Return a new unique id value.}
+  }
+  {method public open {new-id}:int
+
+    || Find the highest ID currently in use
+    let last-id:int = 0
+    {for r:Record in self do
+        let recid:int = r[self.id-field] asa int
+        {if recid > last-id then
+            set last-id = recid
+        }
+    }
+    || Return the next unused id
+    {return last-id + 1}
+  }
+
+  {doc-next
+    {purpose Return the {docref Record} identified by {param id}.}
+  }
+  {method public open {get-by-id id:int}:#Record
+    {self.id-filter.clear}
+    set self.id-filter[self.id-field] = id
+    {return {self.select-one filter = self.id-filter}}
+  }
+  || Allocate a new record with a unique id
+  {method public open {new-record}:BasicRecord
+    let nr:BasicRecord = {super.new-record}
+    {if self.id-field != "" then
+        set nr[self.id-field] = {self.new-id}
+    }
+    {return nr}
   }
 
   {doc-next
@@ -2791,49 +2993,14 @@ How this evolved:
     {purpose Write the records to a new location.} 
   }
   {method public open {save-as location:Url}:void
+    || Switch to the new location
     set self.url = location
     {self.update-last-modified}
     set self.backup-done? = true
+    {inc self.change-count} || Required or commit might do nothing
     {self.commit}
   }
 
-  ||FIXME: This is not very efficient but maybe it doesn't matter
-  || since it is only called when a new record is added, which is
-  || relatively rare.
-  {doc-next
-    {purpose Return a new unique id value.}
-  }
-  {method public open {new-id}:int
-
-    || Find the highest ID currently in use
-    let last-id:int = 0
-    {for r:Record in self do
-        let recid:int = r[self.id-field] asa int
-        {if recid > last-id then
-            set last-id = recid
-        }
-    }
-    || Return the next unused id
-    {return last-id + 1}
-  }
-
-  || Allocate a new record with a unique id
-  {method public open {new-record}:BasicRecord
-    let nr:BasicRecord = {super.new-record}
-    {if self.id-field != "" then
-        set nr[self.id-field] = {self.new-id}
-    }
-    {return nr}
-  }
-
-  {doc-next
-    {purpose Return the {docref Record} identified by {param id}.}
-  }
-  {method public open {get-by-id id:int}:#Record
-    {self.id-filter.clear}
-    set self.id-filter[self.id-field] = id
-    {return {self.select-one filter = self.id-filter}}
-  }
 
   {doc-next
     {purpose Return the unique values in one or more columns.}
@@ -2944,6 +3111,119 @@ How this evolved:
     {return dlm}
   }
 }
+
+{define-class public open JsonRecordSet {inherits LocalRecordSet}
+
+  {doc-next
+    {purpose The field that uniquely identifies each record, if any.}
+    {details
+        If this field is non blank, the method {docref
+        CsvRecordSetB.new-id} will return an id value that is higher
+        than any other among the records contained in this recordset.
+    }
+  }
+  field public-get protected-set id-field:String = "" ||""
+
+  field private id-filter:RecordData = {RecordData}
+
+
+  {constructor public {default
+                          fields:RecordFields,
+                          modifiable?:bool = true,
+                          id-field:String = "", ||""
+                          ...:Object
+                      }
+    {construct-super.LocalRecordSet fields, modifiable? = modifiable?, ...}
+    set self.id-field = id-field
+  }
+
+  ||FIXME: This is not very efficient but maybe it doesn't matter
+  || since it is only called when a new record is added, which is
+  || relatively rare.
+  {doc-next
+    {purpose Return a new unique id value.}
+  }
+  {method public open {new-id}:int
+
+    || Find the highest ID currently in use
+    let last-id:int = 0
+    {for r:Record in self do
+        let recid:int = r[self.id-field] asa int
+        {if recid > last-id then
+            set last-id = recid
+        }
+    }
+    || Return the next unused id
+    {return last-id + 1}
+  }
+
+  {doc-next
+    {purpose Return the {docref Record} identified by {param id}.}
+  }
+  {method public open {get-by-id id:int}:#Record
+    {self.id-filter.clear}
+    set self.id-filter[self.id-field] = id
+    {return {self.select-one filter = self.id-filter}}
+  }
+
+  || Allocate a new record with a unique id
+  {method public open {new-record}:BasicRecord
+    let nr:BasicRecord = {super.new-record}
+    {if self.id-field != "" then
+        set nr[self.id-field] = {self.new-id}
+    }
+    {return nr}
+  }
+
+  field private buf:StringBuf = {StringBuf}
+
+  {method public open {escape-quotes s:String}:String
+    {if {s.find '\"'} == -1 then
+        {return s}
+    }
+    {self.buf.clear}
+    {for c in s do
+        {if c == '\"' then
+            {self.buf.append '\\'}
+        }
+        {self.buf.append c}
+    }
+    {return {self.buf.to-String}}
+  }
+
+  || From worksheet.scurl, should be in EXT.DATA-ACCESS
+  {method public open {to-Json}:JsonObject
+    def data = {JsonObject}
+    def records = {JsonArray}
+    set data["records"] = records
+    {for r in self do
+        def rdata = {JsonObject}
+        {for f in self.fields do
+            set rdata[f.name] =
+                {self.escape-quotes {f.domain.format r[f.name]}}
+        }
+        {records.append rdata}
+    }
+    {return data}
+  }
+
+  {method public open {load-from-Json records:JsonArray}:void
+    {with self.batch-events? = true do
+        {self.delete-all}
+        {self.commit}
+        {for rd in records do
+            def rdo = rd asa JsonObject
+            def r = {self.new-record}
+            {for f in self.fields do
+                set r[f.name] = {f.domain.parse rdo[f.name] asa String}
+            }
+            {self.append r}
+        }
+        {self.commit}
+    }
+  }
+}
+
 
 || ---------------------------------------------------------------------------
 
@@ -3449,3 +3729,69 @@ How this evolved:
     {self.source-record.delete}
   }
 }
+
+|| -----------------------------------------------------------------------------
+
+{doc-next
+    {purpose
+        A collection that can be used as both an array and a set.
+    }
+}
+{define-class public open {OrderedSet-of t:Type}
+ 
+  field private constant _set:{Set-of t} = {{Set-of t}}
+  field private constant _array:{Array-of t} = {{Array-of t}}
+  
+  {constructor public {default}}
+  
+  {getter public open {size}:int
+    {return self._set.size}
+  }
+
+  {getter public open {efficient-size}:int
+    {return self._array.efficient-size}
+  }
+  {setter public open {efficient-size i:int}:void
+    set self._array.efficient-size = i
+    set self._set.efficient-size = i
+  }
+  
+  {method public open {member? v:t}:bool
+    {return {self._set.member? v}}
+  }
+
+  {method public open {insert v:t, error-if-present?:bool=true}:void
+    let place-in-array?:bool = error-if-present? or not {self._set.member? v}
+    {self._set.insert v, error-if-present? = error-if-present?}
+    {if place-in-array? then
+        {self._array.append v}
+    }
+  }
+
+  {method public open {remove v:t, error-if-missing?:bool=true}:void
+    {self._set.remove v, error-if-missing? = error-if-missing?}
+    {if self._array.size > 2 * self._set.size then
+        {self.cull-stale-members}
+    }
+  }
+
+  {method public open {clear}:void
+    {self._set.clear}
+    {self._array.clear}
+  }
+
+  {method public open {to-Iterator}:{Iterator-of t}
+    {self.cull-stale-members}
+    {return {self._array.to-Iterator}}
+  }
+  
+  {method private {cull-stale-members}:void
+    {if self._set.size != self._array.size then
+        {self._array.filter
+            {proc {v:t}:bool {return {self._set.member? v}}}
+        }
+    }
+  }
+}
+
+|| -----------------------------------------------------------------------------
