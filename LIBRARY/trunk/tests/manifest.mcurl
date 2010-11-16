@@ -56,6 +56,10 @@
     location = "t-treegrid.curl"
 }
 
+{component file t-geo-graphic-api.curl,
+    location = "t-geo-graphic-api.curl"
+}
+
 {component directory server,
     location = "server"
 }
