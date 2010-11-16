@@ -74,6 +74,13 @@
     location = "BackgroundTask/BackgroundTaskRemoteInterfacePackage.scurl"
 }
 
+{component package COM.CURL.EXT.GEOGRAPHIC,
+    location = "GEOGRAPHIC/load.scurl",
+    version = "1.0"
+}
+
+
+
 {component file BackgroundTaskSubApplet.curl,
     location = "BackgroundTask/BackgroundTaskSubApplet.curl"
 }

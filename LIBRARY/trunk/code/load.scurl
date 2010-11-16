@@ -11,4 +11,5 @@
 {import public * from COM.CURL.EXT.GUI}
 {import public * from COM.CURL.EXT.WORKSHEET}
 {import public * from COM.CURL.EXT.TILED-WINDOWS}
+{import public * from COM.CURL.EXT.GEOGRAPHIC}
 
