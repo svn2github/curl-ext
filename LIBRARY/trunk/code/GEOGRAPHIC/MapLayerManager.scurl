@@ -1,0 +1,74 @@
+||| Maintained by: kodan
+
+{doc-next
+    {purpose Class that manages the entire application.}
+    {details
+        This class has two or more objects that manage the figure and 
+        objects that manage the screen display. 
+        The entire application is managed, 
+        and it has the function of the addition and the deletion of the figure. 
+    }
+}
+{define-class public MapLayerManager
+  
+  field public constant layers:{Array-of SingleMapLayer}
+  field public constant map-display:MapDisplay
+  
+  {constructor public {default
+                          ...:SingleMapLayer
+                      }
+    set self.map-display = {MapDisplay self}
+    set self.layers = {{Array-of SingleMapLayer}}
+    
+    || Check arguments type
+    {for object:any in ... do
+        {type-switch object
+         case layer:SingleMapLayer do
+            {self.layers.append layer} 
+         else
+            ||?
+        }
+    }
+    
+    || Collect SingleMapLayer object and create Shapes
+    {for layer:SingleMapLayer in self.layers do
+        set layer.manager = self
+        {layer.create-area-shapes}
+        {self.map-display.add-layer layer}
+    }
+  }
+    
+  {doc-next
+    {purpose Remove a {ctext SingleMapLayer}.}
+    {details The displayed figure is deleted. },
+    {parameter {ctext SingleMapLayer} to be removed.}
+  }
+  {method public {remove-layer layer:SingleMapLayer}:void
+    || 1) remove SingleMapLayer
+    let constant index:int = {self.layers.find layer}
+    {if index == -1 then {return}}
+    {self.layers.remove index}
+    
+    || 2) detach from MapDisplay
+    {self.map-display.remove-layer layer}
+  }
+  
+  {doc-next
+    {purpose Append a {ctext SingleMapLayer}.}
+    {details The figure to be displayed is added.},
+    {parameter {ctext SingleMapLayer} to be appended.}
+  }
+  {method public {append-layer layer:SingleMapLayer}:void
+    || 1) append layer to layers
+    {self.layers.append layer}
+    set layer.manager = self
+    {layer.create-area-shapes}
+    
+    || 2) add layer to MapDisplay
+    {self.map-display.add-layer layer}
+
+    || 3) re-calculate size and position
+    {self.map-display.re-calculate-size-and-position layer}
+  }
+}
+

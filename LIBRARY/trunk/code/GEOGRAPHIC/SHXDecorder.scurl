@@ -1,0 +1,99 @@
+||| Copyright (C) 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+{define-class public SHXDecoder
+  
+  field protected shx-file:Url
+  field protected rs:#RecordSet
+  field protected file-header-info:FileHeaderInfo = 
+      {FileHeaderInfo.empty-file-header}
+  
+  {constructor public {default shx-file:Url}
+    set self.shx-file = shx-file
+  }
+  
+  {method public {read-shx}:(RecordSet, FileHeaderInfo)
+    {with-open-streams in = {read-open-byte self.shx-file} do
+        set self.file-header-info = {self.read-file-header in}
+        ||set self.rs = 
+        ||    {RecordSet self.file-header-info.record-fields asa RecordFields}
+        set self.rs = {RecordSet
+                          {RecordFields
+                              {RecordField "offset", domain = int},
+                              {RecordField "content-length", domain = int}}}
+        
+        let shape-record:#RecordData = {self.read-record in}
+        {while shape-record != null do
+            {self.rs.append shape-record}
+            set shape-record = {self.read-record in}
+        }
+        {return (self.rs asa RecordSet), self.file-header-info}
+    }
+  }
+  
+  {method protected {read-file-header in:ByteInputStream}:FileHeaderInfo
+    let file-code:int = {marshal-in-int in}
+    let unused1:int = {marshal-in-int in}
+    let unused2:int = {marshal-in-int in}
+    let unused3:int = {marshal-in-int in}
+    let unused4:int = {marshal-in-int in}
+    let unused5:int = {marshal-in-int in}
+    let file-length:int = {marshal-in-int in}
+    let version:int = {marshal-in-int in, little-endian? = true}
+    let shape-type:int = {marshal-in-int in, little-endian? = true}
+    let minx:double = {marshal-in-double in, little-endian? = true}
+    let miny:double = {marshal-in-double in, little-endian? = true}
+    let maxx:double = {marshal-in-double in, little-endian? = true}
+    let maxy:double = {marshal-in-double in, little-endian? = true}
+    let minz:double = {marshal-in-double in, little-endian? = true}
+    let maxz:double = {marshal-in-double in, little-endian? = true}
+    let minm:double = {marshal-in-double in, little-endian? = true}
+    let maxm:double = {marshal-in-double in, little-endian? = true}
+    
+    let rectangle:MinimumBoundingRectangle =
+        {MinimumBoundingRectangle minx, miny, maxx, maxy,
+            minz = minz, maxz = maxz,
+            minm = minm, maxm = maxm
+        }
+    
+    def file-header-info =
+        {new FileHeaderInfo,
+            file-code,
+            file-length,
+            version,
+            shape-type,
+            rectangle
+        }
+    {return file-header-info}
+  }
+  
+  {method protected {read-record in:ByteInputStream}:#RecordData
+    {try
+        let offset-value        :int = {marshal-in-int in}
+        let content-length-value:int = {marshal-in-int in}
+        
+        let record-data:RecordData = {RecordData
+                                         offset = offset-value,
+                                         content-length = content-length-value
+                                     }
+        {return record-data}
+     catch eos:EndOfStreamException do
+        {return null}
+    }
+  }
+  
+}
+
+
