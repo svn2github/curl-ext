@@ -1,3 +1,19 @@
+||| Copyright (C) 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An Open Curl project.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
 {curl 7.0 package}
 
 {package COM.CURL.EXT.TILED-WINDOWS,
@@ -11,8 +27,8 @@
 {include
     "BasePane.scurl",
     "DragFeedbackFrame.scurl",
-    "EmptyPaneGroup.scurl",
-    "MDIPaneGroup.scurl",
+||++"EmptyPaneGroup.scurl",
+||++"MDIPaneGroup.scurl",
     "PaneContainer.scurl",
     "PaneDragger.scurl",
     "PaneFocusManager.scurl",
@@ -20,218 +36,114 @@
     "PaneTitleBar.scurl",
     "ResizeableDecorationlessView.scurl",
     "SinglePane.scurl",
-    "StatusBar.scurl",
+||++"StatusBar.scurl",
     "TabbedPaneGroup.scurl",
     "TabDragger.scurl",
-    "TiledPaneGroup.scurl",
-    "PaneContent.scurl"
+    "TablePaneGroup.scurl",
+    "TiledPaneGroup.scurl"
 }
 
-|| FIXME: This whole class should be moved into "CURL.GUI.BASE", but
-|| with the IDE decoration code added via subclassing of some kind.
-|| At that point, the images "close-normal.gif" and "close-pressed.gif"
-|| would move (or be copied) into "curl://install/curl-resources".
-|| The directory below is also defined in "ide/pane/cde-pane.scurl",
-|| using the variable name "ide-image-dir".  Both variables should be
-|| replaced by appropriate use of "host-localize-url", but first we
-|| need to create "curl://install/ide/curl-resources/translations.xml".
-|| Note that these two images also appear in the "ide/vle/images"
-|| directory, which may or may not eventually be merged into the
-|| "ide/curl-resources/default/images" directory.
-{let package constant pane-container-image-dir:Url =
+{doc-next
+    {purpose
+        The location of various image resources used for button labels, etc.
+    }
+}
+{let public constant pane-container-image-dir:Url =
     {url "resources/images"}
 }
 
-{let package constant tab-background-color:FillPattern = "#ECE9D8"} ||""
-
+{doc-next
+    {purpose
+        Describes the floating/docked state of a pane.
+    }
+    {details
+        The defined values of this enum are
+        {itemize
+            {item
+                {ctext docked}: The pane is docked.
+            }
+            {item
+                {ctext dockable}: The pane is floating, but if it is dragged over
+                its {docref PaneContainer} in a dockable position
+                (e.g., near an edge of an already docked pane),
+                it will become docked.
+            }
+            {item
+                {ctext floating}: The pane is floating, and will remain floating
+                even if dragged over its {docref PaneContainer}.
+            }
+        }
+    }
+    {notes
+        The hidden vs. showing state of a pane is not encoded in this enum.
+    }
+}
 {define-enum public PaneState
     docked,
     dockable,
-    floating,
-    minimized,
-    maximized
+    floating
 }
 
+{doc-next
+    {purpose
+        Describes a proposed docking action for a pane.
+    }
+    {details
+        This enum is used for communication between code that interprets user
+        gestures and determines their associated docking action
+        and code that actually implements a docking action.
+        The values of this enum describe how the pane to be docked should
+        relate to the already docked pane that is the {quote target} for the
+        proposed docking action:
+        {itemize
+            {item
+                {ctext none}: No docking action should take place.
+                For example, a pane that is currently floating should remain floating.
+                A currently docked pane will be floated.
+            }
+            {item
+                {ctext over-pane}: Indicates a drop over a pane but not in the
+                active zone for any of the left, right, top, bottom, or tab gestures.
+                Generally this is a synonym for {ctext none}, but certain {docref PaneGroup}s,
+                such as {docref TablePaneGroup}, map this to {ctext swap} instead.
+            }
+            {item
+                {ctext left}: Dock along the left edge of the target pane.
+            }
+            {item
+                {ctext right}: Dock along the right edge of the target pane.
+            }
+            {item
+                {ctext top}: Dock along the top edge of the target pane.
+            }
+            {item
+                {ctext bottom}: Dock along the bottom edge of the target pane.
+            }
+            {item
+                {ctext tab}: Dock into a new tab in the target pane.
+            }
+            {item
+                {ctext replace}: The dragged pane takes the place of the target pane,
+                and the target pane is hidden.
+            }
+            {item
+                {ctext swap}: Interchange the contents of the dragged pane and the target pane.
+            }
+        }
+    }
+}
 {define-enum public DockingAction
     none,
+    over-pane,
     left,
     right,
     top,
     bottom,
-    swap,
-    tab
+    tab,
+    replace,
+    swap
 }
 
-{let package constant dock-zone-size:Distance = 1cm}
+|| Turn this to true to enable various debugging features.
+{let package debugging?:bool = false}
 
-{define-proc package {get-parent-pane-group child:Graphic}:PaneGroup
-    {if-non-null pane-group = {get-parent-pane-group-or-null child} then
-        {return pane-group}
-     else
-        {error {format "%s is not inside a PaneGroup", child}} ||""
-    }
-}        
-
-{define-proc package {get-parent-pane-group-or-null child:Graphic}:#PaneGroup
-    {while true do
-        let parent:#Box = child.parent
-        {type-switch parent
-         case pg:PaneGroup do
-            {return pg}
-         case box:Box do
-            set child = box
-         else
-            {return null}
-        }
-    }
-}
-
-{define-value-class public final PaneContentID
-  field public constant kind:String
-  field public constant identifier:String
-  {constructor public {default kind:String, identifier:String = ""}
-    set self.kind = kind
-    set self.identifier = identifier
-  }
-  {constructor public implicit {from-string name:String}
-    def i = {name.find PaneContentID.delimiter}
-    def (kind, identifier) =
-        {if i < 0 then (name, "")
-         else
-            ({name.substr 0, i}, {name.tail i + 1})
-        }
-    set self.kind = kind
-    set self.identifier = identifier
-  }
-  {constructor public implicit {empty}
-    set self.kind = ""
-    set self.identifier = ""
-  }
-  {getter public {empty?}:bool
-    {return self.kind.empty?}
-  }
-  {method public {to-String}:String
-    {return
-        {if self.identifier.empty? then self.kind
-         else self.kind & PaneContentID.delimiter & self.identifier}}
-  }
-  def delimiter = '`'
-}
-{define-class public PaneMap {inherits {HashTable-of PaneContentID, PaneContent}}
-    {constructor public {default ...}
-        {construct-super {splice ...}}
-    }
-}
-
-{define-proc public {evaluate-saved-windows-package
-                        map:{proc-type {PaneContentID}:PaneContent},
-                        pane-container:PaneContainer
-                    }:OpenPackage
-    def op = {OpenPackage}
-    {op.add "pane-container",
-        {proc {top:PaneGroup, ...:SinglePane}:void
-            {pane-container.replace-pane-group-with top, {splice ...}}
-        }
-    }
-    {op.add "single-pane",
-        {proc {pane-name:PaneContentID = "", ...}:SinglePane
-            def content = {map pane-name}
-            {return
-                {SinglePane content, root-container = pane-container, {splice ...}}
-            }
-        }
-    }
-    {op.add "tiled-pane-group",
-        {proc {...}:PaneGroup
-            {return {TiledPaneGroup {splice ...}}}
-        }
-    }
-    {op.add "tabbed-pane-group",
-        {proc {...}:PaneGroup
-            {return {TabbedPaneGroup {splice ...}}}
-        }
-    }
-    {op.add "mdi-pane-group",
-        {proc {...}:PaneGroup
-            {return {MDIPaneGroup {splice ...}}}
-        }
-    }
-    {op.add "create-path",
-        {proc {...:int}:{Array-of int}
-            {return {new {Array-of int}, {splice ...}}}
-        }
-    }
-    {return op}
-}
-
-|| testable operations
-|| --------------------
-{define-proc {pane-for
-                 pc:PaneContainer,
-                 name:PaneContentID
-             }:SinglePane
-    || TODO: check invariants of known-panes, .single-pane
-    {return {non-null {pc.get-content name}.single-pane}}
-}
-{define-proc public {test-sequence
-                        ...:{proc-type {PaneContainer}:void}
-                    }:{proc-type {PaneContainer}:void}
-    def tests = {{Array-of {proc-type {PaneContainer}:void}} {splice ...}}
-    {return
-        {proc {pc:PaneContainer}:void
-            {for test in tests do
-                {test pc}}}}
-}
-{define-proc public {test-dock-pane
-                        name:PaneContentID,
-                        action:DockingAction,
-                        target-name:PaneContentID
-                    }:{proc-type {PaneContainer}:void}
-    {return
-        {proc {pc:PaneContainer}:void
-            def pane = {pane-for pc, name}
-            def target =
-                {if not target-name.empty? then
-                    {pane-for pc, target-name}
-                 else null}
-            {pc.dock-pane pane, action, target}
-        }}
-}
-{define-proc public {test-float-pane
-                        name:PaneContentID,
-                        dockable?:bool
-                    }:{proc-type {PaneContainer}:void}
-    {return
-        {proc {pc:PaneContainer}:void
-            def pane = {pane-for pc, name}
-            {pc.float-pane pane, dockable?}
-        }}
-}
-{define-proc public {test-dock-pane-from-path
-                        name:PaneContentID
-                    }:{proc-type {PaneContainer}:void}
-    {return
-        {proc {pc:PaneContainer}:void
-            def pane = {pane-for pc, name}
-            {pc.heuristic-dock-pane-from-path pane}
-        }}
-}
-{define-proc public {test-show-pane
-                        name:PaneContentID
-                    }:{proc-type {PaneContainer}:void}
-    {return
-        {proc {pc:PaneContainer}:void
-            def pane = {pane-for pc, name}
-            {pc.show-pane pane}
-        }}
-}
-{define-proc public {test-hide-pane
-                        name:PaneContentID
-                    }:{proc-type {PaneContainer}:void}
-    {return
-        {proc {pc:PaneContainer}:void
-            def pane = {pane-for pc, name}
-            || TODO: content keyword was used for tabs
-            {pc.hide-pane pane, content = null}
-        }}
-}

@@ -1,378 +1,470 @@
-{define-class public open TiledPaneGroup {inherits PaneGroup}
-  field protected pw:PanedWindow
-  field protected max-rows:int = 0
-  field protected max-cols:int = 0
-||--  field protected orientation:Orientation
+||| Copyright (C) 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An Open Curl project.
 
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+
+{doc-next
+    {purpose
+        A {docref PaneGroup} based on {docref PanedWindow} that arranges its child panes
+        in a horizontal or vertical arrangement,
+        with draggable sashes separating the panes.
+    }
+    {details
+        To customize the appearance, you can use the following
+        {docref-abbr Visual.style-element} values in your style rules.
+        
+        {Table
+            columns = 3,
+            border-width = 1in/300,
+            border-color = "black",
+            horizontal-line-width = 1in/300,
+            vertical-line-width = 1in/300,
+            cell-border-width = 0pt,
+            cell-margin = 2pt,
+            {header-cell style-element},
+            {header-cell Type},
+            {header-cell Description},
+            
+            {ctext LinearPaneGroup}, {docref LinearPaneGroup},
+            {text The {ctext LinearPaneGroup} itself. You can use style rules
+                to set local and nonlocal options.
+            },
+            
+            {ctext LinearPaneGroup/paned-window}, {docref PanedWindow},
+            {text The {docref PanedWindow} object that contains the child panes
+                and manages their sizes.
+            }
+        }
+    }
+}
+{define-class public open LinearPaneGroup {inherits PaneGroup}
+  
+  {doc-next
+    {purpose
+        The {docref PanedWindow} object that underlies this pane group
+        and provides the draggable sashes.
+    }
+  }
+  field protected constant pw:PanedWindow
+  
+  {doc-next
+    {purpose
+        The orientation of this {docref LinearPaneGroup},
+        either horizontal or vertical.
+    }
+  }
+  field protected constant orientation:Orientation
+  
+  {doc-next
+    {purpose
+        Return the opposite {docref Orientation} from a given orientation.
+    }
+    {parameter orientation,
+        The orientation whose opposite is needed.
+    }
+    {return-vals
+        The opposite of {parameter orientation}.
+    }
+  }
+  {define-proc public {opposite-orientation orientation:Orientation}:Orientation
+    {switch orientation
+     case Orientation.horizontal do
+        {return Orientation.vertical}
+     case Orientation.vertical do
+        {return Orientation.horizontal}
+    }
+  }
+  
+||--  {getter public open {group-type}:String
+||--    {return self.orientation.name}
+||--  }
+  
+  {getter public open {style-element}:String
+    def _style-element = self._style-element
+    {if _style-element == "" then
+        {return "LinearPaneGroup"}
+     else
+        {return _style-element}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Return the base style rules that describe the default style of this object.
+    }
+    {return-vals
+        An array of {docref StyleRule} objects that will be added to the base set of
+        style rules for the current applet
+        (using {docref StyleManager.append-base-style-rule})
+        to produce the default style for {docref LinearPaneGroup} objects.
+    }
+  }
+  {define-proc public {get-base-style-rules}:{Array-of StyleRule}
+    {return
+        {new {Array-of StyleRule},
+            {StyleRule
+                "LinearPaneGroup/paned-window",
+                border-color = "silver"
+            }
+        }
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Construct a {docref LinearPaneGroup} object.
+    }
+    {parameter root-container,
+        The {docref PaneContainer} that will contain this {docref LinearPaneGroup}.
+    }
+    {parameter orientation,
+        The orientation (horizontal or vertical) of this {docref LinearPaneGroup}.
+    }
+    {parameter percent,
+        The {quote percentage} to be used when this object is added to another
+        {docref LinearPaneGroup}.
+        See {docref BasePane.percent} for further information.
+    }
+    {parameter ...,
+        A list of {docref BasePane} objects that are initially in this group.
+    }
+  }
   {constructor public {default
-||--                          orientation:Orientation = Orientation.vertical,
-                          max-rows:int = 0,
-                          max-cols:int = 0,
-|| TODO: BasePanes need a percent value when they're in a TiledPaneGroup, so percent needs to be -1 for any other circumstance (or an unset option somewhere)
+                          root-container:PaneContainer,
+                          orientation:Orientation = Orientation.vertical,
                           percent:double = -1.0,
                           ...:BasePane
                       }
-||--    {construct-super orientation = orientation, percent = percent, {splice ...}}
-
-    {construct-super {splice ...}}
-    set self.width = {add-stretch}
-    set self.height = {add-stretch}
-    set self.max-rows = max-rows
-    set self.max-cols = max-cols
-    {assert max-rows > 0 or max-cols > 0}
-    def sizes = {{Array-of double}}
-    def base-panes = {{Array-of BasePane} {splice ...}}
-    || TODO: When is SinglePane.percent really optional?
-    || - It seems to throw an error when it isn't set.
-    {if self.max-rows == 1 then
-        || horizontal
-        set self.pw = {PanedWindow orientation = Orientation.horizontal}
-        {for base-pane key i in base-panes do
-            {if self.max-cols == 0 or i < self.max-cols then
-                set base-pane.pane-group = self
-                {self.add-pane base-pane}
-                {if base-pane.percent == -1 then
-                    {sizes.append 1 / base-panes.size}
-                 else
-                    {sizes.append base-pane.percent}
-                }
-            }
-        }
-        {self.set-pane-sizes sizes}
-     elseif self.max-cols == 1 then
-        || vertical
-        set self.pw = {PanedWindow orientation = Orientation.vertical}
-        {for base-pane key i in base-panes do
-            {if self.max-rows == 0 or i < self.max-rows then
-                set base-pane.pane-group = self
-                {self.add-pane base-pane}
-                {sizes.append base-pane.percent}
-                {if base-pane.percent == -1 then
-                    {sizes.append 1 / base-panes.size}
-                 else
-                    {sizes.append base-pane.percent}
-                }
-            }
-        }
-        {self.set-pane-sizes sizes}
-     else
-        || tabular
-        || TODO: Handle the tabular case (i.e., when max-rows & max-cols != 1)
-        set self.pw = {PanedWindow orientation = Orientation.vertical}
-        {for base-pane in base-panes do
-            set base-pane.pane-group = self
-            {self.add-pane base-pane}
-            {sizes.append base-pane.percent}
-        }
-        {self.set-pane-sizes sizes}
-    }
-    {self.add self.pw}
-
+    set self.orientation = orientation
+    {construct-super root-container, ...}
     set self.percent = percent
-||--    set self.orientation = orientation
-  }
-
-  {getter public sealed {size}:int
-    {return {self.pw.pane-count}}
-  }
-
-  {getter package {drag-view-divisor}:int
-    {return
-        3
-|| TODO: Orientation might not be a valid thing to check
-||--        {if self.orientation == Orientation.horizontal then
-||--            self.size + 1
-||--         else
-||--            3
-||--        }
+    {if debugging? then
+        set self.border-color = {if orientation == Orientation.horizontal then "cyan" else "blue"}    || *temp* RHH
+        set self.border-width = 8pt       || *temp* RHH
+        set self.border-style = "ridge"   || *temp* RHH
     }
-  }
-
-  {getter public {orientation}:Orientation
-    {return
-        {if self.max-rows == 1 then Orientation.horizontal
-         elseif self.max-cols == 1 then Orientation.vertical
-         else || TODO:
-            Orientation.vertical}}
-  }
-
-  {method package {get-percent pane:BasePane}:double
-    def my-index = {self.find pane}
-    let my-size:double
-    let sum:double = 0.0
-    {for i = 0 below self.size do
-        def rect = {{self.get-pane i}.layout.get-cell-bounds}
-        def size =
-            {if self.orientation == Orientation.horizontal then
-                rect.width / 1m
+    def sizes = {{Array-of double}}
+    set self.pw =
+        {PanedWindow
+            _style-element = "LinearPaneGroup/paned-window",
+            orientation = orientation
+        }
+    {for pane key i in self.base-panes do
+        {self.pw.add-pane pane}
+        {sizes.append
+            {if pane.percent <= 0.0 then
+                1.0 / self.base-panes.size
              else
-                rect.height / 1m
+                pane.percent
             }
-        {if i == my-index then
-            set my-size = size
         }
-        set sum = sum + size
+        {pane.mark-as-docked}
     }
-    {if sum == 0.0 then
-        {return 0.0}
-     else
-        {return my-size / sum}
-    }
-  }
-
-  {method private {get-pane-sizes}:{Array-of double}
-    let sizes:{Array-of double} = 
-        {new {Array-of double}.from-size, self.size, 0.0}
-    {for i = 0 below sizes.size do
-        set sizes[i] = {{self.get-pane i}.get-stretchiness}
-    }
-    {return sizes}
-  }
-
-  {method public {set-pane-sizes sizes:{Array-of double}}:void
-|| TODO: Is this still necessary?
-|| TODO: Implement the methods that used to come with PanedWindow
-    {self.pw.set-pane-sizes sizes}
-  }
-
-|| TODO: Is returning only BasePanes too restrictive?
-  {method public {get index:int}:#BasePane
-|| TODO: Implement the methods that used to come with PanedWindow
-    {return {self.pw.get index} asa #BasePane}
-  }
-
-  {method public {get-pane index:int}:#Pane
-|| TODO: Implement the methods that used to come with PanedWindow
-    {return {self.pw.get-pane index}}
-  }
-
-  {method public {find child:any}:int
-|| TODO: Implement the methods that used to come with PanedWindow
-    {return {self.pw.find child}}
-  }
-
-  {method protected {insert-pane
-                        pane:SinglePane,
-                        orientation:Orientation = Orientation.vertical,
-                        at-top-or-left?:bool = false
-                    }:void
-
-    {if orientation != self.orientation then
-        def new-parent =
-            {switch orientation
-             case Orientation.horizontal do 
-                {TiledPaneGroup max-rows = 1, percent = 1.0}
-             else || Orientation.vertical
-                {TiledPaneGroup max-cols = 1, percent = 1.0}}
-        {self.replace-with new-parent}
-        set self.pane-group = new-parent
-        set self.percent = .67
-        set pane.pane-group = new-parent
-        set pane.percent = .33
-        {if at-top-or-left? then
-            {new-parent.add-pane-and-resize pane, 0}
-            {new-parent.add-pane-and-resize self, 1}
-         else
-            {new-parent.add-pane-and-resize self, 0}
-            {new-parent.add-pane-and-resize pane, 1}
-        }
-     else
-        {self.add-pane-and-resize
-            pane,
-            {if at-top-or-left? then 0 else self.size}
-        }
-    }
-  }
-
-  {method protected {insert-pane-in-target
-                        pane:SinglePane,
-                        target:SinglePane,
-                        orientation:Orientation = Orientation.vertical,
-                        at-top-or-left?:bool = false
-                    }:void
-
-    def index-in-parent = {self.find target}
-    {if orientation != self.orientation then
-        def new-parent =
-            {switch orientation
-             case Orientation.horizontal do 
-                {TiledPaneGroup max-rows = 1, percent = 1.0}
-             else || Orientation.vertical
-                {TiledPaneGroup max-cols = 1, percent = 1.0}}
-        set new-parent.pane-group = target.pane-group
-        set new-parent.percent = target.percent
-        set target.pane-group = new-parent
-        set target.percent = .67
-        set pane.pane-group = new-parent
-        set pane.percent = .33
-        {self.remove-pane-and-resize index-in-parent}
-        {self.add-pane-and-resize new-parent, index-in-parent}
-        {if at-top-or-left? then
-            {new-parent.add-pane-and-resize pane, 0}
-            {new-parent.add-pane-and-resize target, 1}
-         else
-            {new-parent.add-pane-and-resize target, 0}
-            {new-parent.add-pane-and-resize pane, 1}
-        }
-     else
-        {self.add-pane-and-resize
-            pane, 
-            {if at-top-or-left? then
-                {max index-in-parent, 0}
-             else
-                index-in-parent + 1}
-        }
-    }
-  }
-
-|| TODO: Is accepting only BasePanes too restrictive?
-  {method public {add-pane pane:BasePane}:void
-|| TODO: Implement the methods that used to come with PanedWindow
-    {self.pw.add-pane pane}
-    {self.base-panes.append pane}
-  }
-
-|| TODO: Is accepting only BasePanes too restrictive?
-  {method public {add-pane-at-index pane:BasePane, index:int}:void
-|| TODO: Implement the methods that used to come with PanedWindow
-    {self.pw.add-pane-at-index pane, index}
-    {if index >= 0 and index < self.base-panes.size then
-        {self.base-panes.insert pane, index}
-     else
-        {self.base-panes.append pane}
-    }
-  }
-
-  {method public sealed {add-pane-and-resize
-                            pane:BasePane,
-                            index:int
-                        }:void
-    let percent:double = 
-        {if pane.pane-group == self and pane.percent >= 0.0 then 
-            pane.percent 
-         else 
-            1 / (self.size + 1)
-        }
-    || This can happen if there was one element in a pane group. In this case
-    || its size is not really meaningful.
-    {if percent >= .99 then
-        set percent = 0.5
-    }
-    let sizes:{Array-of double} = {self.get-pane-sizes}
-    let sum:double = 0.0
-    {if sizes.empty? then
-        set sum = 1.0
-     else
-        {for size in sizes do
-            set sum = sum + size
-        }
-    }
-    {for i = 0 below sizes.size do
-        set sizes[i] = sizes[i] * (1 - percent) / sum
-    }
-    {sizes.insert percent, index}
-    {self.add-pane-at-index pane, index}
-    {self.set-pane-sizes sizes}
-    {if index >= 0 and index < self.base-panes.size then
-        {self.base-panes.insert pane, index}
-     else
-        {self.base-panes.append pane}
-    }
-  }
-
-  {method protected {swap-panes my-pane:SinglePane, other-pane:SinglePane}:void
-    def my-index = {self.find my-pane}
-    def other-pg = {get-parent-pane-group other-pane}
-    def other-index = {other-pg.find other-pane}
-
-    def other-percent =
-        {type-switch other-pg
-         case tpg:TiledPaneGroup do
-            {tpg.get-pane-sizes}[other-index]
-         else
-            -1.0
-        }
-    def my-percent = {self.get-pane-sizes}[my-index]
-    set other-pane.pane-group = self
-    set other-pane.percent = my-percent
-    set my-pane.pane-group = other-pg
-    set my-pane.percent = other-percent
-
-    {self.remove-pane-and-resize my-index}
-    {other-pg.remove-pane-and-resize other-index}
-    {self.add-pane-and-resize other-pane, my-index}
-    {other-pg.add-pane-and-resize my-pane, other-index}
-
-    {my-pane.mark-as-docked}
-    {other-pane.mark-as-docked}
-  }
-
-|| TODO: Is returning only BasePanes too restrictive?
-  {method public {remove-pane-at-index index:int}:#BasePane
-|| TODO: Implement the methods that used to come with PanedWindow
-    {if index < 0 or index >= self.base-panes.size then
-        {return null}
-    }
-    {self.base-panes.remove index}
-    {return {self.pw.remove-pane-at-index index} asa #BasePane}
-  }
-
-  {method public sealed {remove-pane-and-resize index:int}:void
-    {if index < 0 or index >= self.base-panes.size then
-        {return}
-    }
-    let sizes:{Array-of double} = {self.get-pane-sizes}
+    
+    || Normalize the total of pane sizes to 1.  This avoids strange UI behaviors later on.
     let sum:double = 0.0
     {for size in sizes do
         set sum = sum + size
     }
-    let removed:double = sizes[index]
-    {sizes.remove index}
     {for i = 0 below sizes.size do
-        set sizes[i] = sizes[i] / (sum - removed)
+        set sizes[i] = sizes[i] / sum
     }
-    {self.remove-pane-at-index index}
-    {self.set-pane-sizes sizes}
+    {self.pw.set-pane-sizes sizes}
+    {self.add-internal self.pw}
   }
-
-  {method package {save-state out:TextOutputStream}:void
-    || Check if we are the top-level group
-    {if {get-parent-pane-group-or-null self} != null then
-        set (self.pane-group, self.percent) = {self.compute-percentage}
-     else
-        set self.percent = 1.0
+  
+  {method public open {get-child-percent child:BasePane}:double
+    {if self.size <= 1 then
+        || If this child is an only child, then it is not really
+        || meaningful to give a percentage, so just return -1,
+        || which will cause the default percentage to be used in the future.
+        {return -1.0}
+    }    
+    def child-index = {self.find child}
+    def sizes = {self.get-pane-sizes}
+    def child-stretchiness = sizes[child-index]
+    let sum-stretchiness:double = 0.0
+    {for size in sizes do
+        set sum-stretchiness = sum-stretchiness + size
     }
-    {assert self.percent >= 0, {format "%s", self.percent}}
-|| TODO: Handle the removal of orientation
-||--    {format out = out, "\{pane-group orientation = %w, percent = %s",
-||--        self.orientation.name, self.percent
-||--    }
-    {format out = out, "\n\{tiled-pane-group max-rows = %d, max-cols = %d, percent = %s",
-        self.max-rows,
-        self.max-cols,
-        self.percent
-    }
-    {for i = 0 below self.size do
-        {out.write-one-string ", "}
-        {(self[i] asa BasePane).save-state out}
-    }
-    {out.write-one '\}'}
+    def child-percent = child-stretchiness / sum-stretchiness
+    {return child-percent}
   }
+  
+  {method public open {remove-pane child:BasePane, for-replace?:bool}:void
+    def child-index = {self.find child}
+    def pw = self.pw
+    
+    || Compute the path to save in the child pane.
+    {child.store-path}
+    
+    || Compute the percentage value to save in the child pane.
+    set child.percent = {child.get-percent-before-undocking}
+    
+    def sizes = {self.get-pane-sizes}
+    def child-stretchiness = sizes[child-index]
+    let sum-stretchiness:double = 0.0
+    {for size in sizes do
+        set sum-stretchiness = sum-stretchiness + size
+    }
+    def child-percent = child-stretchiness / sum-stretchiness
+    {sizes.remove child-index}
+    {for i = 0 below sizes.size do
+        set sizes[i] = sizes[i] / (sum-stretchiness - child-stretchiness)
+    }
 
-  {method public {replicate invert-orientation?:bool = false}:PaneGroup
-|| TODO: I think invert-orientation? goes away
-|| TODO: Handle the removal of orientation
-    def replica =
-        {TiledPaneGroup max-rows = self.max-rows, max-cols = self.max-cols}
-||--    def replica = {TiledPaneGroup orientation = self.orientation}
-||--    {if invert-orientation? then
-||--        set replica.orientation =
-||--            {if self.orientation == Orientation.vertical then
-||--                Orientation.horizontal
-||--             else
-||--                Orientation.vertical
+    || Then finally remove the child from us.
+    {pw.remove-pane-at-index child-index}
+    
+    || Keep the total of the pane stretchiness values normalized to 1.  Not sure why
+    || this makes PanedWindow happier, but it definitely does.
+    {pw.set-pane-sizes sizes}
+    {super.remove-pane child, for-replace?}
+    
+    {if not for-replace? then
+        {switch self.size
+         case 0 do
+            || If this PaneGroup is now empty, then remove it from the hierarchy.
+            {self.detach-this-pane}
+         case 1 do
+            || If there's just one pane left, then after things settle down,
+            || see if our child or parent can be spliced out along with us.
+            {after 0s do {self.try-splice-out}}
+        }
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Try to splice out this {docref LinearPaneGroup} along with its child or parent
+        {docref LinearPaneGroup}, if that can be done without altering the layout.
+    }
+    {details
+        As a result of successive docking and rearrangement operations, it is possible
+        to build up long chains of {docref LinearPaneGroup} objects, each of which has
+        just one child.
+        This method looks to see if this {docref LinearPaneGroup} is a member of such a chain,
+        and if so, attempts to splice it out, along with a neighboring (child or parent)
+        {docref LinearPaneGroup}.
+        By splicing the {docref LinearPaneGroup}s out in pairs like this,
+        the rule that neighboring {docref LinearPaneGroup}s always have opposite orientations
+        (horizontal vs. vertical)
+        continues to be followed.
+        
+        Specifically, the conditions under which a splice will happen is if
+        a {docref LinearPaneGroup} is found that has only one child object,
+        and that {docref LinearPaneGroup} also has only one child object.
+    }
+  }
+  {method public open {try-splice-out}:void
+    {if self.display-context == null then
+        || Something happened to detach us from the hierarchy, so skip the rest of this processing.
+        {return}
+    }
+    {if self.size != 1 or not self.can-splice-out? then
+        {return}
+    }
+    {assert self.pane-group == null or {self.pane-group.find self} >= 0}   || *temp* RHH
+    {type-switch self[0]
+     case child-group:LinearPaneGroup do
+||--        {if child-group.can-splice-out? then
+||--            {assert child-group.orientation != self.orientation}
+||--            {if-non-null parent = self.pane-group then
+||--                def grandchildren = {child-group.base-panes.clone}
+||--                {for grandchild in grandchildren do
+||--                    {grandchild.detach-this-pane for-replace? = true}
+||--                }
+||--                {if grandchildren.size == 1 then
+||--                    {self.replace-pane-with grandchildren[0]}
+||--                    {return}
+||--||++             else
+||--||++                def start-index = {parent.find self}
+||--||++                {self.replace-pane-with grandchildren[0]}
+||--||++                {for i = 1 below grandchildren.size do
+||--||++                    {parent.add-pane-at-index grandchildren[i], start-index + i}
+||--||++                }
+||--||++                {return}
+||--                }
+||--             elseif child-group.size == 1 then
+||--                def grandchild = child-group[0]
+||--                {type-switch grandchild
+||--                 case pg:PaneGroup do
+||--                    {grandchild.detach-this-pane for-replace? = true}
+||--                    {self.root-container.set-pane-group grandchild}
+||--                }
+||--                {return}
 ||--            }
-||--    }
-    {return replica}
+||--        }
+        {if child-group.size == 1 and child-group.can-splice-out? then
+            {assert child-group.orientation != self.orientation}
+            def grandchild = child-group[0]
+            {if self.pane-group != null then
+                {grandchild.detach-this-pane for-replace? = true}
+                {self.replace-pane-with grandchild}
+             else
+                {type-switch grandchild
+                 case pg:PaneGroup do
+                    {grandchild.detach-this-pane for-replace? = true}
+                    {self.root-container.set-pane-group grandchild}
+                }
+            }
+            {return}
+        }
+    }
+    {type-switch self.pane-group
+     case parent-group:LinearPaneGroup do
+        {parent-group.try-splice-out}
+    }
   }
+
+  {method public {add-pane-at-index pane:BasePane, index:int}:void
+    {super.add-pane-at-index pane, index}
+    {self.pw.add-pane-at-index pane, index}
+  }
+  
+  {method public {replace-pane-at-index pane:BasePane, index:int}:BasePane
+    def sizes = {self.get-pane-sizes}
+    def old-pane = {super.replace-pane-at-index pane, index}
+    {self.pw.set-pane-sizes sizes}
+    {return old-pane}
+  }
+  
+  || Make an array that includes the current "stretchiness" of each
+  || pane in our PanedWindow.
+  {method private {get-pane-sizes}:{Array-of double}
+    let sizes:{Array-of double} = 
+        {new {Array-of double}.from-size, self.size, 0.0}
+    {for i = 0 below self.size do
+        set sizes[i] = {{self.pw.get-pane i}.get-stretchiness}
+    }
+    {return sizes}
+  }
+  
+  {method public open {heuristic-add-pane pane:BasePane, index:int}:void
+    let percent:double = 
+        {if pane.percent > 0.0 then
+                pane.percent 
+         else 
+            1 / (self.size + 1)
+        }
+    let sizes:{Array-of double} = {self.get-pane-sizes}
+    {if sizes.empty? then
+        || We're inserting into a blank container, so this item should take 100% of the space.
+        {sizes.insert 1.0, index}
+     else
+        let sum:double = 0.0
+        {for size in sizes do
+            set sum = sum + size
+        }
+        {for i = 0 below sizes.size do
+            set sizes[i] = sizes[i] * (1 - percent) / sum
+        }
+        {sizes.insert percent, index}
+    }
+    
+    let test-sum:double = 0.0                               || *temp* RHH
+    {for size in sizes do set test-sum = test-sum + size}   || *temp* RHH
+    {assert {abs test-sum - 1.0} < 1e-9}                    || *temp* RHH
+  
+    {self.add-pane-at-index pane, index}
+    {self.pw.set-pane-sizes sizes}
+  }
+  
+  {doc-next
+    {purpose
+        Determine whether a given {docref DockingAction} can be accommodated
+        by this container.
+    }
+    {parameter action,
+        The {docref DockingAction} to be investigated.
+    }
+    {return-vals
+        The first return value is true if {param action} can be handled in this
+        container without creating a new {docref PaneGroup}.
+        The second return value is true if {param action} calls for an insertion
+        later than the target object in the sequence of children of
+        this {docref LinearPaneGroup},
+        and otherwise is false.
+    }
+  }
+  {method protected open {analyze-try-add-pane-action
+                             action:DockingAction
+                         }:(possible?:bool, after?:bool)
+    let possible?:bool = false
+    let after?:bool = false
+    {switch self.orientation
+     case Orientation.horizontal do
+        {switch action
+         case DockingAction.left do
+            set possible? = true
+         case DockingAction.right do
+            set possible? = true
+            set after? = true
+        }
+     case Orientation.vertical do
+        {switch action
+         case DockingAction.top do
+            set possible? = true
+         case DockingAction.bottom do
+            set possible? = true
+            set after? = true
+        }
+    }
+    {return possible?, after?}
+  }
+  
+  {method public open {try-add-pane-near-target
+                          pane:BasePane,
+                          target:BasePane,
+                          action:DockingAction
+                      }:bool
+    def (possible?, after?) = {self.analyze-try-add-pane-action action}
+    {if possible? then
+        let index:int = {self.find target}
+        {if after? then set index = index + 1}
+        {self.add-pane-at-index pane, index}
+        || TODO: Does the percentage of the newly added pane need to be adjusted?
+    }
+    {return possible?}
+  }
+  
+  {method public open {try-add-pane-near-me
+                          pane:BasePane,
+                          action:DockingAction
+                      }:bool
+    def (possible?, after?) = {self.analyze-try-add-pane-action action}
+    {if possible? then
+        || In this case, the "before" position is before all children of this
+        || PaneGroup, while the "after" position is after all of them.
+        let index:int = {if after? then self.size else 0}
+        {self.heuristic-add-pane pane, index}
+    }
+    {return possible?}
+  }
+
+  {method public {save-state out:TextOutputStream}:void
+    {format out = out, "\n\{linear-pane-group orientation = %w", self.orientation.name}
+    {self.write-state-info out}
+    {for child in self.base-panes do
+        {out.write-one-string ", "}
+        {child.save-state out}
+    }
+    {out.write-one-string "\}"}
+  }
+}
+
+{do
+    {StyleManager.append-base-style-rule {splice {LinearPaneGroup.get-base-style-rules}}}
 }

@@ -1,6 +1,98 @@
+||| Copyright (C) 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An Open Curl project.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
 || This class exists because we need to draw the stippled border 
 || in the  OutlineOnlyView. 
-{define-class final package DragFeedbackFrame {inherits Frame}
+{doc-next
+    {purpose
+        A stretchy {docref Graphic} that draws itself filled with a stippled black pattern.
+    }
+    {usage
+        This object is used as the contents of the {docref OutlineOnlyView} that provides
+        drop feedback during a drag operation that could lead to docking or floating a pane.
+    }
+    {details
+        To customize the appearance, you can use the following
+        {docref-abbr Visual.style-element} values in your style rules.
+        
+        {Table
+            columns = 3,
+            border-width = 1in/300,
+            border-color = "black",
+            horizontal-line-width = 1in/300,
+            vertical-line-width = 1in/300,
+            cell-border-width = 0pt,
+            cell-margin = 2pt,
+            {header-cell style-element},
+            {header-cell Type},
+            {header-cell Description},
+            
+            {ctext DragFeedbackFrame}, {docref DragFeedbackFrame},
+            {text The {ctext DragFeedbackFrame} itself. You can use style rules
+                to set local and nonlocal options.
+                The most interesting option to set is
+                {docref-abbr DragFeedbackFrame.color},
+                which controls the appearance of the stippled drag surrogate rectangle.
+            }
+        }
+    }
+}
+{define-class final package DragFeedbackFrame {inherits Fill}
+  
+  {getter public open {style-element}:String
+    def _style-element = self._style-element
+    {if _style-element == "" then
+        {return "DragFeedbackFrame"}
+     else
+        {return _style-element}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Return the base style rules that describe the default style of this object.
+    }
+    {return-vals
+        An array of {docref StyleRule} objects that will be added to the base set of
+        style rules for the current applet
+        (using {docref StyleManager.append-base-style-rule})
+        to produce the default style for {docref LinearPaneGroup} objects.
+    }
+  }
+  {define-proc public {get-base-style-rules}:{Array-of StyleRule}
+    {return
+        {new {Array-of StyleRule},
+            {StyleRule
+                "DragFeedbackFrame",
+                color = "black"
+            }
+        }
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Create a {docref DragFeedbackFrame} object.
+    }
+    {parameter ...,
+        Any arguments are passed to the constructor of the superclass {docref Fill} object.
+        If these are keyword arguments specifying initial option values,
+        the corresponding options will be set.
+    }
+  }
   {constructor package {default ...}
     {construct-super ...}
   }
@@ -17,9 +109,13 @@
                 -bounds.ascent,
                 bounds.width,
                 bounds.height,
-                fill-pattern = FillPattern.black
+                fill-pattern = self.color
             }
         }
     }
   }
+}
+
+{do
+    {StyleManager.append-base-style-rule {splice {DragFeedbackFrame.get-base-style-rules}}}
 }

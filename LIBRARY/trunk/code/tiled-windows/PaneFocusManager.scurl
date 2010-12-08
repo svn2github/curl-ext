@@ -1,3 +1,55 @@
+||| Copyright (C) 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An Open Curl project.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+
+{doc-next
+    {purpose
+        An object that tracks which pane in a {docref PaneContainer} currently has the focus.
+    }
+    {details
+        There is one instance of this class for each instance of {docref PaneContainer}.
+    }
+}
 {define-class public open PaneFocusManager
-  field public focus-object:#PaneContent
+  
+  {doc-next
+    {purpose
+        The pane that currently has the focus, or null if no pane currently has the focus.
+    }
+  }
+  field private _focus-object:#BasePane
+  
+  {doc-next
+    {purpose
+        The pane that currently has the focus, or null if no pane currently has the focus.
+    }
+  }
+  {getter public open {focus-object}:#BasePane
+    {return self._focus-object}
+  }
+  
+  {setter public open {focus-object new-focus-object:#BasePane}:void
+    def old-focus-object = self._focus-object
+    set self._focus-object = new-focus-object
+    {if-non-null old-focus-object then
+        {old-focus-object.note-lost-focus}
+    }
+    {if-non-null new-focus-object then
+        {new-focus-object.note-gained-focus}
+    }
+  }
+  
 }

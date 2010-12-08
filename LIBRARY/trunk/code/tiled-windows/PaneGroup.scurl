@@ -1,66 +1,454 @@
-{define-class public abstract sealed PaneGroup {inherits BasePane}
-  field protected base-panes:{Array-of BasePane}
+||| Copyright (C) 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An Open Curl project.
 
-  {constructor public {default ...:BasePane}
-    set self.base-panes = {new {Array-of BasePane}}
-    {construct-super}
-  }
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
 
-  {setter public {root-container pc:#PaneContainer}:void
-    set self._root-container = pc
-    {for pane in self.base-panes do
-        set pane.root-container = pc
+
+{doc-next
+    {purpose
+        A container that contains a group of docked {docref BasePane}s
+        (which themselves could be other PaneGroups)
+        in a docked arrangement.
+    }
+    {details
+        This is an abstract base class that serves as the common
+        superclass for all concrete PaneGroup classes.
+    }
+}
+{define-class public abstract open PaneGroup {inherits BasePane}
+  
+  {doc-next
+    {purpose
+        The collection of {docref BasePane}s that are in this {docref PaneGroup}.
+    }
+    {usage
+        Do not change the contents of this array directly.
+        Instead, use the {docref-abbr PaneGroup.add-pane-at-index},
+        {docref-abbr PaneGroup.replace-pane-at-index},
+        and {docref-abbr PaneGroup.replace-pane-at-index} methods.
     }
   }
+  field public constant base-panes:{Array-of BasePane}
 
-  {getter public abstract sealed {size}:int}
-  {getter package abstract {drag-view-divisor}:int}
-  {method package abstract {get-percent pane:BasePane}:double}
-|| TODO: Is returning only BasePanes too restrictive?
-  {method public abstract {get index:int}:#BasePane}
-  {method public abstract {find child:any}:int}
-  {method protected abstract {insert-pane
-                                 pane:SinglePane,
-                                 orientation:Orientation = Orientation.vertical,
-                                 at-top-or-left?:bool = false
-                             }:void}
-  {method protected abstract {insert-pane-in-target
-                                 pane:SinglePane,
-                                 target:SinglePane,
-                                 orientation:Orientation = Orientation.vertical,
-                                 at-top-or-left?:bool = false
-                             }:void}
-|| TODO: Is accepting only BasePanes too restrictive?
-  {method public abstract {add-pane pane:BasePane}:void}
-|| TODO: Is accepting only BasePanes too restrictive?
-  {method public abstract {add-pane-at-index pane:BasePane, index:int}:void}
-  {method public abstract sealed {add-pane-and-resize
-                                     pane:BasePane,
-                                     index:int
-                                 }:void}
-  {method protected abstract {swap-panes
-                                 my-pane:SinglePane,
-                                 other-pane:SinglePane
-                             }:void}
-|| TODO: Is returning only BasePanes too restrictive?
-  {method public abstract {remove-pane-at-index index:int}:#BasePane}
-  {method public abstract sealed {remove-pane-and-resize index:int}:void}
-  {method public abstract {replicate
-                              invert-orientation?:bool = false
-                          }:PaneGroup}
-
-  {method public {get-descendant-single-panes}:{Array-of SinglePane}
-    def sps = {new {Array-of SinglePane}}
+  {doc-next
+    {purpose
+        Construct a {docref PaneGroup} object.
+    }
+    {parameter root-container,
+        The {docref PaneContainer} that will contain this {docref PaneGroup}.
+    }
+    {parameter ...,
+        A list of {docref BasePane} objects that are initially in this group.
+    }
+  }
+  {constructor public {default root-container:PaneContainer, ...:BasePane}
+    set self.base-panes = {new {Array-of BasePane}, ...}
     {for pane in self.base-panes do
-        {type-switch pane
-         case sp:SinglePane do
-            {sps.append sp}
-         case pg:PaneGroup do
-            {sps.append {splice {pg.get-descendant-single-panes}}}
-         else
-            || Unsupported
+        set pane.pane-group = self
+        {assert pane.root-container == root-container}
+    }
+    {construct-super root-container}
+  }
+  
+  {doc-next
+    {purpose
+        A {docref String} that identifies the type of {docref PaneGroup} that
+        this is.
+    }
+    {usage
+        This getter is the source of the value for the {docref BasePane.parent-group-type} field.
+    }
+  }
+  {getter public open {group-type}:String
+    {return ""}
+  }
+  
+  {doc-next
+    {purpose
+        Can this {docref PaneGroup} be spliced out of the pane hierarchy?
+    }
+    {override
+        The base implementation of this method in {docref PaneGroup} returns true,
+        except in the case of a top-level {docref PaneGroup} in a {docref PaneContainer}
+        that does not allow the top-level {docref PaneGroup} to be changed.
+        Subclasses can override this method to specify other policies,
+        such as never being able to splice out the container.
+    }
+  }
+  {getter public open {can-splice-out?}:bool
+    {if self.pane-group == null then
+        {return self.root-container.allow-top-level-splice?}
+    }
+    {return true}
+  }
+  
+  {doc-next
+    {purpose
+        The number of {docref BasePane}s in this {docref PaneGroup}.
+    }
+  }
+  {getter public open {size}:int
+    {return self.base-panes.size}
+  }
+  
+  {doc-next
+    {purpose
+        Return the {docref BasePane} object that is the child object with the specified index
+        in this {docref PaneGroup}.
+    }
+    {parameter index,
+        The index of the desired {docref BasePane}.
+    }
+    {return-vals
+        The {docref BasePane} object that is at the specified index.
+    }
+    {notes
+        An error will be thrown if {param index} is greater than or equal
+        to the number of child {docref BasePane} objects in this {docref PaneGroup}.
+        {docref PaneGroup.size} can be used to determine how many child objects
+        this {docref PaneGroup} has.
+    }
+  }
+  {method public open {get index:int}:BasePane
+    {return self.base-panes[index]}
+  }
+  
+  {doc-next
+    {purpose
+        Determine the index of a {docref BasePane} that is a child of this {docref PaneGroup}.
+    }
+    {parameter child,
+        The {docref BasePane} whose index should be returned.
+    }
+    {return-vals
+        The index of {param child} among the child objects of this {docref PaneGroup}.
+        If {param child} is not a child of this {docref PaneGroup}, a negative number
+        is returned.
+    }
+  }
+  {method public open {find child:BasePane}:int
+    {return {self.base-panes.find child}}
+  }
+  
+  {getter public open {view-as-group}:#PaneGroup
+    {return self}
+  }
+  
+  {doc-next
+    {purpose
+        Reassign the focus away from a specified pane.
+    }
+    {parameter pane,
+        A {docref BasePane} that should not be searched for panes that can take
+        the focus, typically because it is the source of the focus transfer request.
+    }
+    {return-vals
+        True if another pane was found to take the focus, false otherwise.
+    }
+    {usage
+        This method is called, for example, when hiding a pane, to ensure that one of the
+        remaining panes gets the focus.
+    }
+    {override
+        The base implementation of this method in {docref PaneGroup} just heuristically
+        tries to find another pane near {param pane} to take the focus.
+        Subclasses can override this method to implement different heuristics.
+    }
+  }
+  {method public open {focus-other-pane pane:BasePane}:bool
+    def index = {self.find pane}
+    || As it happens, the logic below works fine if index == -1, meaning that pane is not
+    || a child of this container.  In that case the first for-loop is skipped and the
+    || second loop starts searching at 0.
+    {for i = index - 1 downto 0 do
+        {if {self.try-give-focus-to-child self[i], pane} then
+            {return true}
         }
     }
-    {return sps}
+    {for i = index + 1 below self.size do
+        {if {self.try-give-focus-to-child self[i], pane} then
+            {return true}
+        }
+    }
+    || Could not find a descendant pane to give the focus to, so recursively try asking our parent.
+    {if-non-null group = self.pane-group then
+        {return {group.focus-other-pane self}}
+    }
+    {return false}
+  }
+  
+  {doc-next
+    {purpose
+        Try giving the focus to a specified child of this {docref PaneGroup}.
+    }
+    {parameter child,
+        The child to try giving the focus to.
+        If this child is a {docref PaneGroup}, we will recursively try to give the focus
+        to a pane inside the {docref PaneGroup}.
+    }
+    {parameter old-focus-pane,
+        The pane we're trying to avoid giving the focus to.
+    }
+    {return-vals
+        True if another pane was found to take the focus, false otherwise.
+    }
+  }
+  {method private {try-give-focus-to-child child:BasePane, old-focus-pane:BasePane}:bool
+    {if child.takes-focus? then
+        {child.request-pane-focus}
+        {return true}
+    }
+    {if-non-null group = child.view-as-group then
+        {if {group.focus-other-pane old-focus-pane} then
+            {return true}
+        }
+    }
+    {return false}
+  }
+  
+  {doc-next
+    {purpose
+        Called when a child of this {docref PaneGroup} has gained the focus.
+    }
+    {parameter child,
+        The child {docref BasePane} of this {docref PaneGroup} that has gained the focus.
+    }
+    {override
+        The base implementation of this method in {docref PaneGroup} does nothing.
+        Subclasses such as {docref TabbedPaneGroup} can override this method to
+        take action when a child pane gains the focus, such as switching the visible
+        tab pane to be the pane that gained the focus.
+    }
+  }
+  {method public open {note-child-gained-focus child:BasePane}:void
+  }
+  
+  {doc-next
+    {purpose
+        Return the {docref-abbr BasePane.percent} value that is applicable to
+        a given child of this {docref PaneGroup}.
+    }
+    {parameter child,
+        The child {docref BasePane} whose {docref-abbr BasePane.percent} value is desired.
+    }
+    {return-vals
+        The desired {docref-abbr BasePane.percent} value.
+    }
+    {override
+        The base implementation of this method in {docref PaneGroup} just returns
+        the default value of -1.
+        Subclasses such as {docref LinearPaneGroup} override this method
+        to return a percentage based on the amount of space that {param child}
+        occupies, relative to other child panes of the {docref PaneGroup}.
+    }
+    {usage
+        This method is called from the {docref-abbr BasePane.save-state} method
+        of {param child} to determine the percent value that should be written out.
+    }
+  }
+  {method public open {get-child-percent child:BasePane}:double
+    {return -1.0}
+  }
+  
+  {doc-next
+    {purpose
+        Remove a child pane from this {docref PaneGroup}.
+    }
+    {parameter child,
+        The child pane to remove.
+    }
+    {details
+        {param child}, which must be a child pane of this {docref PaneGroup},
+        is removed.
+        This is a basic step on the way to floating or hiding the pane,
+        or moving it into a new {docref PaneGroup}.
+        State information such as {docref-abbr BasePane.path} and {docref BasePane.percent}
+        is recorded in {param child} so that it can easily be restored to its previous
+        position.
+    }
+    {parameter for-replace?,
+        True if {param child} is being detached just so that another object
+        can be attached in its place;
+        false if {param child} is being detached because it will be hidden or
+        added somewhere else.
+        When this argument is false, if the detach operation leaves this
+        {docref PaneGroup} empty,
+        this {docref PaneGroup} will also be detached.
+    }
+    {override
+        Subclasses that override this method should be sure to call
+        {ctext super.remove-pane} so that {param child} will be properly removed
+        from the {docref-abbr PaneGroup.base-panes} array.
+    }
+  }
+  {method public open {remove-pane child:BasePane, for-replace?:bool}:void
+    def child-index = {self.find child}
+    {self.base-panes.remove child-index}
+  }
+  
+  {doc-next
+    {purpose
+        Add a {docref BasePane} to this group at a specified position.
+    }
+    {parameter pane,
+        The {docref BasePane} to be added.
+    }
+    {parameter index,
+        The position at which to add the {docref BasePane}.
+        This must be a number between 0 and the current number of
+        {docref BasePane}s in this {docref PaneGroup}, inclusive.
+    }
+    {override
+        Subclasses that override this method should be sure to call
+        {ctext super.add-pane-at-index}, which takes care of several
+        housekeeping details to update the {docref PaneGroup} and
+        {docref BasePane} data structures correctly.
+    }
+  }
+  {method public {add-pane-at-index pane:BasePane, index:int}:void
+    {assert pane.root-container == self.root-container}
+    {self.base-panes.insert pane, index}
+    set pane.pane-group = self
+    {pane.mark-as-docked}
+  }
+  
+  {doc-next
+    {purpose
+        Replace a specified child of this group with a new {docref BasePane}.
+    }
+    {parameter pane,
+        The {docref BasePane} to be added.
+    }
+    {parameter index,
+        The position of the {docref BasePane} that is to be replaced.
+    }
+    {return-vals
+        The {docref BasePane} that was replaced.
+    }
+  }
+  {method public {replace-pane-at-index pane:BasePane, index:int}:BasePane
+    def old-pane = self.base-panes[index]
+    {old-pane.detach-this-pane for-replace? = true}
+    {self.add-pane-at-index pane, index}
+    {return old-pane}
+  }
+  
+  {doc-next
+    {purpose
+        Add a {docref BasePane} to this group at a specified position,
+        applying heuristics to determine the pane size.
+    }
+    {parameter pane,
+        The {docref BasePane} to be added.
+    }
+    {parameter index,
+        The position at which to add the {docref BasePane}.
+        This must be a number between 0 and the current number of
+        {docref BasePane}s in this {docref PaneGroup}, inclusive.
+    }
+    {notes
+        {docref LinearPaneGroup} uses the {docref-abbr BasePane.percent}
+        and {docref-abbr BasePane.pane-group} fields of {param pane}
+        to try to make the pane have the same size it had when previously
+        docked, if it was docked in the same {docref PaneGroup}
+        where it will now be placed.
+    }
+  }
+  {method public open abstract {heuristic-add-pane pane:BasePane, index:int}:void}
+  
+  {doc-next
+    {purpose
+        Hook for a {docref PaneGroup} to modify a {docref DockingAction}
+        that has been computed for its child pane.
+    }
+    {parameter state,
+        The {docref DockingAction} that has been computed for the child pane.
+    }
+    {parameter target-pane,
+        The child pane for which the {docref DockingAction} has been computed.
+    }
+    {return-vals
+        The first return value is a possibly modified {docref DockingAction}.
+        The second return value is a possibly changed target pane.
+    }
+    {usage
+        This method is called from {ctext PaneDragger.compute-docking-action}.
+    }
+    {override
+        The base implementation of this method in {docref PaneGroup} just
+        returns {param state} and {param target-pane} unchanged.
+        Certain subclasses, such as {docref TabbedPaneGroup},
+        override this method to avoid creating {docref PaneGroup}s
+        inside of themselves.
+    }
+  }
+  {method public open {filter-docking-action
+                          state:DockingAction,
+                          target-pane:BasePane
+                      }:(state:DockingAction, target-pane:BasePane)
+    {return state, target-pane}
+  }
+  
+  {doc-next
+    {purpose
+        Insert a {docref BasePane} near a target using the specified {docref DockingAction},
+        if that is possible without creating any new {docref PaneGroup}.
+    }
+    {parameter pane,
+        The {docref BasePane} to be inserted.
+    }
+    {parameter target,
+        The {docref BasePane} near where {param pane} is to be inserted.
+    }
+    {parameter action,
+        The {docref DockingAction} that describes the desired relationship
+        between {param pane} and {param target} after the insertion is completed.
+    }
+    {return-vals
+        True if the insertion was possible, in which case the insertion will
+        already have been performed.
+        False if the insertion is not possible without creating a new {docref PaneGroup}.
+    }
+  }
+  {method public open abstract {try-add-pane-near-target
+                                   pane:BasePane,
+                                   target:BasePane,
+                                   action:DockingAction
+                               }:bool
+  }
+  
+  {doc-next
+    {purpose
+        Insert a {docref BasePane} near this {docref PaneGroup} using the specified {docref DockingAction},
+        if that is possible without creating any new {docref PaneGroup}.
+    }
+    {parameter pane,
+        The {docref BasePane} to be inserted.
+    }
+    {parameter action,
+        The {docref DockingAction} that describes the desired relationship
+        between {param pane} and {ctext self} after the insertion is completed.
+    }
+    {return-vals
+        True if the insertion was possible, in which case the insertion will
+        already have been performed.
+        False if the insertion is not possible without creating a new {docref PaneGroup}.
+    }
+  }
+  {method public open abstract {try-add-pane-near-me
+                                   pane:BasePane,
+                                   action:DockingAction
+                               }:bool
   }
 }

@@ -1,119 +1,319 @@
-{define-class package PaneTitleBar {inherits BaseFrame, PaneDragger}
-  || package constants defining title bar appearance
-  || (note: any values using {prefs} must be defined in constructor)
-  let package constant color-focused:FillPattern = FillPattern.white
-  let package constant background-focused:FillPattern= "#003366"
-  let package constant background-unfocused:FillPattern= "#808080"
+||| Copyright (C) 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An Open Curl project.
 
-  field private _title:#String
-  field private _visible-text:Dynamic = {Dynamic ""}
-  field private _controls:Dynamic = {Dynamic ""}
-  field private _min-max-restore-close-buttons:Dynamic = {Dynamic ""}
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
 
-  {method package {display-focus-lost}:void
-    set self.color = {prefs}["ui-background"] asa FillPattern ||""
-    set self.background = PaneTitleBar.background-unfocused
-  }
 
-  {method package {display-focus-gained}:void
-    set self.color = PaneTitleBar.color-focused
-    set self.background = PaneTitleBar.background-focused
-  }
-
-  {constructor package {default single-pane:SinglePane}
-    {construct-super.BaseFrame
-        width = {add-stretch},
-        margin = 1pixel,
-        font-family = {prefs}["caption-font-family"] asa String, ||""
-        font-weight = {prefs}["caption-font-weight"] asa FontWeight, ||""
-        font-style = {prefs}["caption-font-style"] asa FontStyle, ||""
-        font-size = {prefs}["caption-font-size"] ||""
+{doc-next
+    {purpose
+        The title bar for a {docref StandardSinglePane}.
     }
-    {construct-super.PaneDragger single-pane}
-    set self._min-max-restore-close-buttons.value =
-        {self.create-buttons single-pane}
-    {self.add-internal
-        {HBox
-            opaque-to-events? = true,
-            {Fill width = 1pixel},
-            {image
-                source = {pane-container-image-dir.concat "curl.gif"},
-                width = 16px,
-                height = 16px
+    {details
+        To customize the appearance, you can use the following
+        {docref-abbr Visual.style-element} values in your style rules.
+        
+        {Table
+            columns = 3,
+            border-width = 1in/300,
+            border-color = "black",
+            horizontal-line-width = 1in/300,
+            vertical-line-width = 1in/300,
+            cell-border-width = 0pt,
+            cell-margin = 2pt,
+            {header-cell style-element},
+            {header-cell Type},
+            {header-cell Description},
+            
+            {ctext PaneTitleBar}, {docref PaneTitleBar},
+            {text The {ctext PaneTitleBar} itself. You can use style rules
+                to set local and nonlocal options.
             },
-            {Fill width = 4pixels},
-            {no-break {value self._visible-text}},
-            {Fill},
-            self._controls,
-            self._min-max-restore-close-buttons,
-            valign = "center",          ||""
-            horigin = "left",           ||""
-            vorigin = "top"             ||""
+            
+            {ctext PaneTitleBar/focused}, {docref SkinnableFrame},
+            {text The caption and title bar background that are displayed
+                when the associated pane has the focus.
+            },
+            
+            {ctext PaneTitleBar/unfocused}, {docref SkinnableFrame},
+            {text The caption and title bar background that are displayed
+                when the associated pane does not have the focus.
+            },
+            
+            {ctext PaneTitleBar/control-holder}, {docref HBox},
+            {text The container that holds the title bar buttons, including
+                the standard maximize and close buttons as well as any
+                application-specific buttons.
+            },
+            
+            {ctext PaneTitleBar/maximize-button}, {docref CommandButton},
+            {text The title bar button that provides maximize/restore functionality.
+                This button's label is provided as a {docref-abbr CommandButton.reactive-label}
+                that uses images for the button's various states, so this button is not
+                too stylable, but its border and margin properties can be configured.
+            },
+            
+            {ctext PaneTitleBar/close-button}, {docref CommandButton},
+            {text The title bar button that can be clicked to hide the associated pane.
+                This button's label is provided as a {docref-abbr CommandButton.reactive-label}
+                that uses images for the button's various states, so this button is not
+                too stylable, but its border and margin properties can be configured.
+            }
+        }
+    }
+}
+{define-class public open PaneTitleBar {inherits BaseFrame, PaneDragger}
+
+  || The most recent title that has been set for this title bar:
+  field private _title:String = ""
+  
+  || Objects that hold the current title for display in the title bar:
+  field private _focused-text:Dynamic = {Dynamic ""}
+  field private _unfocused-text:Dynamic = {Dynamic ""}
+  
+  || A Frame that will hold the library-defined buttons such as Close and Maximize/Restore.
+  field private system-button-holder:Frame = {Frame}
+  
+  {getter public open {style-element}:String
+    def _style-element = self._style-element
+    {if _style-element == "" then
+        {return "PaneTitleBar"}
+     else
+        {return _style-element}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Return the base style rules that describe the default style of this object.
+    }
+    {return-vals
+        An array of {docref StyleRule} objects that will be added to the base set of
+        style rules for the current applet
+        (using {docref StyleManager.append-base-style-rule})
+        to produce the default style for {docref PaneTitleBar} objects.
+    }
+  }
+  {define-proc public {get-base-style-rules}:{Array-of StyleRule}
+    || package constants defining title bar appearance
+    || (note: any values using {prefs} should be referenced just before they are used)
+    let constant color-focused:FillPattern = FillPattern.white
+    let constant background-focused:FillPattern= "#003366"
+    let constant background-unfocused:FillPattern= "#808080"
+    {return
+        {new {Array-of StyleRule},
+            {StyleRule
+                "PaneTitleBar",
+                font-family = {prefs}["caption-font-family"] asa String, ||""
+                font-weight = {prefs}["caption-font-weight"] asa FontWeight, ||""
+                font-style = {prefs}["caption-font-style"] asa FontStyle, ||""
+                font-size = {prefs}["caption-font-size"] ||""
+            },
+            {StyleRule
+                "PaneTitleBar/focused",
+                color = color-focused,
+                background = background-focused,
+                margin = 0px
+            },
+            {StyleRule
+                "PaneTitleBar/unfocused",
+                color = {prefs}["ui-background"] asa FillPattern,   ||""
+                background = background-unfocused,
+                margin = 0px
+            },
+            {StyleRule
+                "PaneTitleBar/control-holder",
+                margin = 1px,
+                spacing = 1px
+            }
         }
     }
   }
+  
+  {doc-next
+    {purpose
+        Switch this title bar to the {quote not focused} look.
+    }
+  }
+  {method public open {display-focus-lost}:void
+    set self.focused-title.visible? = false
+    {unset self.unfocused-title.visible?}
+  }
 
-  {getter public open {title}:#String
+  {doc-next
+    {purpose
+        Switch this title bar to the {quote focused} look.
+    }
+  }
+  {method public open {display-focus-gained}:void
+    set self.unfocused-title.visible? = false
+    {unset self.focused-title.visible?}
+  }
+  
+  field protected focused-title:SkinnableFrame
+  
+  field protected unfocused-title:SkinnableFrame
+
+  {doc-next
+    {purpose
+        Construct a {docref PaneTitleBar} object.
+    }
+    {parameter pane,
+        The {docref BasePane} with which this title bar will be associated.
+    }
+  }
+  {constructor public {default pane:BasePane}
+    {construct-super.BaseFrame
+        width = {add-stretch}
+    }
+    {construct-super.PaneDragger pane}
+    set self.title = pane.title
+    {self.system-button-holder.add
+        {self.create-system-buttons}
+    }
+    set self.focused-title =
+        {SkinnableFrame
+            _style-element = "PaneTitleBar/focused",   ||""
+            horigin = "left", vorigin = "top",   ||""
+            {HBox
+                valign = "center",          ||""
+                height = {add-stretch before? = true, after? = true},
+                {Fill width = 5px},
+                {no-break {value self._focused-text}},
+                {Fill}
+            }
+        }
+    set self.unfocused-title =
+        {SkinnableFrame
+            _style-element = "PaneTitleBar/unfocused",   ||""
+            horigin = "left", vorigin = "top",   ||""
+            {HBox
+                valign = "center",          ||""
+                height = {add-stretch before? = true, after? = true},
+                {Fill width = 5px},
+                {no-break {value self._unfocused-text}},
+                {Fill}
+            }
+        }
+    {self.add-internal
+        {OverlayBox
+            self.focused-title,
+            self.unfocused-title,
+            {HBox
+                opaque-to-events? = true,
+                {Fill},
+                self.system-button-holder,
+                valign = "center",          ||""
+                horigin = "left",           ||""
+                vorigin = "top"             ||""
+            }
+        }
+    }
+    {self.display-focus-lost}
+  }
+
+  {doc-next
+    {purpose
+        The title to be displayed in this title bar.
+    }
+    {notes
+        Normally this will be the same as the title of the {docref SinglePane}
+        that is associated with this title bar.
+    }
+  }
+  {getter public open {title}:String
     {return self._title}
   }
 
-  {setter public open {title val:#String}:void
+  {setter public open {title val:String}:void
     {if self._title == val then
         {return}
     }
     set self._title = val
-    set self._visible-text.value = self._title
+    set self._focused-text.value = val
+    set self._unfocused-text.value = val
   }
+  
+  || The button (if any) that controls maximize/unmaximize:
+  field private maximize-restore-button:#CommandButton = null
+  
+  || The two ReactiveLabel values for the maximize/restore button:
+  field private max-label:#ReactiveLabel
+  field private restore-label:#ReactiveLabel
+  || And the ReactiveLabel value when the maximize/restore button is disabled:
+  field private disabled-max-label:#ReactiveLabel
 
-  {setter public open {controls controls:Graphic}:void
-    set self._controls.value = controls
-  }
-
-  {setter public open {min-max-restore-close-buttons buttons:Graphic}:void
-    set self._min-max-restore-close-buttons.value = buttons
-  }
-
-  {method protected {create-buttons pane:SinglePane}:Graphic
-    {if not pane.show-minimize-button? and
-        not pane.show-maximize-restore-button? and
-        not pane.show-close-button?
-     then
-        {return {Fill height = 22px}}
-    }
-    let min-cb:#CommandButton
-    {if pane.show-minimize-button? then
-        set min-cb =
-            {CommandButton
-                takes-focus? = false,
-                style = CommandButtonStyle.label-only,
-                skin = null,
-                focus-skin = null,
-                reactive-label =
-                    {ReactiveLabel
-                        label =
-                            {image
-                                source =
-                                    {pane-container-image-dir.concat
-                                        "min-normal.gif" ||""
-                                    },
-                                blocking? = true
-                            },
-                        label-pressed =
-                            {image
-                                source =
-                                    {pane-container-image-dir.concat
-                                        "min-pressed.gif" ||""
-                                    },
-                                blocking? = true
-                            }
-                    },
-                {on Action do
-                    {popup-message "Minimize"}
-                }
+  {method protected {create-system-buttons}:Graphic
+    def pane = self.pane
+    def box =
+        {HBox
+            _style-element = "PaneTitleBar/control-holder",
+            valign = "center"
+        }
+    def title-controls = pane.title-controls
+    {if not title-controls.empty? then
+        {for c in title-controls do
+            {box.add c}
+        }
+        {box.add
+            {HBox
+                height = 16px, width = 4px,
+                {Fill},
+                {Rule width = 2px, border-width = 2px, border-color = "#606060", border-style = "raised"},
+                {Fill}
             }
+        }
     }
-    let max-cb:#CommandButton
-    {if pane.show-maximize-restore-button? then
+||++{if not pane.show-minimize-button? and
+||++    not pane.show-maximize-restore-button? and
+||++    not pane.show-close-button?
+||++ then
+||++    {return {Fill height = 22px}}
+||++}
+||++let min-cb:#CommandButton
+||++{if pane.show-minimize-button? then
+||++    set min-cb =
+||++        {CommandButton
+||++            takes-focus? = false,
+||++            style = CommandButtonStyle.label-only,
+||++            skin = null,
+||++            focus-skin = null,
+||++            reactive-label =
+||++                {ReactiveLabel
+||++                    label =
+||++                        {image
+||++                            source =
+||++                                {pane-container-image-dir.concat
+||++                                    "min-normal.gif" ||""
+||++                                },
+||++                            blocking? = true
+||++                        },
+||++                    label-pressed =
+||++                        {image
+||++                            source =
+||++                                {pane-container-image-dir.concat
+||++                                    "min-pressed.gif" ||""
+||++                                },
+||++                            blocking? = true
+||++                        }
+||++                },
+||++            {on Action do
+||++                {popup-message "Minimize"}
+||++            }
+||++        }
+||++}
+||++let max-cb:#CommandButton
+    {if pane.show-maximize-button? then
         def max-label =
             {ReactiveLabel
                 label =
@@ -152,31 +352,42 @@
                         blocking? = true
                     }
             }
-        set max-cb =
+        set self.max-label = max-label
+        set self.restore-label = restore-label
+        set self.disabled-max-label =
+            {ReactiveLabel
+                label =
+                    {image
+                        source =
+                            {pane-container-image-dir.concat
+                                "max-disabled.gif" ||""
+                            },
+                        blocking? = true
+                    }
+            }
+        def max-cb =
             {CommandButton
+                _style-element = "PaneTitleBar/maximize-button",
                 takes-focus? = false,
                 style = CommandButtonStyle.label-only,
-                skin = null,
-                focus-skin = null,
                 reactive-label = max-label,
                 {on Action do
-                    {if max-cb.reactive-label == max-label then
-                        set max-cb.reactive-label = restore-label
+                    {if pane.maximized? then
+                        {pane.unmaximize}
                      else
-                        set max-cb.reactive-label = max-label
+                        {pane.maximize}
                     }
-                    {popup-message "Maximize (TODO: Swap label for Restore)"}
                 }
             }
+        set self.maximize-restore-button = max-cb
+        {box.add max-cb}
     }
-    let close-cb:#CommandButton
     {if pane.show-close-button? then
-        set close-cb =
+        def close-cb =
             {CommandButton
+                _style-element = "PaneTitleBar/close-button",
                 takes-focus? = false,
                 style = CommandButtonStyle.label-only,
-                skin = null,
-                focus-skin = null,
                 reactive-label =
                     {ReactiveLabel
                         label =
@@ -197,80 +408,151 @@
                             }
                     },
                 {on Action do
-                    {self.single-pane.hide}
+                    {self.pane.hide}
                 }
             }
+        {box.add close-cb}
     }
-|| TODO:
-|| - Is there a less brutal way of creating these buttons?
-|| - Need images for the other buttons
-|| - Need to swap max/restore button label when it's clicked.
-    def min-max-hbox = {HBox spacing = 0cm}
-    {if-non-null min-cb then
-        {min-max-hbox.add min-cb}
+||--|| TODO:
+||--|| - Is there a less brutal way of creating these buttons?
+||--|| - Need images for the other buttons
+||--|| - Need to swap max/restore button label when it's clicked.
+||--    def min-max-hbox = {HBox spacing = 0cm}
+||--    {if-non-null min-cb then
+||--        {min-max-hbox.add min-cb}
+||--    }
+||--    {if-non-null max-cb then
+||--        {min-max-hbox.add max-cb}
+||--    }
+||--    def hbox = {HBox spacing = 2px}
+||--    {if-non-null close-cb then
+||--        {if not min-max-hbox.child-array.empty? then
+||--            {hbox.add min-max-hbox}
+||--            {hbox.add close-cb}
+||--            {return hbox}
+||--         else
+||--            {hbox.add close-cb}
+||--            {return hbox}
+||--        }
+||--     else
+||--        {if not min-max-hbox.child-array.empty? then
+||--            {return min-max-hbox}
+||--         else
+||--            {return {Fill height = 22px}}
+||--        }
+||--    }
+    {return box}
+  }
+  
+  {doc-next
+    {purpose
+        Called when the associated {docref BasePane} is maximized.
     }
-    {if-non-null max-cb then
-        {min-max-hbox.add max-cb}
+    {details
+        If this {docref PaneTitleBar} has a maximize/restore button,
+        the label of that button is set to indicate the {quote restore} function.
     }
-    def hbox = {HBox spacing = 2px}
-    {if-non-null close-cb then
-        {if not min-max-hbox.child-array.empty? then
-            {hbox.add min-max-hbox}
-            {hbox.add close-cb}
-            {return hbox}
+  }
+  {method public open {note-pane-maximized}:void
+    {if-non-null max-cb = self.maximize-restore-button then
+        set max-cb.reactive-label = {non-null self.restore-label}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Called when the associated {docref BasePane} is restored (unmaximized).
+    }
+    {details
+        If this {docref PaneTitleBar} has a maximize/restore button,
+        the label of that button is set to indicate the {quote maximize} function.
+    }
+  }
+  {method public open {note-pane-unmaximized}:void
+    {if-non-null max-cb = self.maximize-restore-button then
+        set max-cb.reactive-label = {non-null self.max-label}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Called when the associated {docref BasePane} is floated.
+    }
+    {details
+        If this {docref PaneTitleBar} has a maximize/restore button,
+        and the pane's window does not allow maximizing,
+        the button is disabled.
+    }
+  }
+  {method public open {note-pane-floated}:void
+    {if-non-null max-cb = self.maximize-restore-button then
+        {if not self.pane.floating-view.can-maximize? then
+            || If maximizing this floating pane will not be supported, gray out the button.
+            set max-cb.enabled? = false
+            set max-cb.reactive-label = {non-null self.disabled-max-label}
          else
-            {hbox.add close-cb}
-            {return hbox}
-        }
-     else
-        {if not min-max-hbox.child-array.empty? then
-            {return min-max-hbox}
-         else
-            {return {Fill height = 22px}}
+            set max-cb.reactive-label = {non-null self.max-label}
         }
     }
   }
-
-  {method protected final {allow-dragging? e:PointerMotion}:bool
-    let drag?:bool = false
-
-    {if-non-null layout = self.layout then
-        {if {layout.bounds-valid?} then
-            let bounds:GRect = {layout.get-bounds}
-
-            set drag? = not {bounds.within? e.x, e.y}
-        }
+  
+  {doc-next
+    {purpose
+        Called when the associated {docref BasePane} is unfloated.
     }
-
-    {return drag?}
+    {details
+        This method is called when the associated pane was floating,
+        and now is docked or hidden.
+        If this {docref PaneTitleBar} has a maximize/restore button,
+        it is re-enabled, in case a previous call to
+        {docref-abbr PaneTitleBar.note-pane-floated} had disabled it.
+    }
   }
-
-  {method public sealed {on-pointer-press e:PointerPress}:void 
+  {method public open {note-pane-unfloated}:void
+    {if-non-null max-cb = self.maximize-restore-button then
+        || Re-enable the maximize button, in case it was disabled earlier.
+        {unset max-cb.enabled?}
+        set max-cb.reactive-label = {non-null self.max-label}
+    }
+  }
+  
+  {method public open {on-pointer-press e:PointerPress}:void 
     {if e.button == left-button and
         e.click-count == 2 
      then
-        {if self.single-pane.state == PaneState.docked then
-            {self.single-pane.float true}
-         elseif self.single-pane.state == PaneState.dockable then
-            {self.single-pane.dock}
+        {if self.pane.state == PaneState.docked then
+            {self.pane.float true}
+         elseif self.pane.state == PaneState.dockable then
+            {self.pane.dock}
         }
         {e.consume}
     }
-    
     {super.on-pointer-press e}
   }
-
+  
   {method public open {on-drag-started e:DragStarted}:void
     {self.handle-drag-started e, self}
     {super.on-drag-started e}
     {self.request-key-focus}
   }
-
+  
   {method public open {on-pointer-motion e:PointerMotion}:void
     {self.handle-pointer-motion e, self}
     {super.on-pointer-motion e}
   }
-
+  
+  || Also intercept raw key press/release events so we can monitor changes in state
+  || of the Control key during drags.
+  {method public open {on-raw-key-press e:RawKeyPress}:void
+    {self.handle-pointer-motion e, self}
+    {super.on-raw-key-press e}
+  }
+  
+  {method public open {on-raw-key-release e:RawKeyRelease}:void
+    {self.handle-pointer-motion e, self}
+    {super.on-raw-key-release e}
+  }
+  
   {method public open {on-pointer-release e:PointerRelease}:void
     {self.handle-pointer-release e, self}
     {super.on-pointer-release e}
@@ -286,23 +568,11 @@
     {super.on-key-press e}
   }
 
-  {method package {can-drop-on-self?}:bool
+  {method protected open {can-drop-on-self?}:bool
     {return false}
   }
+}
 
-  {method package {float-pane pane:SinglePane, dockable?:bool}:void
-    {if-non-null pane.root-container then
-        {pane.root-container.float-pane pane, dockable?}
-    }
-  }
-
-  {method package {dock-pane 
-                        pane:SinglePane,
-                        state:DockingAction,
-                        target-pane:#SinglePane
-                    }:void
-    {if-non-null pane.root-container then
-        {pane.root-container.dock-pane pane, state, target-pane}
-    }
-  }
+{do
+    {StyleManager.append-base-style-rule {splice {PaneTitleBar.get-base-style-rules}}}
 }

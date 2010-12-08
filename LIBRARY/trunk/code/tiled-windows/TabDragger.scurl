@@ -1,17 +1,41 @@
+||| Copyright (C) 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An Open Curl project.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+
+{doc-next
+    {purpose
+        The draggable tab label for a standard {docref SinglePane} that is in a tab group.
+    }
+}
 {define-class package TabDragger {inherits BaseFrame, PaneDragger}
-  field private content:PaneContent
+  
   field package tab-pane:TabPane = {uninitialized-value-for-type TabPane}
-
-  {constructor package {default content:PaneContent}
-    set self.content = content
-    {construct-super.BaseFrame}
-    {construct-super.PaneDragger {non-null content.single-pane}}
-    {self.add-internal {TextFlowBox content.name-for-tab}}
+  
+  {doc-next
+    {purpose
+        Construct a {docref TabDragger} object.
+    }
+    {parameter pane,
+        The {docref BasePane} with which this {docref TabDragger} will be associated.
+    }
   }
-
-
-  {setter public final {title title:String}:void
-    {self.add-internal replace? = true, title}
+  {constructor package {default pane:BasePane}
+    {construct-super.BaseFrame}
+    {construct-super.PaneDragger pane}
+    {self.add-internal {TextFlowBox pane.name-for-tab}}
   }
 
   {method public final {on-context-menu-event e:ContextMenuEvent}:void 
@@ -19,7 +43,7 @@
     {super.on-context-menu-event e}
   }
     
-  {method protected final {allow-dragging? e:PointerMotion}:bool
+  {method protected final {allow-dragging? e:GuiInputEvent}:bool
     let drag?:bool = false
 
     {if-non-null layout = self.layout then
@@ -38,10 +62,10 @@
         || Tab pane won't cause this to happen
         {if e.click-count == 2 and 
             e.button == left-button and
-            self.single-pane.state == PaneState.docked 
+            self.pane.state == PaneState.docked 
          then
             {e.consume}
-            {self.float-pane {non-null self.content.single-pane}, true}
+            {self.pane.float true}
         }
     }
     {super.on-pointer-press e}
@@ -57,7 +81,19 @@
     {self.handle-pointer-motion e, self}
     {super.on-pointer-motion e}
   }
-
+  
+  || Also intercept raw key press/release events so we can monitor changes in state
+  || of the Control key during drags.
+  {method public open {on-raw-key-press e:RawKeyPress}:void
+    {self.handle-pointer-motion e, self}
+    {super.on-raw-key-press e}
+  }
+  
+  {method public open {on-raw-key-release e:RawKeyRelease}:void
+    {self.handle-pointer-motion e, self}
+    {super.on-raw-key-release e}
+  }
+  
   {method public final {on-pointer-release e:PointerRelease}:void
     {self.handle-pointer-release e, self}
     {super.on-pointer-release e}
@@ -73,34 +109,7 @@
     {super.on-key-press e}
   }
 
-  {method package {can-drop-on-self?}:bool
+  {method protected open {can-drop-on-self?}:bool
     {return true}
-  }
-
-  {method package {float-pane pane:SinglePane, dockable?:bool}:void
-    let pc:PaneContent = self.content
-|| TODO: root-container could be null
-    {pc.single-pane.root-container.float-pane-from-tab 
-        pc, 
-        self.tab-pane,
-        dockable?
-    }
-  }
-
-  {method package {dock-pane 
-                        pane:SinglePane,
-                        state:DockingAction,
-                        target-pane:#SinglePane
-                    }:void
-    let old:SinglePane = {non-null self.content.single-pane}
-    let new:SinglePane = {old.clone-with-new-content self.content}
-|| TODO: root-container could be null
-    {pane.root-container.dock-pane-from-tab
-        new,
-        old,
-        self.tab-pane,
-        state,
-        target-pane
-    }
   }
 }

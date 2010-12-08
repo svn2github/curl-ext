@@ -1,3 +1,256 @@
+||| Copyright (C) 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An Open Curl project.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+
+{doc-next
+    {purpose
+        Abstract superclass for classes that implement the behavior
+        of a {docref BasePane} that is floating.
+    }
+}
+{define-class public open abstract FloatingView
+  
+  {doc-next
+    {purpose
+        The {docref BasePane} that serves as the contents for this {docref FloatingView}.
+    }
+  }
+  field public pane:BasePane
+  
+  {doc-next
+    {purpose
+        Construct a {docref FloatingView} object.
+    }
+    {parameter pane,
+        The {docref BasePane} that is wrapped in this {docref FloatingView}.
+    }
+  }
+  {constructor public {default pane:BasePane}
+    set self.pane = pane
+  }
+  
+  {doc-next
+    {purpose
+        The top-level {docref View} that contains the floating
+        {docref BasePane}.
+    }
+  }
+  {getter public open abstract {view}:View}
+  
+  {doc-next
+    {purpose
+        Set the relevant fields of the {docref BasePane} that is in
+        this {docref FloatingView} to record the view's current size and position.
+    }
+  }
+  {method public open abstract {save-dimensions}:void}
+  
+  {doc-next
+    {purpose
+        Destroy this {docref FloatingView} after saving its size and
+        position in the {docref BasePane} that was in it.
+    }
+  }
+  {method public open abstract {tear-down}:void}
+  
+  {doc-next
+    {purpose
+        Detach the {docref BasePane} that is currently in this window,
+        and replace it with a new pane.
+    }
+    {parameter new-pane,
+        The new pane to be installed in this window.
+    }
+  }
+  {method public open abstract {replace-pane new-pane:BasePane}:void}
+  
+  {doc-next
+    {purpose
+        Tell whether this {docref FloatingView} supports the maximize operation.
+    }
+    {details
+        Generally, the maximize operation is not supported by the underlying Curl RTE APIs
+        when in a process that is not running privileged.
+    }
+  }
+  {getter public open {can-maximize?}:bool
+    {return {process-privileged?}}
+  }
+  
+  {doc-next
+    {purpose
+        The {docref WindowVisibility} status of this {docref FloatingView}.
+    }
+    {details
+        The getter returns the {docref WindowVisibility} value currently associated with
+        {ctext self.{docref-abbr FloatingView.view}}.
+        The setter changes the {docref WindowVisibility} value of this {docref View}
+        as specified.
+        The {ctext WindowVisibility.maximized} value will work the same as {ctext WindowVisibility.normal}
+        if {ctext self.{docref-abbr FloatingView.can-maximize?}} returns false.
+    }
+  }
+  {getter public open {visibility}:WindowVisibility
+    {return self.view.visibility}
+  }
+  
+  {setter public open {visibility vis:WindowVisibility}:void
+    set self.view.visibility = vis
+  }
+  
+}
+
+{doc-next
+    {purpose
+        The standard {docref FloatingView} implementation used in this library.
+    }
+    {details
+        This class creates a {docref View} with no title bar and puts
+        the floating {docref BasePane} inside this {docref View}.
+        The {docref BasePane} is surrounded with a raised border
+        that can be dragged to resize the {docref View}.
+        The resizable border itself is implemented in the
+        {docref ResizableDecorationlessFrame} class.
+    }
+}
+{define-class public open ResizableDecorationlessView {inherits FloatingView}
+  field private constant _view:View
+  
+  {getter public open {view}:View
+    {return self._view}
+  }
+  
+  {doc-next
+    {purpose
+        Create a floating {docref ResizableDecorationlessView} with a specified
+        {docref BasePane} in it.
+    }
+    {parameter pane,
+        The {docref BasePane} to display in the floating {docref View}.
+    }
+    {parameter center?,
+        Should the new floating window be centered over the parent {docref View}?
+    }
+    {parameter owner,
+        The {docref View} that should be declared as the parent of the floating
+        {docref View}.
+        Typically this will be the {docref View} that contains the
+        {docref PaneContainer} object associated with {param pane}.
+    }
+  }
+  {constructor public {default
+                          pane:BasePane,
+                          center?:bool,
+                          owner:#View = null
+                      }
+    {construct-super pane}
+    let view:View =
+        {View
+            owner = owner, 
+            center? = center?, 
+            width = pane.floating-width, 
+            height = pane.floating-height,
+            hstretch? = true,
+            vstretch? = true,
+            decorations? = false,
+            context-menu-for-view = null,
+            {on ViewActivateEvent do
+                {if pane.has-focus? then
+||++                {pane.refresh-pane-focus}
+                 else
+                    {pane.request-pane-focus}
+                }
+||++            {if-non-null menu-bar = self.floating-window-menu then
+||++                {platform-switch case "carbon" do
+||++                    set view.mac-menu-bar = menu-bar 
+||++                    else
+||++                    {view.focus-manager.request-menu-focus menu-bar}
+||++                }
+||++            }
+||++            {self.on-floating-pane-activate pane}
+            },
+            || TEMP until this window has no title bar
+            {on e:WindowClose do
+                {e.consume}
+||--                || TODO: When this is no longer a PanedWindow, we'll need another way to do this
+                {pane.hide}
+            }
+        }
+    set self._view = view
+    {view.add
+        {ResizableDecorationlessFrame 
+            view,
+            pane
+        }
+    }
+    {if pane.floating-x >= 0pt then
+        {view.set-window-position pane.floating-x, pane.floating-y}
+        set view.width = pane.floating-width
+        set view.height = pane.floating-height
+    }
+    
+    {if-non-null owner then
+        {if owner.visibility != WindowVisibility.hidden then
+            {view.show}
+        }
+     else
+        {dump "No owner", self}
+        {error "This case not implemented yet!"}
+    }
+  }
+  
+  {method public open {save-dimensions}:void
+    def pane = self.pane
+    {assert pane.floating-view == self}
+    {if pane.maximized? then
+        || Don't store the maximized dimensions in the pane; it's the unmaximized dimensions
+        || we want to be able to restore to.
+        {return}
+    }
+    def view = self.view
+    set (pane.floating-width, pane.floating-height) = {view.get-size}
+    set (pane.floating-x, pane.floating-y) = {view.get-position}
+  }
+  
+  {method public open {tear-down}:void
+    {self.save-dimensions}
+    set self.pane.floating-view = null
+    {self.view.destroy}
+  }
+  
+  {method public open {replace-pane new-pane:BasePane}:void
+    def old-pane = self.pane
+    || Copy the relevant state variables from the old pane to the new one.
+    set new-pane.state = old-pane.state
+    set new-pane.maximized? = old-pane.maximized?
+    set new-pane.pane-group = old-pane.pane-group
+    set new-pane.parent-group-type = old-pane.parent-group-type
+    set new-pane.percent = old-pane.percent
+    {new-pane.path.clear}
+    {for i in old-pane.path do
+        {new-pane.path.append i}
+    }
+    {old-pane.replace-with new-pane}
+    set self.pane = new-pane
+    set old-pane.floating-view = null
+    set new-pane.floating-view = self
+  }
+}
+
+
 {define-enum package FrameBorderOrientation 
     none,
     left,
@@ -10,7 +263,42 @@
     top-left
 }
 
-{define-class package final ResizeableDecorationlessView {inherits Frame}
+{doc-next
+    {purpose
+        A {docref BaseFrame} that encloses a graphical object
+        with a border that can be used for resizing.
+    }
+    {details
+        This class is designed to be used as the immediate child of
+        a {docref View} object.
+        When a user drags on the border implemented by this class,
+        the {docref View} will be resized.
+        
+        To customize the appearance, you can use the following
+        {docref-abbr Visual.style-element} values in your style rules.
+        
+        {Table
+            columns = 3,
+            border-width = 1in/300,
+            border-color = "black",
+            horizontal-line-width = 1in/300,
+            vertical-line-width = 1in/300,
+            cell-border-width = 0pt,
+            cell-margin = 2pt,
+            {header-cell style-element},
+            {header-cell Type},
+            {header-cell Description},
+            
+            {ctext ResizableDecorationlessFrame}, {docref ResizableDecorationlessFrame},
+            {text The {ctext ResizableDecorationlessFrame} itself. You can use style rules
+                to set local and nonlocal options.
+                The most interesting options are those that control the appearance
+                of the frame's borders.
+            }
+        }
+    }
+}
+{define-class public ResizableDecorationlessFrame {inherits BaseFrame}
   field private cached-border-width:Distance = 0m
   field private drag-started?:bool
   field private drag-pos-x:Distance = -1m
@@ -21,8 +309,57 @@
       FrameBorderOrientation.none
   field package-get private-set minimum-width:Distance 
   field package-get private-set minimum-height:Distance
-
-  {constructor package {default
+  
+  {getter public open {style-element}:String
+    def _style-element = self._style-element
+    {if _style-element == "" then
+        {return "ResizableDecorationlessFrame"}
+     else
+        {return _style-element}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Return the base style rules that describe the default style of this object.
+    }
+    {return-vals
+        An array of {docref StyleRule} objects that will be added to the base set of
+        style rules for the current applet
+        (using {docref StyleManager.append-base-style-rule})
+        to produce the default style for {docref ResizableDecorationlessFrame} objects.
+    }
+  }
+  {define-proc public {get-base-style-rules}:{Array-of StyleRule}
+    {return
+        {new {Array-of StyleRule},
+            {StyleRule
+                "ResizableDecorationlessFrame",
+                cursor = cursor-arrow,
+                border-width = 4pixels,
+                border-color = FillPattern.gray,
+                border-style = BorderStyle.ridge
+            }
+        }
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Construct a {docref ResizableDecorationlessFrame} object.
+    }
+    {parameter view,
+        The {docref View} object that this object will be within.
+        This is the {docref View} whose size will be changed when
+        the user drags on the border of this
+        {docref ResizableDecorationlessFrame} object.
+    }
+    {parameter (minimum-width, minimum-height),
+        Minimum values below which this {docref ResizableDecorationlessFrame}
+        will not allow itself to be resized.
+    }
+  }
+  {constructor public {default
                            view:View,
                            minimum-width:Distance = 2cm,
                            minimum-height:Distance = 1cm,
@@ -37,6 +374,10 @@
 
   {local-option public border-width:any
     set self.cached-border-width =  {any-to-Distance border-width}
+  }
+  
+  {method public open {add g:any, ...}:#Visual
+    {return {self.add-internal g, {splice ...}}}
   }
   
   {method public {on-drag-started e:DragStarted}:void
@@ -369,4 +710,8 @@
             {error "Not reachable code"} ||""
         }
   }
+}
+
+{do
+    {StyleManager.append-base-style-rule {splice {ResizableDecorationlessFrame.get-base-style-rules}}}
 }
