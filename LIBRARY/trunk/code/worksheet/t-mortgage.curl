@@ -159,7 +159,8 @@
     {Worksheet
         model,
         font-size = 9pt,
-        {widths 0.25in, 1.0in, 1.0in, 1.0in, 1.0in, 0.25in},
+        default-row-height = 18pt,
+        {widths 0.25in, 1.25in, 1.0in, 1.0in, 1.1in, 0.25in},
         row = 0, col = 1,
         {cell-spec colspan = 2, {bold Mortgage Calculator}},
         col = 3, {cell-spec halign = "right", "Date"},
@@ -176,7 +177,7 @@
                           }, "(years)",
 
         row = 3, col = 1, "Amount Borrowed", 
-        {currency-cell editable? = true, halign = "right", 100000},
+        {currency-cell editable? = true, 100000},
         row = 4, col = 1, "Interest Rate", {editable-cell halign = "right",  4.0},
                           "(percent)",
         row = 5, col = 1, "Payment", 

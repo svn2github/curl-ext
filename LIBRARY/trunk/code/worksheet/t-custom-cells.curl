@@ -118,15 +118,19 @@
 {def worksheet =
     {Worksheet
         model,
+        font-size = 9pt,
+        default-column-width = 1.0in,
+        default-row-height = 20pt,
         {widths 2.0in, 1.5in},
+        {heights 20pt, 20pt, 1in},
 
         row = 0, col = 0, {bold Control}, {bold Value},
 
-        row = 1, col = 0,
-        {cell-spec "test", ui-spec = TextArea, height = 1.0in},
+        row = 1, col = 0, row-height = 1in,
+        {cell-spec "test", height = {add-stretch}, ui-spec = TextArea},
         {cell-spec a2},
 
-        row = 2, col = 0,
+        row = 2, col = 0, row-height = 48pt,
         {cell-spec 20, ui-spec = Slider},
         a3,
 
@@ -163,7 +167,7 @@
         {cell-spec {DateTime.date} - 1d, ui-spec = DateField},
         a9,
 
-        row = 9, col = 0,
+        row = 9, col = 0, row-height = 1.75in,
         {cell-spec {DateTime.date} - 7d, ui-spec = CalendarControl},
         a10,
 

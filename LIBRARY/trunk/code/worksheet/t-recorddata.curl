@@ -24,7 +24,7 @@
 ||--{import * from COM.CURL.EXT.DATA-ACCESS}
 ||--{import * from CURL.IDE.DOCUMENTATION}
 
-{import * from COM.CURL.WORKSHEET}
+{import * from COM.CURL.EXT.WORKSHEET}
 
 {set-document-properties
     font-size = 10pt
@@ -34,7 +34,7 @@
 
 {title RecordData Worksheet}
 
-{import * from COM.CURL.WORKSHEET}
+{import * from COM.CURL.EXT.WORKSHEET}
 
 || Create a Worksheet 12 rows by 8 columns
 {def worksheet =
@@ -69,9 +69,9 @@
                 index-type = RecordFieldIndexType.unique
             },
             {RecordField "a", domain = int},
-            {RecordField "b", domain = double-domain},
-            {RecordField "c", domain = double-domain},
-            {RecordField "sum", domain = double-domain}
+            {RecordField "b", domain = WorksheetModel.double-domain},
+            {RecordField "c", domain = WorksheetModel.double-domain},
+            {RecordField "sum", domain = WorksheetModel.double-domain}
         }
     }
 }
@@ -98,14 +98,14 @@
     }
 
     || Recompute column c of the RecordSet from $C$2 in the worksheet
-    {rds.make-formula {rds.get-ref "c"}, compute-product,
+    {rds.make-formula {rds.get-ref "c"}, WorksheetModel.double-domain, compute-product,
         {worksheet.model.get-ref "$C$2"}, {rds.get-ref "a"}
     }
 
     || Add a formula to sum columns a, b, and c in the RecordSet
     {def abc-ref = {rds.get-ref "a/b/c"}}
     {def sum-ref = {rds.get-ref "sum"}}
-    {rds.make-formula sum-ref, compute-sum, abc-ref}
+    {rds.make-formula sum-ref, WorksheetModel.double-domain, compute-sum, abc-ref}
 
 ||FIXME: for this to work, need some kind of method to resolve a target
 || so that the recalc methods can all be moved to CalcMixin
@@ -115,10 +115,10 @@
     {def a-ref = {rds.get-ref "a"}}
     {def b-ref = {rds.get-ref "b"}}
     {def c-ref = {rds.get-ref "c"}}
-    {worksheet.model.make-formula-at 11, 2, compute-sum, a-ref}
-    {worksheet.model.make-formula-at 11, 3, compute-sum, b-ref}
-    {worksheet.model.make-formula-at 11, 4, compute-sum, c-ref}
-    {worksheet.model.make-formula-at 11, 5, compute-sum, sum-ref}
+    {worksheet.model.make-formula-at 11, 2, compute-sum, WorksheetModel.double-domain, a-ref}
+    {worksheet.model.make-formula-at 11, 3, compute-sum, WorksheetModel.double-domain, b-ref}
+    {worksheet.model.make-formula-at 11, 4, compute-sum, WorksheetModel.double-domain, c-ref}
+    {worksheet.model.make-formula-at 11, 5, compute-sum, WorksheetModel.double-domain, sum-ref}
 
     worksheet || display the worksheet
 }

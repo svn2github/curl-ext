@@ -1,4 +1,4 @@
-||| Copyright (C) 1998-2009, Sumisho Computer Systems Corp.  All Rights Reserved.
+||| Copyright (C) 1998-2011, Sumisho Computer Systems Corp.  All Rights Reserved.
 |||
 ||| An OpenCurl project.
 
@@ -14,9 +14,9 @@
 ||| See the License for the specific language governing permissions and
 ||| limitations under the License.
 
-=====================
-COM.CURL.EXT Library
-=====================
+======================
+ COM.CURL.EXT Library
+======================
 
 This directory contains the current release of the Curl Extensions Library
 
@@ -25,96 +25,87 @@ To install the library, unzip the distribution onto your machine.
 The following sections describe the included material in more detail.
 
 
-DIRECTORIES
-====================
-
 The distribution is organized into directories which each serve a
 specific purpose.
 
 
 Deployable Library
---------------------
+-------------------
  
 The 'deploy' directory contains a preprocessed library 
 for use in deployed applications.
 
-- COM.CURL.WSDK.2.0/manifest.mcurl   	WSDK library definition
+- COM.CURL.EXT-V0.x/manifest.mcurl   	COM.CURL.EXT library manifest
 
 Documentation
---------------------
+--------------
 
 The 'docs-install' directory contains library directories prepared for
 addition to the Curl Documentation Viewer using the IDE 'Install
 Documentation' command.  The directories include both documentation
-and preprocessed library.
+and source code, which allows stepping into code in the library.
 
-- COM.CURL.WSDK.2.0/manifest.mcurl   	WSDK library doc definition
-
-Source Code
---------------------
-
-The 'src' directory contains all source code for WSDK modules,
-and could be used for modifying the WSDK itself. 
-It also includes test suites, and some sample applets.
-
-- code		source code
--- code/project.cprj	Curl IDE project
-
-- lib		preprocessed library
--- WSDK/manifest.mcurl	WSDK library definition
-
-- tests		test suite
--- start-tests.curl	test suite
-
-- build		build applets
-
-Tool Installation
---------------------
-
-The 'docs-install' directory also contains a WSDL Service 
-tool prepared for addition to the Curl IDE using the 
-IDE 'Tools>Configure Editors...' command.
-
-- docs/en/dguide/tools/wsdl/editor-info.txt   	WSDK tool definition
-
-Note: The WSDL IDE Tool must be installed using the files installed
-with the Curl Documentation Viewer.  This assures it has access to the
-necessary libraries.  The 'WSDK Web Services' chapter contains
-the necessary filename for the installed documentation.
-
-If an earlier version of WSDL Services IDE tool has been installed, 
-it must be replaced with the version in this distribution, 
-in order to function with the Curl Version 7.0 IDE. 
-The generated service packages will be marked with the 
-curl version defined by their project. 
-
-Prerequisites
---------------------
-
-WSDK 2.0 depends on the CURL-UTIL library.
-
-* CURL-UTIL Documentation must be installed for WSDK documentation,
-  including WSDL IDE Tool, to function properly.
-
-* CURL-UTIL Library must be accessible as a delegate from the root
-  manifest of applications using WSDK Library.
-
-For installatiuon convenience, a CURL-UTIL distribution may be
-included in this directory.
+- COM.CURL.EXT-V0.x/manifest.mcurl   	COM.CURL.EXT library definition
 
 
-KNOWN ISSUES
-====================
+=============
+ Source Code
+=============
+
+The source code can be checked out from SourceForge. Please refer to
+https://sourceforge.net/projects/curl-ext/develop
+
+If you check out the trunk, you will get several directories.
+
+The 'build' directory is where the the library is built by the
+deploy tool.
+
+The 'code' directory contains all source code for CURL-EXT modules
+and could be used for modifying the library itself. 
+
+The 'lib' directory contains external libraries referenced by
+CURL-EXT.
+
+The 'tests' directory contains the automated tests.
+
+The 'tools' directory contains scripts used to build and deploy the
+library. You can run the applet deploy.curl to build the library
+interactively.
+
+==============
+ KNOWN ISSUES
+==============
 
 Some of the tests access web content or invoke web services,
 and thus require privilege and web access to succeed.
 
-CHANGES
-====================
+Nested row and column groups are buggy in this release.
+
+If you delete all records from a RecordSet associated with an
+EmbeddedRecordForm the form will disappear.
+
+More tests are needed.
+
+=========
+ CHANGES
+=========
 
 0.4 Release
 
-  o FileApp refactored to support storage in the cloud (WebApp)
-  o Support http locations in PersistedLocation
   o Added DisclosingFrame - a container that can show either
     a label or content, with a disclosure triangle to switch
+  o Added NumberDomain, CurrencyDomain, LocaleDateDomain, 
+  o Added CurrencyCell
+  o DefaultDiscloser changed to recognize clicks and fire Adjustment
+    events at self.
+  o Added OrderedSet-of
+
+0.5 Release (January 2011)
+  o Worksheet
+    o Support manual adjustment of row heights and column widths
+    o Support frozen-rows, frozen-columns
+    o Support internal scrollbars
+    o Remove the static row and column headers
+    o Pay attention to vertical-grid-line-width and horizontal-grid-line-width
+    o Pay attention to alternate-row-background
+  o JsonRecordSet

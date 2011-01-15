@@ -48,9 +48,26 @@
         Construct a resizablea array initially containing {param rows} rows
         and {param cols} columns.
     }
+    {parameter rows, the number of rows in the array}
+    {parameter cols, the number of columns in the array}
+    {parameter init-proc, if not null, each cell in the array
+        is initialized by calling {ctext {init-proc r, c}}
+        where {param r} and {param c} are the row and column index of
+        the value being initialized.
+    }
   }
-  {constructor public {default rows:int, cols:int}
+  {constructor public {default
+                          rows:int, cols:int,
+                          init-proc:#{proc-type {r:int, c:int}:t} = null
+                      }
     {construct-super rows, cols}
+    {if-non-null init-proc then
+        {for r = 0 below rows do
+            {for c = 0 below rows do
+                set self[r, c] = {init-proc r, c}
+            }
+        }
+    }
   }
 
   {method public {clone}:{Array-2-of t}
@@ -277,6 +294,8 @@
         {inc self.refresh-count}
         set self._refresh-requested? = true
         {after 0.0s do
+            || Be sure refresh-requested? is true during the refresh
+            set self._refresh-requested? = true
             {self.refresh}
             set self._refresh-requested? = false
         }
@@ -408,7 +427,7 @@
     {purpose
         Initialize a new {docref DataRef}.
     }
-    {param source, Provides the value for the {docref-abbr DataRef.source}
+    {parameter source, Provides the value for the {docref-abbr DataRef.source}
         property.
     }
   }
@@ -613,7 +632,7 @@
 
   {doc-next
     {purpose Initialize this object.}
-    {param ref, The value to be returned by the iterator.}
+    {parameter ref, The value to be returned by the iterator.}
   }
   {constructor public {default
                           ref:DataRef

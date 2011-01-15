@@ -30,16 +30,43 @@
 {title Test Row and Column Groups}
 || ------------------------------------
 
-{def rows = 50}
-{def model = {WorksheetModel rows, 12}}
+|| Small example
+{value
+    {def model = {WorksheetModel 3, 6}}
+    {def worksheet =
+        {Worksheet
+            model,
+            font-size = 9pt,
+            default-column-width = .6in, 
+            {widths .75in},
+            row = 0, col = 0,
+            {cell-spec {bold Small Data}},
+            col = 5, "ABC",
+            row = 0, col = 1, "Group BC",
+            row = 0, col = 1, {col-group 2},
+            row = 0, col = 3, "Group DE",
+            row = 0, col = 3, {col-group 2},
+            
+            row = 1, col = 0, "A", "B", "C", "D", "E", "F",
+            row = 2, col = 0, "A", "B", "C", "D", "E", "F"
+        }
+    }
+        
+    worksheet || display the worksheet
+}
 
-|| -------------------------------------------------------------------------
+|| Larger example
+
+{def rows = 50}
+{def cols = 12}
+{def model = {WorksheetModel rows, cols}}
 
 {def worksheet =
     {Worksheet
         model,
         font-size = 9pt,
-        {widths default-width = .6in, 0.25in, 0.25in},
+        default-column-width = .6in,
+        {widths 0.25in, 0.25in},
         row = 0, col = 0,
         {cell-spec colspan = 2, {bold Sample Data}},
         col = 8, {cell-spec {DateTime.date}},
@@ -52,13 +79,12 @@
 ||--        row = 5, col = 0, {row-group 5},
 ||--        row = 10, col = 0, {row-group 5},
 
-        row = 2, col = 2, "A", "B", "C", "D", "E", "F", "G", "H", "I",  "J",
-        row = 3, col = 2, "A", "B", "C", "D", "E", "F", "G", "H", "I", "J",
+        row = 2, col = 2, "C", "D", "E", "F", "G", "H", "I", "J", "K", "L",
+        row = 3, col = 2, "C", "D", "E", "F", "G", "H", "I", "J", "K", "L",
 
         row = rows - 1, col = 0, "END"
     }
 }
-
 {define-proc {insert-row-group row:int, rows:int, col:int, cols:int}:void
     {worksheet.insert-group row, 0, 
         {GroupProto true, rows, expanded? = row > 15}
@@ -71,11 +97,12 @@
         {for ci = 0 below cols do
             {worksheet.init-cell
                 row + ri, col + ci, 
-                {format "$%c$%s", 'A' + ci, ri}
+                {format "$%c$%s", 'C' + ci, ri}
             }
         }
     }
 }
+
 
 {value
     {for ri = 5 below model.rows - 6 step 6 do

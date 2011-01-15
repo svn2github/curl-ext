@@ -31,11 +31,12 @@
 {import * from COM.CURL.EXT.DATA-ACCESS}
 {import * from CURL.GUI.STYLED-CONTROLS}
 
+{include "rowcolgrid.scurl"}
 {include "worksheet-base.scurl"}
 {include "recordset-model.scurl"}
+{include "worksheet-rg.scurl"}
 {include "worksheet-ui.scurl"}
 {include "worksheet-commands.scurl"}
-{include "worksheet-rg.scurl"}
 
 ||--{import * from COM.CURL.WSDK.XML-DOCUMENT-MODEL}
 ||--{include "xml-model.scurl"}

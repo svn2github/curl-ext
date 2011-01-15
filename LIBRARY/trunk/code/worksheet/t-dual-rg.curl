@@ -19,7 +19,7 @@
 
 {applet manifest = "manifest.mcurl", locale = "en"}
 
-{import * from COM.CURL.WORKSHEET0}
+{import * from COM.CURL.WORKSHEET}
 {import * from CURL.GUI.CHARTS}
 
 {set-document-properties

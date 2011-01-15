@@ -120,15 +120,15 @@
     {Worksheet
         model,
         font-size = 9pt,
-        {widths 16pt, 32pt, 72pt, 2.5in, 60pt, 1.5in, 30pt},
-
-        row = 0, col = 0,
+        default-row-height = 18pt,
+        {widths 24pt, 24pt, 72pt, 2.5in, 60pt, 1.5in, 30pt},
+        row = 0, col = 0, row-height = 22pt,
         {cell-spec colspan = 4, margin = 3pt, {big Expense Report}},
 
         row = 2, col = 0, rowspan = 2, colspan = 2, "Employee Info",
 
         {cell-spec halign = "right", "Name:"},
-        {editable-cell width = 2in, ""},
+        {editable-cell ""},
 
         row = 3, col = 2,
         {cell-spec halign = "right", "Department:"}, {editable-cell ""},
@@ -160,7 +160,7 @@
                                 {on Action at cb:CommandButton do
                                     {type-switch cb.data-binding-context
                                      case rf:RecordForm do
-                                        {if rf.records.size > 1 then
+                                        {if rf.records.size > 0 then
                                             {if-non-null cr = rf.current-record then
                                                 {cr.delete}
                                             }
@@ -215,7 +215,7 @@
         row = 14,
         col = 2,
         {cell-spec colspan = 2, font-size = 16pt, "____________________"}, 
-        {cell-spec font-size = 16pt, "__________"},
+        {cell-spec font-size = 6pt, "__________"},
 
         row = 15, 
         col = 0, {cell-spec colspan = 2, "Signed"},
@@ -226,11 +226,6 @@
 {value
     worksheet
 }
-
-{after 5s do
-    {dump {url-encode-string {JsonValue-to-String prettify? = true, {model.get-data}}}}
-}
-
 
 {CommandButton
     label = "Reload",

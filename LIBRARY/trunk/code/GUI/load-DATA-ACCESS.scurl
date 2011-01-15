@@ -2423,7 +2423,7 @@ How this evolved:
         test-visible? = false,
 ||--        date-format-spec = DateFieldFormatSpec.iso,
         {on vf:ValueFinished at df:SRGDateField do
-            {dump df, vf, df.value}
+||--            {dump df, vf, df.value}
             {if-non-null cell = df.cell then
                 {if cell.can-update? then
                     {cell.attempt-update df.value}

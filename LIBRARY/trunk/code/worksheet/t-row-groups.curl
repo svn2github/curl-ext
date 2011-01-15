@@ -142,9 +142,8 @@
             }
         },
         || Add a LayeredChart
-        row = 11, col = 1,
+        row = 11, col = 1, row-height = 3.5in,
         {cell-spec
-            rowspan = 4,
             colspan = 5,
             vstretch? = true, hstretch? = true,
             {LayeredChart

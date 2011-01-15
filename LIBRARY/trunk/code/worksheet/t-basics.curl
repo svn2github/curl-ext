@@ -56,11 +56,55 @@ Note: it will assert if it fails.
 {def display = {VBox}}
 {def counts = {HBox spacing = 8pt}}
 
+{value
+    def gt = {GroupTree}
+    def g0 = {gt.insert-group {GroupSpec true, 0, 0, 2, expanded? = false}}
+    def g1 = {gt.insert-group {GroupSpec true, 0, 3, 5, expanded? = true}}
+||    01234567890
+|| 0: aaaBBB.....  => 0..34567
+    def table = {Table columns = 3,
+                    cell-margin = 1px, font-size = 9pt,
+                    border-color = "gray", border-width = 1in/300
+                }
+    def last = 8
+    def ip-map = {gt.get-position-map last}
+    def ip = {HBox spacing = 4pt}
+    {for i = 0 below last do
+        {ip.add {Frame width = 18pt, {format "%s:%s", i, ip-map[i]}}}
+    }
+    {table.add "ip-map"}
+    {table.add ip}
+    {table.add "(position given index)"}
+
+    def pi-map = {gt.get-index-map 8}
+    def pi = {HBox spacing = 4pt}
+    {for i = 0 below last do
+        {pi.add {Frame width = 18pt, {format "%s:%s", i, pi-map[i]}}}
+    }
+    {table.add "pi-map"}
+    {table.add pi}
+    {table.add "(index given position)"}
+
+    {for i = 0 below last do
+        {if pi-map[i] < last then
+            {assert ip-map[pi-map[i]] == i}
+        }
+        {if ip-map[i] >= 0 then
+            {assert pi-map[ip-map[i]] == i}
+            {assert {gt.visible? i}}
+         else
+            {assert not {gt.visible? i}}
+        }
+    }
+    table
+}
+
+
 {do
     {def gt = {GroupTree}}
     {def g0 = {gt.insert-group {GroupSpec true, 0, 0, 2, expanded? = false}}}
     {def g1 = {gt.insert-group {GroupSpec true, 0, 3, 5, expanded? = false}}}
-    def m = {gt.get-map 7}
+    def m = {gt.get-position-map 7}
     {test-iter gt, 7}
 }
 
@@ -121,19 +165,19 @@ Note: it will assert if it fails.
         }
     }
 
-    def map = {gt2.get-map 15}
+    def map = {gt2.get-position-map 15}
     {assert gt.depth == 2}
 ||--    {assert {test-iter gt2, 10} == 10}
 }
 
 {do
-    def map = {gt.get-map 15}
+    def map = {gt.get-position-map 15}
     def mdisplay = {VBox}
     {for mi key i in map do
         {mdisplay.add {format "%d -> %d", i, mi}}
     }
     {counts.add mdisplay}
-    {assert map.size == 16}
+    {assert map.size == 15}
 }
 
 || Add an overlapping group at the same level
@@ -303,21 +347,25 @@ OK
     "Total:", {formula-cell halign = "right", sum, {Ref "D3:D7"}},
 
     row = 9, col = 0,
-    {CommandButton
-        label = "Show Json Data",
-        {on e:Action at cb:CommandButton do
-            {type-switch cb.selection-context
-             case wks:Worksheet do
-                {popup-message
-                    title = "Time Sheet Data",
-                    {Frame margin = 6pt,
-                        text-preserve-whitespace? = true,
-                        {JsonValue-to-String 
-                            {wks.model.get-data}, prettify? = true
+    row-height = 24pt,
+    {cell-spec
+        margin = 0pt,
+        {CommandButton
+            label = "Show Json Data",
+            {on e:Action at cb:CommandButton do
+                {type-switch cb.selection-context
+                 case wks:Worksheet do
+                    {popup-message
+                        title = "Time Sheet Data",
+                        {Frame margin = 6pt,
+                            text-preserve-whitespace? = true,
+                            {JsonValue-to-String 
+                                {wks.model.get-data}, prettify? = true
+                            }
                         }
                     }
-                }
-            }                    
+                }                    
+            }
         }
     }
 }

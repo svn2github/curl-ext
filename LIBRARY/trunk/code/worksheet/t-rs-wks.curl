@@ -97,7 +97,7 @@
     {Worksheet
         model,
         font-size = 9pt,
-        {widths 1.3in, 1.0in, 1.0in, 1.0in, 1.5in, .25in},
+        {widths 1.3in, 1.0in, 1.0in, 1.0in, 1.5in, 1.0in, .25in},
 
         row = 0, col = 0, "Sample Data",
         col = 6, {cell-spec {DateTime.date}},
@@ -116,7 +116,9 @@
 
         row = 10, col = 0, 
         {cell-spec color = "red", halign = "right",
-            hstretch? = false, vstretch? = false, valign = "center",
+||--            hstretch? = false, vstretch? = false,
+            valign = "center",
+            colspan = 2, 
             "These should add up"
         },
 
@@ -140,9 +142,8 @@
             }
         },
         || Add a LayeredChart
-        row = 11, col = 1,
+        row = 11, col = 1, row-height = 3.5in,
         {cell-spec
-            rowspan = 4,
             colspan = 5,
             vstretch? = true, hstretch? = true,
             {LayeredChart

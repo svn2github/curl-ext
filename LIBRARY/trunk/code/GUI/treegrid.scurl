@@ -279,6 +279,10 @@
   }
   field protected _refresh-requested?:bool = false
 
+  field protected ccache:#{HashTable-of int, {Array-of Record}} = null
+  field protected pcache:#{HashTable-of int, {Array-of Record}} = null
+
+
   {doc-next
     {purpose
         Initialize a {docref RecordSetTreeModel} with data from
@@ -623,6 +627,143 @@
 
   {doc-next
     {purpose
+        Perform a depth first treewalk on the tree nodes stored
+        in {param rs}, applying {param pre} before visiting each node,
+        and {param post} afterwards.
+    }
+    {parameter rs, A {docref RecordSet} containing a tree where each
+        child points to its parent via the field given by
+        {docref RecordSetTreeMode.parent-id-field}.
+    }
+    {parameter pre, A procedure that is called on a record before visiting
+        it's children. The procedure is passed the record and it's
+        children in an array.
+    }
+    {parameter post, A procedure that is called on a record immediately after
+        visiting all of it's children. The procedure is passed the
+        record and it's children in an array.
+    }
+  }
+  {method public open {walk-record-tree
+                          rs:RecordSet,
+                          pre:#{proc-type {
+                                           parent:Record,
+                                           child-records:{Array-of Record}
+                                          }:void
+                               } = null,
+                          post:#{proc-type {
+                                            parent:Record,
+                                            child-records:{Array-of Record}
+                                           }:void
+                                } = null,
+                          parent-id:int = 0
+                      }:void
+    {with rs.batch-events? = true do
+        let cached-parents:#{Array-of Record} = null
+        {if-non-null pcache = self.pcache then
+            let (cp:{Array-of Record}, found?:bool) =
+                {pcache.get-if-exists parent-id}
+            {if found? then
+                set cached-parents = cp
+            }
+        }
+
+        let parents:{Array-of Record} =
+            {if-non-null cached-parents then
+                cached-parents
+             elseif parent-id == 0 then
+                || Find all the roots (records with no parent)
+                {rs.select filter = 
+                    {proc {fr:Record}:bool
+                        {return fr[RecordSetTreeModel.parent-id-field] asa int == 0
+                            and fr.state != RecordState.deleted
+                            and fr.state != RecordState.new
+                            and fr.state != RecordState.detached
+                        }
+                    }
+                }
+             else
+                || Find the one record for parent-id and compute from there
+                def a = {new {Array-of Record}}
+                {if-non-null r =
+                    {rs.select-one
+                        filter = 
+                            {proc {fr:Record}:bool
+                                {return fr[self.id-field] == parent-id
+                                    and fr.state != RecordState.deleted
+                                    and fr.state != RecordState.new
+                                    and fr.state != RecordState.detached
+                                }
+                            }
+                    }
+                 then
+                    {a.append r}
+                }
+                a
+            }
+
+        {for parent in parents do
+            let cached-children:#{Array-of Record} = null
+            def pid = parent[self.id-field] asa int
+            {if-non-null ccache = self.ccache then
+                let (cc:{Array-of Record}, found?:bool) =
+                    {ccache.get-if-exists pid}
+                {if found? then
+                    set cached-children = cc
+                }
+            }
+            
+            def children =
+                {if-non-null cached-children then
+                    cached-children
+                 else
+                    {rs.select filter =
+                        {proc {fr:Record}:bool
+                            {return fr[RecordSetTreeModel.parent-id-field] asa int == pid
+                                and fr.state != RecordState.deleted
+                                and fr.state != RecordState.new
+                                and fr.state != RecordState.detached
+                            }
+                        }
+                    }
+                }
+
+            {if-non-null pre then
+                {pre parent, children}
+            }
+            {for cr:Record in children do
+                def cid = cr[self.id-field] asa int
+                let leaf?:bool = false
+                {if-non-null pcache = self.pcache then
+                    let (ca:{Array-of Record}, found?:bool) =
+                        {pcache.get-if-exists cid}
+                    set leaf? = not found?
+                }
+                {if not leaf? then
+                    {self.walk-record-tree
+                        rs,
+                        pre = pre, post = post,
+                        parent-id = cid
+                    }
+                 else
+                    def no-children = {new {Array-of Record}}
+                    {if-non-null pre then
+                        {pre cr, no-children}
+                    }
+                    {if-non-null post then
+                        {post cr, no-children}
+                    }
+                }
+            }
+            {if-non-null post then
+                {post parent, children}
+            }
+        }
+    }
+  }
+
+  {doc-next
+    {purpose
         Request a refresh, which will recompute the data columns used
         to represent the tree structure.
     }
@@ -638,9 +779,13 @@
     {if not self._refresh-requested? then
         set self._refresh-requested? = true
         {after 0.0s do
+            || Make sure not to queue up another refresh
+            set self._refresh-requested? = true
             {with self.source.batch-events? = true do
                 {self.refresh}
             }
+            || Do this after the batch-events so that the final
+            || batch event will not trigger another refresh.
             set self._refresh-requested? = false
         }
     }
@@ -669,9 +814,37 @@
     let n:int = 0
     let rstm:RecordSetTreeModel = self
 
+    || Speed up frequent lookups for walk-record-tree
+    || pcache maps from a parent-id to the parent record
+    || ccache maps from a parent-id to the children
+    set self.pcache = {new {HashTable-of int, {Array-of Record}}}
+    set self.ccache = {new {HashTable-of int, {Array-of Record}}}
+    def no-children = {new {Array-of Record}}
+    def parents = {new {Array-of int}}
+    {for r:Record in self.source do
+        let pid:int = r[RecordSetTreeModel.parent-id-field] asa int
+        let (cp:{Array-of Record}, found?:bool) =
+            {self.ccache.get-if-exists pid}
+        {if found? then
+            {cp.append r}
+         else
+            set self.ccache[pid] = {new {Array-of Record}, r} 
+        }
+        {if {parents.find pid} < 0 then
+            {parents.append pid}
+        }
+    }
+    {for r:Record in self.source do
+        let id:int = r[self.id-field] asa int
+        {if {parents.find id} >= 0 then
+            set self.pcache[id] = {new {Array-of Record}, r}
+         else
+            set self.ccache[id] = no-children
+        }
+    }
+
     || Compute the attribute that are derived from the parent/child relation
-    {walk-record-tree self.source,
-        id-field = self.id-field,
+    {self.walk-record-tree self.source,
         pre =
             {proc {parent:Record, children:{Array-of Record}}:void
                 {inc n}
@@ -682,18 +855,18 @@
                     set c["_depth"] = parent["_depth"] asa int + 1 ||""
                 }
             },
-        post = 
+        post =
             {proc {parent:Record, children:{Array-of Record}}:void
                 {inc n}
                 set parent["_rn"] = n ||""
             }
     }
+||--    {dump "_depth", pcache-get, pcache-found, ccache-get, ccache-found}
 
     || Determine which nodes should be hidden, and hide them
     {self.hidden-nodes.clear}
 
-    {walk-record-tree 
-        id-field = self.id-field,
+    {self.walk-record-tree 
         self.source,
         pre =
             {proc {parent:Record, children:{Array-of Record}}:void
@@ -712,7 +885,11 @@
         set r["_hide"] = ||""
             {self.hidden-nodes.member? r[self.id-field] asa int}
     }
-    set self._refresh-requested? = false
+    || Do not reset refresh-requested? here, or the final bulk change
+    || event will trigger another refresh.
+||--    {dump "_hide", pcache-get, pcache-found, ccache-get, ccache-found}
+    set self.pcache = null
+    set self.ccache = null
   }
 
   {doc-next

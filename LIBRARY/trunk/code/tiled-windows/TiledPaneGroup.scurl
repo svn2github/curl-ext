@@ -75,7 +75,7 @@
         The orientation whose opposite is needed.
     }
     {return-vals
-        The opposite of {parameter orientation}.
+        The opposite of {param orientation}.
     }
   }
   {define-proc public {opposite-orientation orientation:Orientation}:Orientation

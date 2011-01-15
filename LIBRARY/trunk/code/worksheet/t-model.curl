@@ -1,0 +1,299 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0 applet}
+
+{applet manifest = "../manifest.mcurl", locale = "en"}
+
+{import * from CURL.UTIL.OBSERVER}
+{import * from CURL.IO.JSON}
+||--{import * from COM.CURL.EXT.GUI}
+||--{import * from COM.CURL.EXT.DATA-ACCESS}
+||--{import * from CURL.IDE.DOCUMENTATION}
+
+{import * from COM.CURL.EXT.WORKSHEET}
+
+{set-document-properties
+    font-size = 9pt
+}
+
+|| ------------------
+|| Testing Utilities
+|| ------------------
+
+{let test-count:int = 0}
+
+{def public HandlerProc = {proc-type {sender:Observable, message:any}:void}}
+
+{define-proc public {output-messages sender:Observable, message:any}:void
+    {output
+        {format "message: sender=%s message=%s", sender, message}
+    }
+}
+
+{define-class public open ObservationRecorder {inherits Observer}
+  field public recorder:HandlerProc
+  {constructor public {default
+                          recorder:HandlerProc = output-messages,
+                          target:#Observable = null
+                      }
+    set self.recorder = recorder
+    {if-non-null target then
+        {target.add-observer self}
+    }
+  }
+
+  {method protected open {handle-observer-message
+                             sender:Observable,
+                             message:any
+                         }:void
+    {self.recorder sender, message}
+  }
+}
+
+{define-proc {make-model
+                 rows:int, cols:int,
+                 initial-vals?:bool = false,
+                 recorder:#HandlerProc = null
+             }:WorksheetModel
+    def wm = {WorksheetModel rows, cols}
+    {if-non-null recorder then
+        let obs = {ObservationRecorder recorder = recorder, target = wm}
+    }
+    {if initial-vals? then
+        {for ri = 0 below rows do
+            {for ci = 0 below cols do
+                def cv = wm.vals[ri, ci]
+                def v = {format "R%sC%s", ri, ci}
+                set cv.value = v
+                set cv.domain = WorksheetModel.string-domain
+            }
+        }
+    }
+    {return wm}
+}
+
+{define-proc public {make-insert-delete-cluster
+                        wks:Worksheet,
+                        row:int = 0, col:int = 0,
+                        count:int = 1
+                    }:Graphic
+    let r:int = row
+    let c:int = col
+    let n:int = count
+    def row-ctl =
+        {SpinControl
+            width = 36pt,
+            value = row,
+            {on ValueChanged at ctl:SpinControl do
+                set r = ctl.value asa int
+            }
+        }
+    def col-ctl =
+        {SpinControl
+            width = 36pt,
+            value = col,
+            {on ValueChanged at ctl:SpinControl do
+                set c = ctl.value asa int
+            }
+        }
+    def count-ctl =
+        {SpinControl
+            width = 36pt,
+            value = count,
+            {on ValueChanged at ctl:SpinControl do
+                set n = ctl.value asa int
+            }
+        }
+    def ins-row-button =
+        {CommandButton
+            label = {bold + Rows},
+            width = 42pt,
+            tooltip = "Insert rows",
+            {on Action do
+                {inc test-count}
+                {wks.insert-rows r, n}
+            }
+        }
+    def ins-col-button =
+        {CommandButton
+            label = {bold + Cols},
+            width = 42pt,
+            tooltip = "Insert cols",
+            {on Action do
+                {inc test-count}
+                {wks.insert-cols r, n}
+            }
+        }
+    def del-row-button =
+        {CommandButton
+            label = {bold - Rows},
+            width = 42pt,
+            tooltip = "Delete rows",
+            {on Action do
+                {inc test-count}
+                {wks.insert-rows r, -n}
+            }
+        }
+    def del-col-button =
+        {CommandButton
+            label = {bold - Cols},
+            width = 42pt,
+            tooltip = "Delete cols",
+            {on Action do
+                {inc test-count}
+                {wks.insert-cols r, -n}
+            }
+        }
+
+    {return {HBox spacing = 3pt,
+                "row:", row-ctl,
+                "col:", col-ctl,
+                "count:", count-ctl,
+                ins-row-button, ins-col-button,
+                del-row-button, del-col-button
+            }
+    }
+}
+
+|| --------------------------
+{title WorksheetModel Tests}
+|| --------------------------
+
+{define-proc {test-model}:WorksheetModel
+    def rows = 3
+    def cols = 3
+    def wm = {WorksheetModel rows, cols}
+    {assert {WorksheetModel.get-default-domain null} == WorksheetModel.any-domain}
+    {assert {WorksheetModel.get-default-domain ""} == WorksheetModel.string-domain}
+    {assert {WorksheetModel.get-default-domain "abc"} == WorksheetModel.string-domain}
+    {assert {WorksheetModel.get-default-domain "123"} == WorksheetModel.double-domain}
+    {assert {WorksheetModel.get-default-domain "1/1/1981"} == WorksheetModel.date-domain}
+    {assert {WorksheetModel.get-default-domain "1/1/1981 12:00"} == DateTime asa Domain}
+    {assert {WorksheetModel.get-default-domain 123} == WorksheetModel.double-domain}
+    {assert {WorksheetModel.get-default-domain 123.001} == WorksheetModel.double-domain}
+    {assert {WorksheetModel.get-default-domain 123} == WorksheetModel.double-domain}
+    {assert {WorksheetModel.get-default-domain {DateTime}} == WorksheetModel.date-domain}
+    {assert {WorksheetModel.get-default-domain true} == bool asa Domain}
+    {assert {WorksheetModel.get-default-domain 99s} == Time asa Domain}
+    {assert {WorksheetModel.get-default-domain {text 99}} == WorksheetModel.any-domain}
+    {assert {WorksheetModel.get-default-domain {CommandButton}} == WorksheetModel.any-domain}
+
+    {wm.insert-rows 0, 1}
+    {assert wm.rows == rows + 1}
+    {assert wm.cols == cols + 0}
+    {wm.insert-cols 0, 1}
+    {assert wm.rows == rows + 1}
+    {assert wm.cols == cols + 1}
+    let v:any ="R0C0"
+    {wm.set-value 0, 0, v}
+    {assert {wm.get-value 0, 0} == v}
+    set v ="last"
+    {wm.set-value rows, cols, v}
+    {assert {wm.get-value rows, cols} == v}
+
+    def rg = {GroupSpec true, 0, 1, 2, expanded? = true}
+    {wm.row-tree.insert-group rg}
+
+    def cg = {GroupSpec false, 0, 1, 2, expanded? = false}
+    {wm.col-tree.insert-group cg}
+
+    {assert wm.rows == rows + 1}
+    {assert wm.cols == cols + 1}
+    {assert {wm.get-value rows, cols} == v}
+    def data = {wm.get-data all? = true}
+    {dump {JsonValue-to-String prettify? = true, data}}
+    {return wm}
+}
+
+3x3 with one hidden column{br}
+{value
+    def wm = {test-model}
+    {Worksheet
+        wm,
+        border-width = 1in/300, border-color = "black",
+        vertical-grid-line-width = 3px,
+        horizontal-grid-line-width = 4px
+    }
+}
+
+3x3 with one hidden column, 1 frozen row & col{br}
+{value
+    def wm = {make-model 4, 3, initial-vals? = true, recorder = output-messages}
+    {Worksheet
+        wm,
+        frozen-rows = 1, frozen-cols = 1,
+        border-width = 1in/300, border-color = "black",
+        vertical-grid-line-width = 3px,
+        horizontal-grid-line-width = 4px
+    }
+}
+
+
+Delete row 0{br}
+{value
+    def wm = {test-model}
+    def ws = {Worksheet
+                 wm,
+                 border-width = 1in/300, border-color = "black",
+                 vertical-grid-line-width = 3px,
+                 horizontal-grid-line-width = 4px
+                 ,
+                 {context-popup
+                     menu-pane =
+                         {MenuPane
+                             {MenuAction
+                                 label = "Test",
+                                 {on Action do
+                                 }
+                             }
+                         }
+                 }
+             }
+
+    {HBox valign = "top", spacing = 6pt,
+        ws,
+        {make-insert-delete-cluster ws}
+||--        {CommandButton
+||--            label = "Insert",
+||--            {on Action do
+||--                {ws.insert-rows 0, 1}
+||--            }
+||--        },
+||--        {CommandButton
+||--            label = "Delete",
+||--            {on Action do
+||--                {ws.insert-rows 0, -1}
+||--            }
+||--        }
+    }
+}
+
+{value
+    def wm = {make-model 100, 20, initial-vals? = true}
+    def ws = {Worksheet
+                 wm,
+                 width = 5in, height = 2.5in,
+                 frozen-rows = 2, frozen-cols = 1,
+                 scrollable? = true,
+                 border-width = 2px, border-color = "gray",
+                 border-style = "sunken",
+                 vertical-grid-line-width = 1px,
+                 horizontal-grid-line-width = 1px
+             }
+    ws
+}

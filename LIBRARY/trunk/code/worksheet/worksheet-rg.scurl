@@ -8673,7 +8673,7 @@
   field private _draw-current?:bool = false
   
   {constructor package {default}
-    {construct-super 0, true}
+    {construct-super true}
     set self.opaque-to-events? = true
   }
   

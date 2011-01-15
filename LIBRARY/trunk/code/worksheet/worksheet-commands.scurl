@@ -87,8 +87,7 @@
     let constant context:Worksheet = self.context
     {return 
         super.enabled? and
-        context.enabled? and
-        context.editable?
+        context.enabled?
     }
   }
   
@@ -153,8 +152,9 @@
             {if ci > selection.begin-column then
                 {buf.append cell-delimiter}
             }
-            def cell = grid.cells[ri, ci]
-            {cell.get-range-as-selected-text buf}
+            {if-non-null gc = {grid.get-grid-cell ri, ci} then
+                {gc.get-range-as-selected-text buf}
+            }
         }
         {buf.append line-delimiter}
     }
@@ -223,7 +223,6 @@
 
     {return 
         grid.enabled? and
-        grid.editable? and
         not sel.empty?
     }
   }
@@ -267,11 +266,11 @@
     let vals:{Array-of String} = {line.split split-chars = cell-splitter}
 
     {for ci = selection.begin-column to selection.end-column do
-        def cell = self.context.cells[row-index, ci]
-        {if cell.editable? then
-            {self.context.set-value
-                row-index, ci, 
-                vals[(ci - selection.begin-column) mod vals.size]
+        def cv = self.context.model.vals[row-index, ci]
+        {if cv.editable? then
+            {self.context.model.set-value
+                row-index, ci,
+                {cv.domain-value vals[(ci - selection.begin-column) mod vals.size]}
             }
         }
     }
@@ -318,5 +317,79 @@
 ||--    }
 ||--    
 ||--  }
+  
+}
+
+
+{define-class public abstract open WorksheetCommand
+  {inherits SelectionContextCommand}
+
+  {getter public open {context}:Worksheet
+    {return super.context asa Worksheet}
+  }
+
+  {constructor public {default
+                          name:String,
+                          context:Worksheet
+                      }
+    {construct-super name, context}
+  }
+}
+
+{doc-next
+    {purpose 
+        {docref Command} used to insert rows or columns in a
+        {docref Worksheet}.
+    }
+}
+{define-class public open WorksheetInsert {inherits WorksheetCommand}
+
+  field public first:int
+  field public count:int
+  field public rows?:bool
+
+  {doc-next
+    {purpose
+        Construct a new {ctext WorksheetDelete}.
+    }
+    {parameter context, 
+        {docref Worksheet} on which this command operates.
+    }
+  }
+  {constructor public {default context:Worksheet}    
+    {construct-super "Worksheet.insert", context}
+  }
+  
+  || Methods to implement CommandImpl:
+  {method public open {prepare}:void
+    {super.prepare}
+    def worksheet = self.context
+    {if worksheet.selection.all-cells? then
+        set self.first = -1
+        set self.count = 0
+     elseif worksheet.selection.all-rows? then
+        set self.first = worksheet.selection.begin-column
+        set self.count = worksheet.selection.cols
+        set self.rows? = false
+     elseif worksheet.selection.all-cols? then
+        set self.first = worksheet.selection.begin-row
+        set self.count = worksheet.selection.rows
+        set self.rows? = true
+    }
+  }
+
+  {getter public open {enabled?}:bool
+    let constant worksheet:Worksheet = self.context
+    {self.prepare}
+    {return super.enabled? and self.context.enabled? and self.count > 0}
+  }
+  
+  {method protected open {execute}:void
+    {if self.rows? then
+        {self.context.insert-rows self.first, self.count}
+     else
+        {self.context.insert-cols self.first, self.count}
+    }
+  }
   
 }

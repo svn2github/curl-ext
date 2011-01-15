@@ -228,6 +228,7 @@
     {Worksheet
         model,
         font-size = 9pt,
+        default-column-width = 60pt,
         {widths 60pt, 2.5in, 1.0in, 1.2in, 0.25in},
 
         row = 0, col = 0,
@@ -343,14 +344,14 @@ or folder). A second RecordSet is used to store list of file types
 {value
     {def tmp-ref = {worksheet.model.get-ref "$B$2"}}
     {tmp-ref.set-value {init-file-rs}}
-    {worksheet.model.update}
+||--    {worksheet.model.update}
     
     worksheet || display the worksheet
 }
 
 {after 3.01s do
-    set worksheet.vertical-grid-line-width = 4pt
-    set max-files = 2000
+||--    set worksheet.vertical-grid-line-width = 4pt
+    set max-files = 1000
     {init-file-rs}
-    {worksheet.model.update}
+||--    {worksheet.model.update}
 }
