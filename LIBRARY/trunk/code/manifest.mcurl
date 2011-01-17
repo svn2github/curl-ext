@@ -100,3 +100,12 @@
 {component package COM.CURL.EXT.STANDARD,
     location = "load.scurl"
 }
+
+{component directory resources,
+    location = "resources"
+}
+
+
+
+
+

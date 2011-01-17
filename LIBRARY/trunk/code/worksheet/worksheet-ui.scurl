@@ -5160,6 +5160,7 @@ How does the edit/update cycle work?
         representation. Other cells will be recomputed when the data
         is restored (using {docref WorksheetModel.put-data}).
     }
+    {paragraph
     {example
         title = "Weekly Time Sheet Example",
         {import * from CURL.IO.JSON}
@@ -5272,6 +5273,7 @@ How does the edit/update cycle work?
                 }
             }
         }
+    }
     }
     ||FIXME: Does it make sense to have these clauses?
 ||--    {parameter {italic model:WorksheetModel}, If a {ctext WorksheetModel}
