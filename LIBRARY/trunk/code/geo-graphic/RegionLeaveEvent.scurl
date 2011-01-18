@@ -1,0 +1,11 @@
+||| Maintained by: kodan
+
+{define-class public RegionLeaveEvent {inherits GuiEvent}
+
+  field public area-shape:AreaShape
+
+  {constructor public {default area-shape:AreaShape}
+    {construct-super}
+    set self.area-shape = area-shape
+  }
+}

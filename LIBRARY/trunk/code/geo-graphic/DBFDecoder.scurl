@@ -1,0 +1,200 @@
+||| Maintained by: kodan
+
+{define-class public DBFDecoder
+  field protected dbf-file:Url
+  {constructor public {default dbf-file:Url}
+    set self.dbf-file = dbf-file
+  }
+  {method public {read-dbf
+                     character-encoding:CharEncoding = 
+                         {get-character-encoding-by-name "shift-jis"}
+                 }:RecordSet
+    {with-open-streams in = {read-open-byte self.dbf-file} do
+        let version-number:uint8 = {marshal-in-uint8 in}
+        ||TO DO: Enhance the corresponding version?
+        {if version-number == 48 or version-number == 49 then
+            {output "Version " & version-number & " not supported."}
+            {exit}
+        }
+        let year :int = {marshal-in-uint8 in} + 1900
+        let month:int = {marshal-in-uint8 in}
+        let day  :int = {marshal-in-uint8 in}
+        
+        let num-records:int = {marshal-in-int in, little-endian? = true}
+        let length-of-header:int = {marshal-in-int16 in, little-endian? = true}
+        let length-of-each-record:int = 
+            {marshal-in-int16 in, little-endian? = true}
+        let reserved1:int = {marshal-in-int16 in}
+        let incomplete-transaction:int = {marshal-in-uint8 in}
+        let encryption-flag:int = {marshal-in-uint8 in}
+        let free-record-thread:int = {marshal-in-int in}
+        let reserved-multi-user:int64 = {marshal-in-int64 in}
+        let mdx-flag:int = {marshal-in-uint8 in}
+        let language-driver:int = {marshal-in-uint8 in}
+        let reserved2:int = {marshal-in-int16 in}
+        let num-fields:int =
+            {if version-number == 48 or version-number == 49 then
+                (length-of-header - 32 - 1 - 263) / 32
+             else
+                (length-of-header - 32 - 1) / 32
+            } asa int
+        let dbf-fields:{Array-of DBFField} = {new {Array-of DBFField}}
+        || Field descriptors
+        {for i:int = 0 below num-fields do
+            let (bd1:int, field-name:String) = 
+                {decode-characters
+                    {in.read n = 11}.underlying-FastArray,
+                    ||CharEncoding.utf8
+                    character-encoding}
+            let field-type:uint8 = {marshal-in-uint8 in}
+            let (bd2:int, field-type-char:String) = 
+                {decode-characters
+                    {{FastArray-of uint8} field-type},
+                    ||CharEncoding.utf8
+                    character-encoding}
+            let field-data-address:int = {marshal-in-int in}
+            let field-length:uint8 = {marshal-in-uint8 in}
+            let decimal-count:uint8 = {marshal-in-uint8 in}
+            let field-reserved-multi-user1:int16 = {marshal-in-int16 in}
+            let work-area-id:uint8 = {marshal-in-uint8 in}
+            let field-reserved-multi-user2:int16 = {marshal-in-int16 in}
+            let set-fields-flag:uint8 = {marshal-in-uint8 in}
+            let field-reserved1:uint8 = {marshal-in-uint8 in}
+            let field-reserved2:uint8 = {marshal-in-uint8 in}
+            let field-reserved3:uint8 = {marshal-in-uint8 in}
+            let field-reserved4:uint8 = {marshal-in-uint8 in}
+            let field-reserved5:uint8 = {marshal-in-uint8 in}
+            let field-reserved6:uint8 = {marshal-in-uint8 in}
+            let field-reserved7:uint8 = {marshal-in-uint8 in}
+            let index-flag:uint8 = {marshal-in-uint8 in}
+            let dbf-field:DBFField = {new DBFField,
+                                         field-name,
+                                         field-type,
+                                         field-data-address,
+                                         field-length,
+                                         decimal-count,
+                                         field-reserved-multi-user1,
+                                         work-area-id,
+                                         field-reserved-multi-user2,
+                                         set-fields-flag,
+                                         field-reserved1,
+                                         field-reserved2,
+                                         field-reserved3,
+                                         field-reserved4,
+                                         field-reserved5,
+                                         field-reserved6,
+                                         field-reserved7,
+                                         index-flag}
+            {dbf-fields.append dbf-field}
+        }
+        || The fields terminator should be 0x0d
+        let fields-terminator:int = {marshal-in-uint8 in}
+        
+        let record-fields:{Array-of RecordField} = {new {Array-of RecordField}}
+        {for f in dbf-fields do
+            let fname:String = f.field-name
+            let ftype:byte = f.field-type
+            let domain:Domain = {switch ftype
+                                 case 'C' do
+                                    String
+                                 case 'N' do
+                                    double
+                                 else
+                                    any
+                                }
+            ||{output fname & ":" & domain}
+            {record-fields.append {new RecordField, fname, domain = domain}}
+        }
+        let rs:RecordSet = {new RecordSet, 
+                               {new RecordFields, 
+                                   {splice record-fields}}}
+        
+        || TODO: Support Visual FoxPro versions.
+        || Records
+        {for i:int = 0 below num-records do
+            let record-delete-flag:int = {marshal-in-uint8 in}
+            let rd:RecordData = {new RecordData}
+            {for j:int = 0 below num-fields do
+                let dbf-field:DBFField = dbf-fields[j]
+                let fname:String = dbf-field.field-name
+                let ftype:byte = dbf-field.field-type
+                let flength:byte = dbf-field.field-length
+                
+                let (bd2:int, field-type-char:String) = 
+                    {decode-characters
+                        {{FastArray-of uint8} ftype},
+                        character-encoding}
+                
+                let field-value:any =
+                    {switch ftype                    
+                     case 'C' do
+                        ||{output "ftype = C"}
+                        let (bd:int, fv:String) = 
+                            {decode-characters
+                                {in.read n = flength}.underlying-FastArray,
+                                character-encoding}
+                        fv
+                     case 'N' do
+                        ||{output "ftype = N"}
+                        let (bd:int, fv:String) = 
+                            {decode-characters
+                                {in.read n = flength}.underlying-FastArray,
+                                character-encoding}
+                        {if fv isa String then
+                            let fv2:double = {{fv.trim-clone}.to-double}
+                            fv2
+                         else
+                            fv
+                        }
+                     case 'D' do
+                        ||{output "ftype = D"}def (bd, fv) =
+                        let (bd:int, fv:String) = 
+                            {decode-characters
+                                {in.read n = flength}.underlying-FastArray,
+                                character-encoding}
+                        {if fv isa String then
+                            let fv2:double = {{fv.trim-clone}.to-double}
+                            fv2
+                         else
+                            fv
+                        }
+                     case 'F' do
+                        ||{output "ftype = F"}
+                        let (bd:int, fv:String) = 
+                            {decode-characters
+                                {in.read n = flength}.underlying-FastArray,
+                                character-encoding}
+                        {if fv isa String then
+                            let fv2:double = {{fv.trim-clone}.to-double}
+                            fv2
+                         else
+                            fv
+                        }
+                     case 'L' do
+                        ||{output "ftype = L"}
+                        let (bd:int, fv:String) = 
+                            {decode-characters
+                                {in.read n = flength}.underlying-FastArray,
+                                ||CharEncoding.iso-latin-1
+                                character-encoding}
+                        fv
+                     case 'M' do
+                        ||{output "ftype = M"}
+                        let (bd:int, fv:String) = 
+                            {decode-characters
+                                {in.read n = flength}.underlying-FastArray,
+                                ||CharEncoding.iso-latin-1
+                                character-encoding}
+                        fv
+                     else
+                        ||{output "Unsupported field type : " & ftype}
+                        {in.read n = flength}
+                    }
+                set rd[fname] = field-value
+            }
+            {rs.append rd}
+        }
+        {return rs}
+    }
+  }
+}

@@ -1,0 +1,513 @@
+||| Maintained by: kodan
+
+{define-class public SHPDecoder
+  
+  field protected shp-file:Url
+  field protected rs:#RecordSet
+  field protected file-header-info:FileHeaderInfo = 
+      {FileHeaderInfo.empty-file-header}
+  
+  {constructor public {default shp-file:Url}
+    set self.shp-file = shp-file
+  }
+  
+  {method public {read-shp}:(RecordSet, FileHeaderInfo)
+    {with-open-streams in = {read-open-byte self.shp-file} do
+        set self.file-header-info = {self.read-file-header in}
+        let record-length:int = {self.read-record-header in}
+        
+        set self.rs = {RecordSet 
+                          self.file-header-info.record-fields asa RecordFields}
+        
+        {while record-length != -1 do
+            def shape-record = {self.read-record in}
+            def rd = {shape-record.to-RecordData}
+            {self.rs.append rd}
+            set record-length = {self.read-record-header in}
+        }
+        {return (self.rs asa RecordSet), self.file-header-info}
+    }
+  }
+  {method protected {read-file-header in:ByteInputStream}:FileHeaderInfo
+    let file-code:int = {marshal-in-int in}
+    let unused1:int = {marshal-in-int in}
+    let unused2:int = {marshal-in-int in}
+    let unused3:int = {marshal-in-int in}
+    let unused4:int = {marshal-in-int in}
+    let unused5:int = {marshal-in-int in}
+    let file-length:int = {marshal-in-int in}
+    let version:int = {marshal-in-int in, little-endian? = true}
+    let shape-type:int = {marshal-in-int in, little-endian? = true}
+    let minx:double = {marshal-in-double in, little-endian? = true}
+    let miny:double = {marshal-in-double in, little-endian? = true}
+    let maxx:double = {marshal-in-double in, little-endian? = true}
+    let maxy:double = {marshal-in-double in, little-endian? = true}
+    let minz:double = {marshal-in-double in, little-endian? = true}
+    let maxz:double = {marshal-in-double in, little-endian? = true}
+    let minm:double = {marshal-in-double in, little-endian? = true}
+    let maxm:double = {marshal-in-double in, little-endian? = true}
+    
+    let rectangle:MinimumBoundingRectangle = 
+        {MinimumBoundingRectangle minx, miny, maxx, maxy,
+            minz = minz, maxz = maxz,
+            minm = minm, maxm = maxm
+        }
+    
+    let file-header-info:FileHeaderInfo =
+        {new FileHeaderInfo,
+            file-code,
+            file-length,
+            version,
+            shape-type,
+            rectangle
+        }
+    {return file-header-info}
+  }
+  {method protected {read-record-header in:ByteInputStream}:int
+    {try
+        let record-number:int = {marshal-in-int in}
+        let record-length:int = {marshal-in-int in}
+        {return record-length}
+     catch eos:EndOfStreamException do
+        {output "Reached end of stream"}
+        {return -1}
+    }
+  }
+  {method protected {read-record in:ByteInputStream}:#ShapeRecord
+    let shape-type:int = {marshal-in-int in, little-endian? = true}
+    {switch shape-type
+        
+||++ case 0 do
+||++    || Null Shape
+||++    let shape-record:NullShapeRecord = {NullShapeRecord shape-type}
+||++    {return shape-record}
+        
+     case 1 do
+        || Point
+        let x:double = {marshal-in-double in, little-endian? = true}
+        let y:double = {marshal-in-double in, little-endian? = true}
+        let shape-record:PointShapeRecord = {PointShapeRecord
+                                                shape-type,
+                                                x, y
+                                            }
+        {return shape-record}
+     case 3 do
+        ||PolyLine
+        || Minimum bounding rectangle (MBR)
+        let minx:double = {marshal-in-double in, little-endian? = true}
+        let miny:double = {marshal-in-double in, little-endian? = true}
+        let maxx:double = {marshal-in-double in, little-endian? = true}
+        let maxy:double = {marshal-in-double in, little-endian? = true}
+        let mbr:MinimumBoundingRectangle = {MinimumBoundingRectangle minx, miny, maxx, maxy}
+        || Number of parts
+        let num-parts:int = {marshal-in-int in, little-endian? = true}
+        || Number of points
+        let num-points:int = {marshal-in-int in, little-endian? = true}
+        || Part Indices
+        let part-indices:{Array-of int} = {new {Array-of int}}
+        {for i:int = 0 below num-parts do
+            let part-index:int = {marshal-in-int in, little-endian? = true}
+            {part-indices.append part-index}
+        }
+        || Points
+        let points:{Array-of GISPoint} = {new {Array-of GISPoint}}
+        {for i:int = 0 below num-points do
+            let x:double = {marshal-in-double in, little-endian? = true}
+            let y:double = {marshal-in-double in, little-endian? = true}
+            let point:GISPoint = {new GISPoint, x, y}
+            {points.append point}
+        }
+        let shape-record:PolyLineShapeRecord = {PolyLineShapeRecord
+                                                   shape-type,
+                                                   mbr,
+                                                   num-parts,
+                                                   num-points,
+                                                   part-indices,
+                                                   points}
+        {return shape-record}
+     case 5 do
+        || Minimum bounding rectangle (MBR)
+        def minx = {marshal-in-double in, little-endian? = true}
+        def miny = {marshal-in-double in, little-endian? = true}
+        def maxx = {marshal-in-double in, little-endian? = true}
+        def maxy = {marshal-in-double in, little-endian? = true}
+        def mbr = {new MinimumBoundingRectangle, minx, miny, maxx, maxy}
+        || Number of parts
+        def num-parts = {marshal-in-int in, little-endian? = true}
+        || Number of points
+        def num-points = {marshal-in-int in, little-endian? = true}
+        || Part Indices
+        def part-indices = {new {Array-of int}}
+        {for i:int = 0 below num-parts do
+            def part-index = {marshal-in-int in, little-endian? = true}
+            {part-indices.append part-index}
+        }
+        || Points
+        def points = {new {Array-of GISPoint}}
+        {for i:int = 0 below num-points do
+            def x = {marshal-in-double in, little-endian? = true}
+            def y = {marshal-in-double in, little-endian? = true}
+            def point = {new GISPoint, x, y}
+            {points.append point}
+        }
+        def shape-record = {new PolygonShapeRecord,
+                               shape-type,
+                               mbr,
+                               num-parts,
+                               num-points,
+                               part-indices,
+                               points
+                           }
+        {return shape-record}
+        
+||++ case 8 do
+||++    ||MultiPoint
+||++    || Minimum bounding rectangle (MBR)
+||++    let minx:double = {marshal-in-double in, little-endian? = true}
+||++    let miny:double = {marshal-in-double in, little-endian? = true}
+||++    let maxx:double = {marshal-in-double in, little-endian? = true}
+||++    let maxy:double = {marshal-in-double in, little-endian? = true}
+||++    let mbr:MinimumBoundingRectangle = {MinimumBoundingRectangle minx, miny, maxx, maxy}
+||++    || Number of points
+||++    let num-points:int = {marshal-in-int in, little-endian? = true}
+||++    || Points
+||++    let points:{Array-of GISPoint} = {new {Array-of GISPoint}}
+||++    {for i:int = 0 below num-points do
+||++        let x:double = {marshal-in-double in, little-endian? = true}
+||++        let y:double = {marshal-in-double in, little-endian? = true}
+||++        let point:GISPoint = {new GISPoint, x, y}
+||++        {points.append point}
+||++    }
+||++    let shape-record:MultiPointShapeRecord = {MultiPointShapeRecord
+||++                                                 shape-type,
+||++                                                 mbr,
+||++                                                 num-points,
+||++                                                 points}
+||++    {return shape-record}
+||++ case 11 do
+||++    ||PointZ
+||++    let x:double = {marshal-in-double in, little-endian? = true}
+||++    let y:double = {marshal-in-double in, little-endian? = true}
+||++    let z:double = {marshal-in-double in, little-endian? = true}
+||++    let m:double = {marshal-in-double in, little-endian? = true}
+||++    let shape-record:PointZShapeRecord = {PointZShapeRecord
+||++                                             shape-type,
+||++                                             x, y, z, m
+||++                                         }
+||++    {return shape-record}
+||++ case 13, 15 do
+||++    ||PolyLineZ, PolygonZ
+||++    || Minimum bounding rectangle (MBR)
+||++    let minx:double = {marshal-in-double in, little-endian? = true}
+||++    let miny:double = {marshal-in-double in, little-endian? = true}
+||++    let maxx:double = {marshal-in-double in, little-endian? = true}
+||++    let maxy:double = {marshal-in-double in, little-endian? = true}
+||++    let mbr:MinimumBoundingRectangle = {new MinimumBoundingRectangle, minx, miny, maxx, maxy}
+||++    || Number of parts
+||++    let num-parts:int = {marshal-in-int in, little-endian? = true}
+||++    || Number of points
+||++    let num-points:int = {marshal-in-int in, little-endian? = true}
+||++    || Part Indices
+||++    let part-indices:{Array-of int} = {new {Array-of int}}
+||++    {for i:int = 0 below num-parts do
+||++        let part-index:int = {marshal-in-int in, little-endian? = true}
+||++        {part-indices.append part-index}
+||++    }
+||++    || Points
+||++    let points:{Array-of GISPoint} = {new {Array-of GISPoint}}
+||++    {for i:int = 0 below num-points do
+||++        let x:double = {marshal-in-double in, little-endian? = true}
+||++        let y:double = {marshal-in-double in, little-endian? = true}
+||++        let point:GISPoint = {new GISPoint, x, y}
+||++        {points.append point}
+||++    }
+||++    
+||++    ||Zmin
+||++    let zmin:double = {marshal-in-double in, little-endian? = true}
+||++    ||Zmax
+||++    let zmax:double = {marshal-in-double in, little-endian? = true}
+||++    let zrange:GISPoint = {GISPoint zmin, zmax}        
+||++    ||Zarray
+||++    let zarray:{Array-of double} = {new {Array-of double}}
+||++    {for i:int = 0 below num-points do
+||++        let z:double = {marshal-in-double in, little-endian? = true}
+||++        {zarray.append z}
+||++    }
+||++    ||Mmin
+||++    let mmin:double = {marshal-in-double in, little-endian? = true}
+||++    ||Mmax
+||++    let mmax:double = {marshal-in-double in, little-endian? = true}
+||++    let mrange:GISPoint = {GISPoint mmin, mmax}
+||++    ||Marray
+||++    let marray:{Array-of double} = {new {Array-of double}}
+||++    {for i:int = 0 below num-points do
+||++        let m:double = {marshal-in-double in, little-endian? = true}
+||++        {marray.append m}
+||++    }
+||++    
+||++    def shape-record = {if shape-type == 13 then
+||++                           {PolyLineZShapeRecord
+||++                               shape-type,
+||++                               mbr,
+||++                               num-parts,
+||++                               num-points,
+||++                               part-indices,
+||++                               points,
+||++                               zrange,
+||++                               zarray,
+||++                               mrange,
+||++                               marray}
+||++                        else
+||++                           {PolygonZShapeRecord
+||++                               shape-type,
+||++                               mbr,
+||++                               num-parts,
+||++                               num-points,
+||++                               part-indices,
+||++                               points,
+||++                               zrange,
+||++                               zarray,
+||++                               mrange,
+||++                               marray}
+||++                       }
+||++    {return shape-record}
+||++ case 18 do
+||++    ||MultiPointZ
+||++    || Minimum bounding rectangle (MBR)
+||++    let minx:double = {marshal-in-double in, little-endian? = true}
+||++    let miny:double = {marshal-in-double in, little-endian? = true}
+||++    let maxx:double = {marshal-in-double in, little-endian? = true}
+||++    let maxy:double = {marshal-in-double in, little-endian? = true}
+||++    let mbr:MinimumBoundingRectangle = {MinimumBoundingRectangle minx, miny, maxx, maxy}
+||++    || Number of points
+||++    let num-points:int = {marshal-in-int in, little-endian? = true}
+||++    || Points
+||++    let points:{Array-of GISPoint} = {new {Array-of GISPoint}}
+||++    {for i:int = 0 below num-points do
+||++        let x:double = {marshal-in-double in, little-endian? = true}
+||++        let y:double = {marshal-in-double in, little-endian? = true}
+||++        let point:GISPoint = {new GISPoint, x, y}
+||++        {points.append point}
+||++    }
+||++    ||Zmin
+||++    let zmin:double = {marshal-in-double in, little-endian? = true}
+||++    ||Zmax
+||++    let zmax:double = {marshal-in-double in, little-endian? = true}
+||++    let zrange:GISPoint = {GISPoint zmin, zmax}        
+||++    ||Zarray
+||++    let zarray:{Array-of double} = {new {Array-of double}}
+||++    {for i:int = 0 below num-points do
+||++        let z:double = {marshal-in-double in, little-endian? = true}
+||++        {zarray.append z}
+||++    }
+||++    
+||++    ||Mmin
+||++    let mmin:double = {marshal-in-double in, little-endian? = true}
+||++    ||Mmax
+||++    let mmax:double = {marshal-in-double in, little-endian? = true}
+||++    let mrange:GISPoint = {GISPoint mmin, mmax}
+||++    ||Marray
+||++    let marray:{Array-of double} = {new {Array-of double}}
+||++    {for i:int = 0 below num-points do
+||++        let m:double = {marshal-in-double in, little-endian? = true}
+||++        {marray.append m}
+||++    }
+||++    let shape-record:MultiPointZShapeRecord = {MultiPointZShapeRecord
+||++                                                  shape-type,
+||++                                                  mbr,
+||++                                                  num-points,
+||++                                                  points,
+||++                                                  zrange,
+||++                                                  zarray,
+||++                                                  mrange,
+||++                                                  marray}
+||++    {return shape-record}
+||++    
+||++    
+||++ case 21 do
+||++    ||PointM
+||++    let x:double = {marshal-in-double in, little-endian? = true}
+||++    let y:double = {marshal-in-double in, little-endian? = true}
+||++    let m:double = {marshal-in-double in, little-endian? = true}
+||++    let shape-record:PointMShapeRecord = {PointMShapeRecord
+||++                                             shape-type,
+||++                                             x, y, m
+||++                                         }
+||++    {return shape-record}
+||++ case 23, 25 do
+||++    ||PolyLineM, PolygonM
+||++    || Minimum bounding rectangle (MBR)
+||++    let minx:double = {marshal-in-double in, little-endian? = true}
+||++    let miny:double = {marshal-in-double in, little-endian? = true}
+||++    let maxx:double = {marshal-in-double in, little-endian? = true}
+||++    let maxy:double = {marshal-in-double in, little-endian? = true}
+||++    let mbr:MinimumBoundingRectangle = {new MinimumBoundingRectangle, minx, miny, maxx, maxy}
+||++    || Number of parts
+||++    let num-parts:int = {marshal-in-int in, little-endian? = true}
+||++    || Number of points
+||++    let num-points:int = {marshal-in-int in, little-endian? = true}
+||++    || Part Indices
+||++    let part-indices:{Array-of int} = {new {Array-of int}}
+||++    {for i:int = 0 below num-parts do
+||++        let part-index:int = {marshal-in-int in, little-endian? = true}
+||++        {part-indices.append part-index}
+||++    }
+||++    || Points
+||++    let points:{Array-of GISPoint} = {new {Array-of GISPoint}}
+||++    {for i:int = 0 below num-points do
+||++        let x:double = {marshal-in-double in, little-endian? = true}
+||++        let y:double = {marshal-in-double in, little-endian? = true}
+||++        let point:GISPoint = {new GISPoint, x, y}
+||++        {points.append point}
+||++    }
+||++    ||Mmin
+||++    let mmin:double = {marshal-in-double in, little-endian? = true}
+||++    ||Mmax
+||++    let mmax:double = {marshal-in-double in, little-endian? = true}
+||++    let mrange:GISPoint = {GISPoint mmin, mmax}
+||++    ||Marray
+||++    let marray:{Array-of double} = {new {Array-of double}}
+||++    {for i:int = 0 below num-points do
+||++        let m:double = {marshal-in-double in, little-endian? = true}
+||++        {marray.append m}
+||++    }
+||++    
+||++    def shape-record = {if shape-type == 23 then
+||++                           {PolyLineMShapeRecord
+||++                               shape-type,
+||++                               mbr,
+||++                               num-parts,
+||++                               num-points,
+||++                               part-indices,
+||++                               points,
+||++                               mrange,
+||++                               marray}
+||++                        else
+||++                           {PolygonMShapeRecord
+||++                               shape-type,
+||++                               mbr,
+||++                               num-parts,
+||++                               num-points,
+||++                               part-indices,
+||++                               points,
+||++                               mrange,
+||++                               marray}
+||++                       }
+||++    {return shape-record}
+||++ case 28 do
+||++    ||MultiPointM
+||++    || Minimum bounding rectangle (MBR)
+||++    let minx:double = {marshal-in-double in, little-endian? = true}
+||++    let miny:double = {marshal-in-double in, little-endian? = true}
+||++    let maxx:double = {marshal-in-double in, little-endian? = true}
+||++    let maxy:double = {marshal-in-double in, little-endian? = true}
+||++    let mbr:MinimumBoundingRectangle = {MinimumBoundingRectangle minx, miny, maxx, maxy}
+||++    || Number of points
+||++    let num-points:int = {marshal-in-int in, little-endian? = true}
+||++    || Points
+||++    let points:{Array-of GISPoint} = {new {Array-of GISPoint}}
+||++    {for i:int = 0 below num-points do
+||++        let x:double = {marshal-in-double in, little-endian? = true}
+||++        let y:double = {marshal-in-double in, little-endian? = true}
+||++        let point:GISPoint = {new GISPoint, x, y}
+||++        {points.append point}
+||++    }
+||++    ||Mmin
+||++    let mmin:double = {marshal-in-double in, little-endian? = true}
+||++    ||Mmax
+||++    let mmax:double = {marshal-in-double in, little-endian? = true}
+||++    let mrange:GISPoint = {GISPoint mmin, mmax}
+||++    ||Marray
+||++    let marray:{Array-of double} = {new {Array-of double}}
+||++    {for i:int = 0 below num-points do
+||++        let m:double = {marshal-in-double in, little-endian? = true}
+||++        {marray.append m}
+||++    }
+||++    let shape-record:MultiPointMShapeRecord = {MultiPointMShapeRecord
+||++                                                  shape-type,
+||++                                                  mbr,
+||++                                                  num-points,
+||++                                                  points,
+||++                                                  mrange,
+||++                                                  marray}
+||++    {return shape-record}
+||++ case 31 do
+||++    ||MultiPatch
+||++    || Minimum bounding rectangle (MBR)
+||++    let minx:double = {marshal-in-double in, little-endian? = true}
+||++    let miny:double = {marshal-in-double in, little-endian? = true}
+||++    let maxx:double = {marshal-in-double in, little-endian? = true}
+||++    let maxy:double = {marshal-in-double in, little-endian? = true}
+||++    let mbr:MinimumBoundingRectangle = {MinimumBoundingRectangle minx, miny, maxx, maxy}
+||++    || Number of parts
+||++    let num-parts:int = {marshal-in-int in, little-endian? = true}
+||++    || Number of points
+||++    let num-points:int = {marshal-in-int in, little-endian? = true}
+||++    || Part Indices
+||++    let part-indices:{Array-of int} = {new {Array-of int}}
+||++    {for i:int = 0 below num-parts do
+||++        let part-index:int = {marshal-in-int in, little-endian? = true}
+||++        {part-indices.append part-index}
+||++    }
+||++    || Part Types
+||++    let part-types:{Array-of int} = {{Array-of int}}
+||++    {for i:int = 0 below num-parts do
+||++        let part-type:int = {marshal-in-int in, little-endian? = true}
+||++        {part-types.append part-type}
+||++    }
+||++    || Points
+||++    let points:{Array-of GISPoint} = {new {Array-of GISPoint}}
+||++    {for i:int = 0 below num-points do
+||++        let x:double = {marshal-in-double in, little-endian? = true}
+||++        let y:double = {marshal-in-double in, little-endian? = true}
+||++        let point:GISPoint = {new GISPoint, x, y}
+||++        {points.append point}
+||++    }
+||++    ||Zmin
+||++    let zmin:double = {marshal-in-double in, little-endian? = true}
+||++    ||Zmax
+||++    let zmax:double = {marshal-in-double in, little-endian? = true}
+||++    let zrange:GISPoint = {GISPoint zmin, zmax}        
+||++    ||Zarray
+||++    let zarray:{Array-of double} = {new {Array-of double}}
+||++    {for i:int = 0 below num-points do
+||++        let z:double = {marshal-in-double in, little-endian? = true}
+||++        {zarray.append z}
+||++    }
+||++    
+||++    ||Mmin
+||++    let mmin:double = {marshal-in-double in, little-endian? = true}
+||++    ||Mmax
+||++    let mmax:double = {marshal-in-double in, little-endian? = true}
+||++    let mrange:GISPoint = {GISPoint mmin, mmax}
+||++    ||Marray
+||++    let marray:{Array-of double} = {new {Array-of double}}
+||++    {for i:int = 0 below num-points do
+||++        let m:double = {marshal-in-double in, little-endian? = true}
+||++        {marray.append m}
+||++    }
+||++    let shape-record:MultiPatchShapeRecord = {MultiPatchShapeRecord
+||++                                                 shape-type,
+||++                                                 mbr,
+||++                                                 num-parts,
+||++                                                 num-points,
+||++                                                 part-indices,
+||++                                                 part-types,
+||++                                                 points,
+||++                                                 zrange,
+||++                                                 zarray,
+||++                                                 mrange,
+||++                                                 marray}
+||++    {return shape-record}
+||++    
+     else
+        {output "Shape type " & shape-type & " not supported"}
+        {throw 
+            {NotSupportedTypeException 
+                "Shape type" & shape-type & " not supported",
+                shape-type }
+        }
+    }
+    {return null}
+  }
+}
