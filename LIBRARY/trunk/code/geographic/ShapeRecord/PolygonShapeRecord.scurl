@@ -1,0 +1,79 @@
+||| Maintained by: kodan
+
+{define-class public PolygonShapeRecord {inherits ShapeRecord}
+  ||field public shape-type:int
+  field public mbr:MinimumBoundingRectangle
+  field public num-parts:int
+  field public num-points:int 
+  field public part-indices:{Array-of int}
+  field public points:{Array-of GISPoint}
+  
+  let public record-fields:RecordFields = 
+      {RecordFields
+        {RecordField "shape-type",   domain = int},
+        {RecordField "mbr",          domain = any},
+        {RecordField "num-parts",    domain = int},
+        {RecordField "num-points",   domain = int},
+        {RecordField "part-indices", domain = any},
+        {RecordField "points",       domain = any}
+      }
+  
+  {constructor public {default
+                          shape-type:int,
+                          mbr:MinimumBoundingRectangle,
+                          num-parts:int,
+                          num-points:int,
+                          part-indices:{Array-of int},
+                          points:{Array-of GISPoint}
+                      }
+    set self.shape-type = shape-type
+    set self.mbr = mbr
+    set self.num-parts = num-parts
+    set self.num-points = num-points
+    set self.part-indices = part-indices
+    set self.points = points    
+  }
+  {factory public {from-Record record:Record}:PolygonShapeRecord
+    {with-compiler-directives allow-implicit-any-casts? = true do
+        {return
+            {new PolygonShapeRecord,
+                record["shape-type"] asa int,
+                record["mbr"],
+                record["num-parts"] asa int,
+                record["num-points"] asa int,
+                record["part-indices"],
+                record["points"]
+            }
+        }
+    }
+  }
+  {method public {to-RecordData}:RecordData
+    def rd = {new RecordData}
+    set rd["shape-type"] = self.shape-type
+    set rd["mbr"] = self.mbr
+    set rd["num-parts"] = self.num-parts
+    set rd["num-points"] = self.num-points
+    set rd["part-indices"] = self.part-indices
+    set rd["points"] = self.points
+    {return rd}
+  }
+  {method public {to-polygons}:{Array-of {Array-of Double2d}}
+    let array2:{Array-of {Array-of Double2d}} = {{Array-of {Array-of Double2d}}}
+    {for i:int = 0 below self.num-parts do
+        let array:{Array-of Double2d} = {{Array-of Double2d}}
+        let start-index:int = self.part-indices[i]
+        let end-index  :int = {if i + 1 >= self.part-indices.size then
+                                  self.points.size
+                               else
+                                  self.part-indices[i + 1]
+                              }
+        {for i:int = start-index below end-index do
+            {array.append self.points[i]}
+        }
+        {array2.append array}
+    }
+    
+    {return array2}
+  }
+}
+

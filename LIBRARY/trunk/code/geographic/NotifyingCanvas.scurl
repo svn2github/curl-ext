@@ -1,0 +1,113 @@
+||| Maintained by: kodan
+
+{define-class public NotifyingCanvas {inherits Canvas}
+  
+  ||transform
+  field public press-x:Distance = 0pt
+  field public press-y:Distance = 0pt
+  field public last-x:Distance = 0pt
+  field public last-y:Distance = 0pt
+  
+  field public pointer-m:#EventHandler
+  field public parent-graphic:#Graphic
+  
+  field public shapes:#{Array-of Shape}
+  field public shapes-position:#{Array-of Distance2d}
+  field public tmp-frame:#Frame
+  field private _move?:bool = false
+  
+  field public manager:MapLayerManager
+  
+  {constructor public {default 
+                          parent-graphic:#Graphic = null, 
+                          manager:MapLayerManager, 
+                          ...}
+    {construct-super {splice ...}}
+    
+    set self.manager = manager
+    set self.shapes = {{Array-of Shape}}
+    set self.shapes-position = {{Array-of Distance2d}}
+    
+    set self.use-host-rendering? = true
+    set self.parent-graphic = parent-graphic
+    set self.pointer-m = {on e:PointerMotion at c:Canvas do
+                             {try
+                                 {self.shift-xy 
+                                     self.tmp-frame, 
+                                     e.x - self.last-x, 
+                                     e.y - self.last-y}
+                                 set self.last-x = e.x
+                                 set self.last-y = e.y
+                              catch e:Error do
+                                 ||?
+                             }
+                         }
+  }
+  
+  {method public {size-changed}:void
+    {super.size-changed}
+    {self.handle-event {ValueChanged}}
+  }
+  
+  {method public {on-drag-started e:DragStarted}:void
+    set self._move? = true
+    let shape-pixmap:Pixmap = {Graphic-to-Pixmap self,||self.parent-graphic,
+                                  width = self.actual-width,
+                                  height = self.actual-height,
+                                  background = self.background}
+    {self.shapes.clear}
+    {self.shapes-position.clear}
+    {for s:Shape in self.shape-children do
+        {self.shapes.append s}
+        let (shape-x:Distance, shape-y:Distance) = {self.get-xy s}
+        {self.shapes-position.append {Distance2d shape-x, shape-y}}
+        set s.visible? = false
+    }
+    set self.press-x = e.x
+    set self.press-y = e.y
+    set self.last-x  = e.x
+    set self.last-y  = e.y
+    
+    {self.add-event-handler self.pointer-m asa EventHandler}
+    set self.tmp-frame = {Frame 
+                             halign = "left", 
+                             valign = "top", 
+                             {Graphic.from-Pixmap shape-pixmap}}
+    
+    {self.add self.tmp-frame}
+  }
+  
+  {method public {on-pointer-press e:PointerPress}:void
+    {e.continue-implicit-pointer-grab self}
+  } 
+  
+  {method public {on-pointer-release e:PointerRelease}:void
+    {if self.event-handlers != null then 
+        {if e.click-count < 2 then 
+            {for i:int = 0 below self.event-handlers.size do
+                {try
+                    {if self.event-handlers[0] isa PointerMotion then
+                        {self.remove-event-handler self.event-handlers[0]}
+                    }
+                 catch e:Exception do
+                    || do nothing
+                }
+            }
+        }
+    }
+    
+    {if self._move? and self.shapes != null then
+        let offset-x:Distance = (e.x - self.press-x)
+        let offset-y:Distance = (e.y - self.press-y)
+        {for s:Shape key index:int in self.shapes asa {Array-of Shape} do
+            {self.add s,
+                x = self.shapes-position[index].x + offset-x,
+                y = self.shapes-position[index].y + offset-y}
+            set s.visible? = true
+        }
+        set self._move? = not self._move?
+        {if-non-null self.tmp-frame then {self.tmp-frame.detach}}
+    }
+  }
+  
+}
