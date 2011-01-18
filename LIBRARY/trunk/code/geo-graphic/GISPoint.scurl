@@ -1,3 +1,0 @@
-||| Maintained by: kodan
-
-{let constant GISPoint:Type = Double2d}
