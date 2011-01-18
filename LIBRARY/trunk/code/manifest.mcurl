@@ -75,7 +75,7 @@
 }
 
 {component package COM.CURL.EXT.GEOGRAPHIC,
-    location = "GEOGRAPHIC/load.scurl",
+    location = "geographic/load.scurl",
     version = "1.0"
 }
 
