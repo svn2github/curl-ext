@@ -1,0 +1,3645 @@
+||| Copyright (C) 1998-2011, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An Open Curl project.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+{curl 7.0 package}
+{curl-file-attributes character-encoding = "windows-latin-1"}
+{package COM.CURL.EXT.TRANSITION-LIBRARY,
+    {compiler-directives careful? = true}
+}
+
+{import * from CURL.GUI.STANDARD}
+{import * from CURL.GRAPHICS.SCENE}
+
+
+{doc-next
+    {purpose
+        Specifies the direction of the motion in a {docref TransitionEffect}
+        that supports different directions of motion.
+    }
+}
+{define-enum public EffectDirection
+    up,
+    down,
+    left,
+    right
+}
+
+{doc-next
+    {purpose
+        Specifies the horizontal or vertical orientation of a {docref TransitionEffect}
+        that can support both orientations.
+    }
+}
+{define-enum public EffectOrientation
+    horizontal,
+    vertical
+}
+
+
+{doc-next
+    {purpose
+        Abstract superclass for animating the initial or final appearance
+        of a {docref TransitionFrame} during a transition between screens.
+    }
+    {details
+        This class is a superclass for values that can be returned by the
+        {docref TransitionEffect.make-out-transition-overlay} and
+        {docref TransitionEffect.make-in-transition-overlay} methods.
+        Concrete instances of this class typically inherit from
+        {docref PixmapTransitionOverlay},
+        which manages a {docref Pixmap} that represents the
+        initial or final {docref TransitionFrame} appearance that is to
+        be animated.
+    }
+}
+{define-class public abstract TransitionOverlay {inherits BaseFrame}
+  
+  {doc-next
+    {purpose
+        Construct a {docref TransitionOverlay} object.
+    }
+    {parameter ...,
+        The call may contain keyword arguments which,
+        if present, are forwarded to the {docref Graphic.default} constructor.
+    }
+  }
+  {constructor protected {default ...}
+    {construct-super ...}
+  }
+  
+  {doc-next
+    {purpose
+        Set the fraction of the transition that is currently completed.
+    }
+    {details
+        This setter is called with an argument between 0.0 and 1.0,
+        representing the fraction of the transition that is completed.
+        At 0.0, the appearance of this {docref TransitionOverlay}
+        should be the same as that of the {docref TransitionFrame}
+        before the transition began,
+        while at 1.0, the appearance should be the same as the final
+        {docref TransitionFrame} appearance.
+        
+        For a {docref TransitionOverlay} returned by
+        {docref TransitionEffect.make-out-transition-overlay},
+        typically this means that at 0.0 the {docref TransitionOverlay}
+        is opaque and equals the initial appearance of the {docref TransitionFrame},
+        while at 1.0 the {docref TransitionOverlay} is transparent
+        or does not draw any pixels.
+        Intermediate completion fractions yield intermediate appearances,
+        depending on the style of the transition.
+        When an {quote in} transition is also used
+        ({docref TransitionEffect.make-in-transition-overlay} is also called),
+        this rule may be modified because the {quote in} {docref TransitionOverlay}
+        will be stacked on top of this one.
+        
+        For a {docref TransitionOverlay} returned by
+        {docref TransitionEffect.make-in-transition-overlay},
+        at 0.0 the {docref TransitionOverlay} should be transparent or
+        not draw any pixels,
+        while at 1.0 the {docref TransitionOverlay}
+        should be opaque and should equal the final appearance
+        of the {docref TransitionFrame}.
+    }
+  }
+  {setter public abstract {completion c:double}:void}
+  
+  {doc-next
+    {purpose
+        Indicate whether this {docref TransitionOverlay} needs a pixmap
+        that shows the final appearance after the transition.
+    }
+    {details
+        Some {docref TransitionOverlay}s, particularly those that use 3D graphics,
+        require a {docref Pixmap} for the appearance at the end of the transition,
+        as well as a {docref Pixmap} for the appearance at the beginning of the transition.
+        Those {docref TransitionOverlay}s return true as the value of this getter,
+        indicating that the {docref Pixmap} showing the appearance at the end of the
+        transition should be specified by a call to the
+        {docref-abbr TransitionOverlay.set-in-pixmap} method.
+    }
+    {override
+        The base definition of this getter always returns false.
+        It can be overridden to return true in subclasses that need that treatment.
+    }
+  }
+  {getter public {uses-in-pixmap?}:bool
+    {return false}
+  }
+  
+  {doc-next
+    {purpose
+        Specify the pixmap
+        that shows the final appearance after the transition.
+    }
+    {parameter pmap,
+        The {docref Pixmap} that shows the final appearance after the transition.
+    }
+    {details
+        Some {docref TransitionOverlay}s, particularly those that use 3D graphics,
+        require a {docref Pixmap} for the appearance at the end of the transition,
+        as well as a {docref Pixmap} for the appearance at the beginning of the transition.
+        Those {docref TransitionOverlay}s return true as the value of the
+        {docref-abbr TransitionOverlay.uses-in-pixmap?} getter,
+        indicating that the {docref Pixmap} showing the appearance at the end of the
+        transition should be specified by a call to this method.
+    }
+    {override
+        The base definition of this method does nothing.
+        It should be overridden in subclasses that override
+        {docref-abbr TransitionOverlay.uses-in-pixmap?} to return true.
+    }
+  }
+  {method public {set-in-pixmap pmap:Pixmap}:void
+  }
+}
+
+
+{doc-next
+    {purpose
+        Abstract superclass for {docref TransitionOverlay}s that are implemented
+        using a {docref Pixmap}.
+    }
+    {notes
+        This class provides a field for storing the {docref Pixmap}
+        and a default constructor that initializes the {docref Pixmap} properly.
+        It also provides layout methods that specify
+        the {docref Pixmap}'s size as the preferred layout size for this object.
+    }
+}
+{define-class public abstract PixmapTransitionOverlay {inherits TransitionOverlay}
+  
+  {doc-next
+    {purpose
+        The {docref Pixmap} that records the {docref TransitionFrame} appearance
+        that should be animated.
+    }
+  }
+  field protected pixmap:Pixmap
+  
+  {doc-next
+    {purpose
+        Construct a {docref PixmapTransitionOverlay} object.
+    }
+    {parameter pixmap,
+        The {docref Pixmap} that records the {docref TransitionFrame} appearance
+        that should be animated.
+    }
+    {notes
+        This constructor saves the {docref Pixmap} in the
+        {docref-abbr PixmapTransitionOverlay.pixmap} field
+        and also sets the {docref Pixmap.ignore-alpha?} property to false
+        to enable animation effects that depend on partial transparency.
+    }
+  }
+  {constructor protected {default pixmap:Pixmap}
+    set self.pixmap = pixmap
+    set self.pixmap.ignore-alpha? = false
+    {construct-super}
+  }
+  
+  {method private {compute-width-preference lc:LayoutContext}:Dimension
+    def pixmap-width = self.pixmap.width
+    def pixel-size = lc.layout-display-context.pixel-size
+    {return pixmap-width * pixel-size}
+  }
+  
+  {method private {compute-height-preference lc:LayoutContext}:Dimension
+    def pixmap-height = self.pixmap.height
+    def pixel-size = lc.layout-display-context.pixel-size
+    {return pixmap-height * pixel-size}
+  }
+  
+  {method public {get-width-preference lc:LayoutContext}:Dimension
+    {super.get-width-preference lc}
+    {return {self.compute-width-preference lc}}
+  }
+  
+  {method public {get-height-preference lc:LayoutContext}:Dimension
+    {super.get-height-preference lc}
+    {return {self.compute-height-preference lc}}
+  }
+  
+  {method public {constrain-width
+                     lc:LayoutContext,
+                     lextent:Distance,
+                     rextent:Distance}:Dimension
+    {super.constrain-width lc, lextent, rextent}
+    {return {self.compute-height-preference lc}}
+  }
+  
+  {method public {constrain-height
+                     lc:LayoutContext,
+                     ascent:Distance,
+                     descent:Distance}:Dimension
+    {super.constrain-width lc, ascent, descent}
+    {return {self.compute-width-preference lc}}
+  }
+}
+
+{doc-next
+    {purpose
+        A {docref TransitionOverlay} that displays a steady, fully opaque, {docref Pixmap}.
+    }
+    {notes
+        This class is used by {docref GrowTransitionEffect} and {docref ImplodeTransitionEffect}
+        to steadily display the old {docref TransitionFrame} appearance while the new
+        appearance builds into place on top of it.
+    }
+}
+{define-class public SteadyPixmap {inherits PixmapTransitionOverlay}
+  
+  {doc-next
+    {purpose
+        Construct a {docref SteadyPixmap} object.
+    }
+    {parameter pixmap,
+        The {docref Pixmap} that should be displayed by this object.
+    }
+  }
+  {constructor public {default pixmap:Pixmap}
+    {construct-super pixmap}
+    set self.background = self.pixmap
+  }
+  
+  {setter public {completion c:double}:void
+    || Does nothing!
+  }
+}
+
+{doc-next
+    {purpose
+        A {docref TransitionOverlay} that gradually fades from fully opaque to fully transparent.
+    }
+    {notes
+        This class is used by {docref CrossFadeTransitionEffect}.
+    }
+}
+{define-class public FadingPixmap {inherits PixmapTransitionOverlay}
+  
+  {doc-next
+    {purpose
+        Construct an object of this type.
+    }
+    {notes
+        See {docref PixmapTransitionOverlay.default} for further information.
+    }
+  }
+  {constructor public {default pixmap:Pixmap}
+    {construct-super pixmap}
+    set self.background = self.pixmap
+  }
+  
+  {setter public {completion c:double}:void
+    def ealpha = ({max 0.0, {min 1.0, 1.0 - c}} * 255) asa uint8
+    {for-pixel p:Pixel in self.pixmap do
+        set p = {Pixel.from-uint8 p.red-as-uint8, p.green-as-uint8, p.blue-as-uint8, alpha = ealpha}
+    }
+    {self.request-draw}
+  }
+}
+
+{doc-next
+    {purpose
+        Abstract superclass for {docref TransitionOverlay}s that include
+        a specified {docref EffectDirection}.
+    }
+    {notes
+        This class provides
+        {docref-abbr DirectionPixmapTransitionOverlay.vertical?} and
+        {docref-abbr DirectionPixmapTransitionOverlay.sign} fields
+        based on the specified {docref EffectDirection}.
+    }
+}
+{define-class public abstract DirectionPixmapTransitionOverlay {inherits PixmapTransitionOverlay}
+  {doc-next
+    {purpose
+        Record whether the specified {docref EffectDirection} moves in a
+        vertical or a horizontal direction.
+    }
+    {notes
+        The {docref-abbr EffectDirection.up} and {docref-abbr EffectDirection.down}
+        directions yield a value of true;
+        the {docref-abbr EffectDirection.left} and {docref-abbr EffectDirection.right}
+        directions yield a value of false.
+    }
+  }
+  field protected constant vertical?:bool
+  
+  {doc-next
+    {purpose
+        The sign of the {docref EffectDirection} that was specified
+        when this class instance was created.
+    }
+    {notes
+        The {docref-abbr EffectDirection.right} and {docref-abbr EffectDirection.down}
+        directions yield a sign value of 1;
+        the {docref-abbr EffectDirection.left} and {docref-abbr EffectDirection.up}
+        directions yield a sign value of {en-dash}1.
+    }
+  }
+  field protected constant sign:int
+  
+  {doc-next
+    {purpose
+        The most recent value supplied to this class's
+        {docref-abbr TransitionEffect.completion} setter.
+    }
+  }
+  field protected-get private-set _completion:double = 0.0
+  
+  {doc-next
+    {purpose
+        Construct a {docref DirectionPixmapTransitionOverlay} object.
+    }
+    {parameter pixmap,
+        The {docref Pixmap} that records the {docref TransitionFrame} appearance
+        that should be animated.
+    }
+    {parameter direction,
+        The {docref EffectDirection} that describes the direction in
+        which the transition effect moves.
+    }
+    {notes
+        This constructor sets the
+        {docref-abbr DirectionPixmapTransitionOverlay.vertical?} and
+        {docref-abbr DirectionPixmapTransitionOverlay.sign} fields
+        based on the specified {param direction}.
+    }
+  }
+  {constructor public {default pixmap:Pixmap, direction:EffectDirection = EffectDirection.right}
+    set self.vertical? =
+        (direction == EffectDirection.up or direction == EffectDirection.down)
+    set self.sign =
+        {if direction == EffectDirection.right or direction == EffectDirection.down then 1 else -1}
+    {construct-super pixmap}
+  }
+  
+  {setter public {completion c:double}:void
+    set self._completion = c
+    {self.request-draw}
+  }
+}
+
+{doc-next
+    {purpose
+        A {docref TransitionOverlay} that becomes transparent along a moving
+        horizontal or vertical wipe line.
+    }
+    {notes
+        This class is used by {docref WipeTransitionEffect}.
+    }
+}
+{define-class public WipePixmap {inherits DirectionPixmapTransitionOverlay}
+  
+  {doc-next
+    {purpose
+        Construct an object of this type.
+    }
+    {notes
+        See {docref DirectionPixmapTransitionOverlay.default} for further information.
+    }
+  }
+  {constructor public {default pixmap:Pixmap, direction:EffectDirection = EffectDirection.right}
+    {construct-super pixmap, direction = direction}
+  }
+  
+  {method public {draw r2d:Renderer2d}:void
+    def pixel-size = r2d.pixel-size
+    def pw = self.pixmap.width
+    def ph = self.pixmap.height
+    def w = pw * pixel-size
+    def h = ph * pixel-size
+    {if self.vertical? then
+        def ph1 = (self._completion * ph) asa int
+        def h1 = ph1 * pixel-size
+        def (y0, sy0) = {if self.sign > 0 then (h1, ph1) else (0m, 0)}
+        {r2d.render-pixmap
+            0m, y0,
+            w, h - h1,
+            self.pixmap,
+            src-x = 0, src-y = sy0,
+            src-width = pw, src-height = ph - ph1
+        }
+     else
+        def pw1 = (self._completion * pw) asa int
+        def w1 = pw1 * pixel-size
+        def (x0, sx0) = {if self.sign > 0 then (w1, pw1) else (0m, 0)}
+        {r2d.render-pixmap
+            x0, 0m,
+            w - w1, h,
+            self.pixmap,
+            src-x = sx0, src-y = 0,
+            src-width = pw - pw1, src-height = ph
+        }
+    }
+  }
+}
+
+{doc-next
+    {purpose
+        Abstract superclass for {docref ExplodePixmap} and {docref ImplodePixmap}.
+    }
+    {notes
+        This class provides the common mechanism for the {quote explode} and
+        {quote implode} effects,
+        which differ only in the direction of motion as the completion fraction
+        changes from 0 to 1.
+        The common mechanism is implemented in the
+        {docref-abbr ExplodeImplodePixmap.draw-aux} method.
+    }
+}
+{define-class package abstract ExplodeImplodePixmap {inherits PixmapTransitionOverlay}
+  field protected _completion:double = 0.0
+  
+  {doc-next
+    {purpose
+        Construct an object of this type.
+    }
+    {notes
+        See {docref PixmapTransitionOverlay.default} for further information.
+    }
+  }
+  {constructor package {default pixmap:Pixmap}
+    {construct-super pixmap}
+  }
+  
+  {setter public {completion c:double}:void
+    set self._completion = c
+    {self.request-draw}
+  }
+  
+  {doc-next
+    {purpose
+        Common drawing method for the {quote explode} and {quote implode} effects.
+    }
+    {parameter r2d,
+        The {docref Renderer2d} to use for rendering.
+    }
+    {parameter c,
+        The current amount of separation between the fragments that are exploding
+        or imploding, expressed as a fraction from 0 to 1.
+        When {param c} is 0, the fragments are fully joined to each other,
+        and when {param c} is 1, they are separated so that all fragments are
+        just beyond the limits of this object's graphical bounds.
+    }
+    {usage
+        This method performs all the rendering operations that should be
+        performed as part of the {docref-abbr Graphic.draw} method of these classes,
+        so a subclass's {docref-abbr Graphic.draw} method need only
+        calculate the proper value of {param c} and then call this method.
+    }
+  }
+  {method protected {draw-aux r2d:Renderer2d, c:double}:void
+    def pixel-size = r2d.pixel-size
+    def pw = self.pixmap.width
+    def ph = self.pixmap.height
+    def half-pw = pw div 2
+    def half-ph = ph div 2
+    def w = pw * pixel-size
+    def h = ph * pixel-size
+    def half-w = half-pw * pixel-size
+    def half-h = half-ph * pixel-size
+    def pxoffset = (c * half-pw) asa int
+    def pyoffset = (c * half-ph) asa int
+    def xoffset = pxoffset * pixel-size
+    def yoffset = pyoffset * pixel-size
+    {r2d.render-pixmap
+        0m, 0m,
+        half-w - xoffset, half-h - yoffset,
+        self.pixmap,
+        src-x = pxoffset, src-y = pyoffset,
+        src-width = half-pw - pxoffset, src-height = half-ph - pyoffset
+    }
+    {r2d.render-pixmap
+        0m, half-h + yoffset,
+        half-w - xoffset, h - (half-h + yoffset),
+        self.pixmap,
+        src-x = pxoffset, src-y = half-ph,
+        src-width = half-pw - pxoffset, src-height = ph - (half-ph + pyoffset)
+    }
+    {r2d.render-pixmap
+        half-w + xoffset, 0m,
+        w - (half-w + xoffset), half-h - yoffset,
+        self.pixmap,
+        src-x = half-pw, src-y = pyoffset,
+        src-width = pw - (half-pw + pxoffset), src-height = half-ph - pyoffset
+    }
+    {r2d.render-pixmap
+        half-w + xoffset, half-h + yoffset,
+        w - (half-w + xoffset), h - (half-h + yoffset),
+        self.pixmap,
+        src-x = half-pw, src-y = half-ph,
+        src-width = pw - (half-pw + pxoffset), src-height = ph - (half-ph + pyoffset)
+    }
+  }
+}
+
+{doc-next
+    {purpose
+        A {docref TransitionOverlay} that breaks its content into four rectangles
+        and slides them out toward the corners of the frame.
+    }
+    {notes
+        This class is used by {docref ExplodeTransitionEffect}.
+    }
+}
+{define-class public ExplodePixmap {inherits ExplodeImplodePixmap}
+  
+  {doc-next
+    {purpose
+        Construct an object of this type.
+    }
+    {notes
+        See {docref PixmapTransitionOverlay.default} for further information.
+    }
+  }
+  {constructor public {default pixmap:Pixmap}
+    {construct-super pixmap}
+  }
+  
+  {method public {draw r2d:Renderer2d}:void
+    {self.draw-aux r2d, self._completion}
+  }
+}
+
+{doc-next
+    {purpose
+        A {docref TransitionOverlay} that breaks its content into four rectangles
+        and slides them in from the corners of the frame.
+    }
+    {notes
+        This class is used by {docref ImplodeTransitionEffect}.
+    }
+}
+{define-class public ImplodePixmap {inherits ExplodeImplodePixmap}
+  
+  {doc-next
+    {purpose
+        Construct an object of this type.
+    }
+    {notes
+        See {docref PixmapTransitionOverlay.default} for further information.
+    }
+  }
+  {constructor public {default pixmap:Pixmap}
+    {construct-super pixmap}
+  }
+  
+  {method public {draw r2d:Renderer2d}:void
+    {self.draw-aux r2d, 1.0 - self._completion}
+  }
+}
+
+{doc-next
+    {purpose
+        A {docref TransitionOverlay} that starts with the pixmap fully
+        displayed and then slides it out of the frame in the specified direction.
+    }
+    {notes
+        This class is used by {docref SlideOutTransitionEffect} and {docref PushTransitionEffect}.
+    }
+}
+{define-class public SlideOutPixmap {inherits DirectionPixmapTransitionOverlay}
+  
+  {doc-next
+    {purpose
+        Construct an object of this type.
+    }
+    {notes
+        See {docref DirectionPixmapTransitionOverlay.default} for further information.
+    }
+  }
+  {constructor public {default pixmap:Pixmap, direction:EffectDirection = EffectDirection.right}
+    {construct-super pixmap, direction = direction}
+  }
+  
+  {method public {draw r2d:Renderer2d}:void
+    def pixel-size = r2d.pixel-size
+    def pw = self.pixmap.width
+    def ph = self.pixmap.height
+    def w = pw * pixel-size
+    def h = ph * pixel-size
+    {if self.vertical? then
+        def ph1 = (self._completion * ph) asa int
+        def h1 = ph1 * pixel-size
+        def (y0, sy0) = {if self.sign > 0 then (h1, 0) else (0m, ph1)}
+        {r2d.render-pixmap
+            0m, y0,
+            w, h - h1,
+            self.pixmap,
+            src-x = 0, src-y = sy0,
+            src-width = pw, src-height = ph - ph1
+        }
+     else
+        def pw1 = (self._completion * pw) asa int
+        def w1 = pw1 * pixel-size
+        def (x0, sx0) = {if self.sign > 0 then (w1, 0) else (0m, pw1)}
+        {r2d.render-pixmap
+            x0, 0m,
+            w - w1, h,
+            self.pixmap,
+            src-x = sx0, src-y = 0,
+            src-width = pw - pw1, src-height = ph
+        }
+    }
+  }
+}
+
+{doc-next
+    {purpose
+        A {docref TransitionOverlay} that starts with the pixmap out of view
+        and then slides it into the frame in the specified direction.
+    }
+    {notes
+        This class is used by {docref SlideInTransitionEffect} and {docref PushTransitionEffect}.
+    }
+}
+{define-class public SlideInPixmap {inherits DirectionPixmapTransitionOverlay}
+  
+  {doc-next
+    {purpose
+        Construct an object of this type.
+    }
+    {notes
+        See {docref DirectionPixmapTransitionOverlay.default} for further information.
+    }
+  }
+  {constructor public {default pixmap:Pixmap, direction:EffectDirection = EffectDirection.right}
+    {construct-super pixmap, direction = direction}
+  }
+  
+  {method public {draw r2d:Renderer2d}:void
+    def pixel-size = r2d.pixel-size
+    def pw = self.pixmap.width
+    def ph = self.pixmap.height
+    def w = pw * pixel-size
+    def h = ph * pixel-size
+    {if self.vertical? then
+        def ph1 = (self._completion * ph) asa int
+        def h1 = ph1 * pixel-size
+        def (y0, sy0) = {if self.sign > 0 then (0m, ph - ph1) else (h - h1, 0)}
+        {r2d.render-pixmap
+            0m, y0,
+            w, h1,
+            self.pixmap,
+            src-x = 0, src-y = sy0,
+            src-width = pw, src-height = ph1
+        }
+     else
+        def pw1 = (self._completion * pw) asa int
+        def w1 = pw1 * pixel-size
+        def (x0, sx0) = {if self.sign > 0 then (0m, pw - pw1) else (w - w1, 0)}
+        {r2d.render-pixmap
+            x0, 0m,
+            w1, h,
+            self.pixmap,
+            src-x = sx0, src-y = 0,
+            src-width = pw1, src-height = ph
+        }
+    }
+  }
+}
+
+{doc-next
+    {purpose
+        Abstract superclass for {docref TransitionOverlay}s that include
+        a specified {docref EffectOrientation}.
+    }
+    {notes
+        This class provides a
+        {docref-abbr DirectionPixmapTransitionOverlay.vertical?} field
+        based on the specified {docref EffectOrientation}.
+    }
+}
+{define-class public abstract OrientationPixmapTransitionOverlay {inherits PixmapTransitionOverlay}
+  {doc-next
+    {purpose
+        Record whether the specified {docref EffectOrientation} specifies a
+        vertical or a horizontal orientation.
+    }
+  }
+  field protected constant vertical?:bool
+  
+  {doc-next
+    {purpose
+        The most recent value supplied to this class's
+        {docref-abbr TransitionEffect.completion} setter.
+    }
+  }
+  field protected-get private-set _completion:double = 0.0
+  
+  {doc-next
+    {purpose
+        Construct a {docref DirectionPixmapTransitionOverlay} object.
+    }
+    {parameter pixmap,
+        The {docref Pixmap} that records the {docref TransitionFrame} appearance
+        that should be animated.
+    }
+    {parameter orientation,
+        The {docref EffectOrientation} that describes the direction in
+        which the transition effect moves.
+    }
+    {notes
+        This constructor sets the
+        {docref-abbr DirectionPixmapTransitionOverlay.vertical?} field
+        based on the specified {param orientation}.
+    }
+  }
+  {constructor public {default pixmap:Pixmap, orientation:EffectOrientation = EffectOrientation.horizontal}
+    set self.vertical? = (orientation == EffectOrientation.vertical)
+    {construct-super pixmap}
+  }
+  
+  {setter public {completion c:double}:void
+    set self._completion = c
+    {self.request-draw}
+  }
+}
+
+{doc-next
+    {purpose
+        A {docref TransitionOverlay} that starts with the pixmap fully
+        displayed and then splits it in half along a sawtooth-shaped boundary
+        and slides the two halves out of the frame in the specified direction.
+    }
+    {notes
+        This class is used by {docref SplitSlideTransitionEffect}.
+    }
+}
+{define-class public SplitSlidePixmap {inherits OrientationPixmapTransitionOverlay}
+  field private _rpixmap:Pixmap
+  field private length-percent:double
+  
+  {doc-next
+    {purpose
+        Construct an object of this type.
+    }
+    {notes
+        See {docref OrientationPixmapTransitionOverlay.default} for further information.
+    }
+  }
+  {constructor public {default pixmap:Pixmap, orientation:EffectOrientation = EffectOrientation.horizontal}
+    {construct-super pixmap, orientation = orientation}
+    set self._rpixmap = {pixmap.clone}
+    def pw = pixmap.width
+    def ph = pixmap.height
+    def (zzw, zzh, x0, x1, offset) =
+        {if self.vertical? then
+            {self.calculate-sizes ph, pw}
+         else
+            {self.calculate-sizes pw, ph}
+        }
+    def vertical? = self.vertical?
+    {for-pixel pl, pr at x, y in pixmap in self._rpixmap do
+        let (xx:int, yy:int) = {if vertical? then (y, x - (zzh div 2)) else (x, y)}
+        set yy = yy - offset
+        {if xx >= x0 then
+            let zapl?:bool = true
+            {if xx <= x1 then
+                def xn = (xx - x0) / zzw
+                let yn:double = (yy mod zzh) / zzh
+                {if yn > 0.5 then set yn = 1.0 - yn}
+                {if xn < 2 * yn then set zapl? = false}
+            }
+            {if zapl? then
+                set pl = {Pixel.from-uint8 0, 0, 0, alpha = 0}
+             else
+                set pr = {Pixel.from-uint8 0, 0, 0, alpha = 0}
+            }
+         else
+            set pr = {Pixel.from-uint8 0, 0, 0, alpha = 0}
+        }
+    }
+  }
+  
+  {method private {calculate-sizes plength:int, pbreadth:int}:(zzl:int, zzb:int, len0:int, len1:int, offset:int)
+    def zzb-over-zzl = 2 * {tan 30deg}
+    let zzl:int = plength div 14
+    let zzb:int = (zzl * zzb-over-zzl) asa int
+    {if zzb * 3 > pbreadth then
+        set zzb = pbreadth div 3
+        set zzl = (zzb / zzb-over-zzl) asa int
+     elseif zzb * 12 < pbreadth then
+        set zzb = pbreadth div 12
+        set zzl = (zzb / zzb-over-zzl) asa int
+        {if zzl * 3 > plength then
+            set zzl = plength div 3
+            set zzb = (zzl * zzb-over-zzl) asa int
+        }
+    }
+    def zzn = {round pbreadth, zzb} asa int
+    set zzb = pbreadth div zzn
+    set zzl = (zzb / zzb-over-zzl) asa int
+    
+    def len0 = (plength - zzl) div 2
+    def len1 = (plength + zzl) div 2
+    set self.length-percent = len1 / plength
+    
+    def offset = (pbreadth - zzb * zzn) div 2
+    {return zzl, zzb, len0, len1, offset}
+  }
+  
+  {method public {draw r2d:Renderer2d}:void
+    def pixel-size = r2d.pixel-size
+    def pw = self.pixmap.width
+    def ph = self.pixmap.height
+    def w = pw * pixel-size
+    def h = ph * pixel-size
+    {if self.vertical? then
+        def ph1 = (self.length-percent * self._completion * ph) asa int
+        def h1 = ph1 * pixel-size
+        {r2d.render-pixmap
+            0m, 0m,
+            w, h - h1,
+            self.pixmap,
+            src-x = 0, src-y = ph1,
+            src-width = pw, src-height = ph - ph1
+        }
+        {r2d.render-pixmap
+            0m, h1,
+            w, h - h1,
+            self._rpixmap,
+            src-x = 0, src-y = 0,
+            src-width = pw, src-height = ph - ph1
+        }
+     else
+        def pw1 = (self.length-percent * self._completion * pw) asa int
+        def w1 = pw1 * pixel-size
+        {r2d.render-pixmap
+            0m, 0m,
+            w - w1, h,
+            self.pixmap,
+            src-x = pw1, src-y = 0,
+            src-width = pw - pw1, src-height = ph
+        }
+        {r2d.render-pixmap
+            w1, 0m,
+            w - w1, h,
+            self._rpixmap,
+            src-x = 0, src-y = 0,
+            src-width = pw - pw1, src-height = ph
+        }
+    }
+  }
+}
+
+{doc-next
+    {purpose
+        A {docref TransitionOverlay} that starts with the pixmap fully
+        displayed and then splits it in half along a straight-line boundary
+        and squeezes each half against the side of the frame in a way that
+        resembles a door opening.
+    }
+    {notes
+        This class is used by {docref DoorOpenTransitionEffect}.
+    }
+}
+{define-class public DoorOpenPixmap {inherits OrientationPixmapTransitionOverlay}
+  
+  {doc-next
+    {purpose
+        Construct an object of this type.
+    }
+    {notes
+        See {docref OrientationPixmapTransitionOverlay.default} for further information.
+    }
+  }
+  {constructor public {default pixmap:Pixmap, orientation:EffectOrientation = EffectOrientation.horizontal}
+    {construct-super pixmap, orientation = orientation}
+  }
+  
+  {method public {draw r2d:Renderer2d}:void
+    def pixel-size = r2d.pixel-size
+    def pw = self.pixmap.width
+    def ph = self.pixmap.height
+    def w = pw * pixel-size
+    def h = ph * pixel-size
+    def c = 1.0 - {cos self._completion * 90deg}
+    {if self.vertical? then
+        def half-ph = ph div 2
+        def half-h = half-ph * pixel-size
+        def ph1 = (c * half-ph) asa int
+        def h1 = ph1 * pixel-size
+        {r2d.render-pixmap
+            0m, 0m,
+            w, half-h - h1,
+            self.pixmap,
+            src-x = 0, src-y = 0,
+            src-width = pw, src-height = half-ph
+        }
+        {r2d.render-pixmap
+            0m, half-h + h1,
+            w, h - (half-h + h1),
+            self.pixmap,
+            src-x = 0, src-y = half-ph,
+            src-width = pw, src-height = ph - half-ph
+        }
+     else
+        def half-pw = pw div 2
+        def half-w = half-pw * pixel-size
+        def pw1 = (c * half-pw) asa int
+        def w1 = pw1 * pixel-size
+        {r2d.render-pixmap
+            0m, 0m,
+            half-w - w1, h,
+            self.pixmap,
+            src-x = 0, src-y = 0,
+            src-width = half-pw, src-height = ph
+        }
+        {r2d.render-pixmap
+            half-w + w1, 0m,
+            w - (half-w + w1), h,
+            self.pixmap,
+            src-x = half-pw, src-y = 0,
+            src-width = pw - half-pw, src-height = ph
+        }
+    }
+  }
+}
+
+{doc-next
+    {purpose
+        Abstract superclass for {docref TransitionOverlay}s that include
+        a specified rotation angle and vanishing point.
+    }
+}
+{define-class public abstract VanishingPixmapTransitionOverlay {inherits PixmapTransitionOverlay}
+  {doc-next
+    {purpose
+        The rotation angle through which the object turns in the course
+        of the transition effect.
+    }
+  }
+  field protected constant rotation:Angle
+  
+  {doc-next
+    {purpose
+        The x position of the {quote vanishing point} from which a growing image emerges
+        or into which a shrinking image disappears.
+    }
+    {notes
+        This value is specified as a fractional value between 0 and 1,
+        with 0 at the left edge of the frame and 1 at the right.
+    }
+  }
+  field protected constant x-percent:double
+  
+  {doc-next
+    {purpose
+        The y position of the {quote vanishing point} from which a growing image emerges
+        or into which a shrinking image disappears.
+    }
+    {notes
+        This value is specified as a fractional value between 0 and 1,
+        with 0 at the top edge of the frame and 1 at the bottom.
+    }
+  }
+  field protected constant y-percent:double
+  
+  {doc-next
+    {purpose
+        The most recent value supplied to this class's
+        {docref-abbr TransitionEffect.completion} setter.
+    }
+  }
+  field protected-get private-set _completion:double = 0.0
+  
+  {doc-next
+    {purpose
+        Construct a {docref DirectionPixmapTransitionOverlay} object.
+    }
+    {parameter pixmap,
+        The {docref Pixmap} that records the {docref TransitionFrame} appearance
+        that should be animated.
+    }
+    {parameter rotation,
+        The rotation angle through which the object turns in the course
+        of the transition effect.
+    }
+    {parameter (x-percent, y-percent),
+        The {quote vanishing point} from which a growing image emerges
+        or into which a shrinking image disappears.
+        These two arguments are specified as fractional values between 0 and 1,
+        with (0,0) at the top left corner of the frame and (1,1)
+        at the bottom right.
+    }
+    {notes
+        This constructor sets the
+        {docref-abbr VanishingPixmapTransitionOverlay.rotation},
+        {docref-abbr VanishingPixmapTransitionOverlay.x-percent}, and
+        {docref-abbr VanishingPixmapTransitionOverlay.y-percent} fields
+        based on the specified arguments.
+    }
+  }
+  {constructor public {default
+                          pixmap:Pixmap,
+                          rotation:Angle = 0deg,
+                          x-percent:Fraction = 0.5,
+                          y-percent:Fraction = 0.5
+                      }
+    set self.rotation = rotation
+    set self.x-percent = x-percent
+    set self.y-percent = y-percent
+    {construct-super pixmap}
+  }
+  
+  {setter public {completion c:double}:void
+    set self._completion = c
+    {self.request-draw}
+  }
+}
+
+{doc-next
+    {purpose
+        A {docref TransitionOverlay} that spins its image through a specified
+        rotation angle while shrinking it until it finally disappears at
+        a specified vanishing point.
+    }
+    {notes
+        This class is used by {docref ShrinkTransitionEffect}.
+    }
+}
+{define-class public ShrinkPixmap {inherits VanishingPixmapTransitionOverlay}
+  
+  {doc-next
+    {purpose
+        Construct a new {docref ShrinkPixmap} object.
+    }
+    {parameter pixmap,
+        The {docref Pixmap} that records the {docref TransitionFrame} appearance
+        that should be animated.
+    }
+    {parameter rotation,
+        The angle through which the pixmap rotates before disappearing completely.
+    }
+    {parameter (x-percent, y-percent),
+        The position within the frame
+        (expressed as fractions between 0 and 1)
+        where the old screen ultimately vanishes.
+        The center of the shrinking screen moves evenly along a line
+        from the middle of the frame to the specified point
+        as the transition effect progresses.
+    }
+  }
+  {constructor public {default
+                          pixmap:Pixmap,
+                          rotation:Angle = 0deg,
+                          x-percent:Fraction = 0.5,
+                          y-percent:Fraction = 0.5
+                      }
+    {construct-super pixmap, rotation = rotation, x-percent = x-percent, y-percent = y-percent}
+  }
+  
+  {method public {draw r2d:Renderer2d}:void
+    def scale = (1 - self._completion) * (1 - self._completion)
+    def rotation = self._completion * self.rotation
+    def pixel-size = r2d.pixel-size
+    def pw = self.pixmap.width
+    def ph = self.pixmap.height
+    def w = pw * pixel-size
+    def h = ph * pixel-size
+    def cx = w * (scale * 0.5 + (1.0 - scale) * self.x-percent)
+    def cy = h * (scale * 0.5 + (1.0 - scale) * self.y-percent)
+    def rwidth = w * scale
+    def rheight = h * scale
+    def xo = -rwidth / 2
+    def yo = -rheight / 2
+    {with-render-properties
+        translation = {Distance2d cx, cy},
+        rotation = rotation
+     on r2d do
+        {r2d.render-pixmap
+            xo, yo,
+            rwidth, rheight,
+            self.pixmap,
+            src-x = 0, src-y = 0,
+            src-width = pw, src-height = ph
+        }
+    }
+  }
+}
+
+{doc-next
+    {purpose
+        A {docref TransitionOverlay} that spins its image through a specified
+        rotation angle while growing from an initial appearance at
+        a specified vanishing point to a final appearance where it fills the frame.
+    }
+    {notes
+        This class is used by {docref GrowTransitionEffect}.
+    }
+}
+{define-class public GrowPixmap {inherits VanishingPixmapTransitionOverlay}
+  
+  {doc-next
+    {purpose
+        Construct a new {docref GrowPixmap} object.
+    }
+    {parameter pixmap,
+        The {docref Pixmap} that records the {docref TransitionFrame} appearance
+        that should be animated.
+    }
+    {parameter rotation,
+        The angle through which the pixmap rotates during the effect.
+    }
+    {parameter (x-percent, y-percent),
+        The position within the frame
+        (expressed as fractions between 0 and 1)
+        where the pixmap initially appears.
+        The center of the shrinking screen moves evenly along a line
+        from this point to the middle of the frame
+        as the transition effect progresses.
+    }
+  }
+  {constructor public {default
+                          pixmap:Pixmap,
+                          rotation:Angle = 0deg,
+                          x-percent:Fraction = 0.5,
+                          y-percent:Fraction = 0.5
+                      }
+    {construct-super pixmap, rotation = rotation, x-percent = x-percent, y-percent = y-percent}
+  }
+  
+  {method public {draw r2d:Renderer2d}:void
+    def scale = self._completion * self._completion
+    def rotation = (self._completion - 1.0) * self.rotation
+    def pixel-size = r2d.pixel-size
+    def pw = self.pixmap.width
+    def ph = self.pixmap.height
+    def w = pw * pixel-size
+    def h = ph * pixel-size
+    def cx = w * (scale * 0.5 + (1.0 - scale) * self.x-percent)
+    def cy = h * (scale * 0.5 + (1.0 - scale) * self.y-percent)
+    def rwidth = w * scale
+    def rheight = h * scale
+    def xo = -rwidth / 2
+    def yo = -rheight / 2
+    {with-render-properties
+        translation = {Distance2d cx, cy},
+        rotation = rotation
+     on r2d do
+        {r2d.render-pixmap
+            xo, yo,
+            rwidth, rheight,
+            self.pixmap,
+            src-x = 0, src-y = 0,
+            src-width = pw, src-height = ph
+        }
+    }
+  }
+}
+
+
+
+{doc-next
+    {purpose
+        Abstract superclass for {docref TransitionFrame} transition effects.
+    }
+    {details
+        This class is a superclass of all values that can be specified for
+        the {docref TransitionFrame.transition-effect} option.
+        Concrete instances of this class include information about
+        the duration of the transition as well as the graphical processing
+        that happens during the transition.
+    }
+}
+{define-class public abstract TransitionEffect
+  
+  {doc-next
+    {purpose
+        The duration of this {docref TransitionEffect}.
+    }
+    {override
+        This abstract getter is overridden in subclasses of {docref TransitionEffect}
+        to return a {docref Time} value that specifies the duration of a transition.
+    }
+  }
+  {getter public abstract {duration}:Time}
+  
+  {doc-next
+    {purpose
+        A procedure that can be used to warp the time scale of a transition.
+    }
+    {details
+        If non-null, this procedure is applied to an argument between 0 and 1
+        that indicates the fraction of the total transition duration that has
+        already elapsed.
+        The returned value from this procedure should be between 0 and 1
+        and controls the percentage of progress in the transition effect
+        that should be displayed.
+        This procedure should return 0 when the argument is 0
+        and should return 1 when the argument is 1,
+        and the procedure's value should increase monotonically between those
+        two points.
+        
+        If this getter returns null,
+        the result is the same as if the identity function
+        {no-break {ctext {proc {x:double}:double {return x}}}}
+        had been specified.
+    }
+  }
+  {getter public abstract {pacing}:#{proc-type {double}:double}}
+  
+  {doc-next
+    {purpose
+        Notify a {docref TransitionEffect} that a transition is about to begin.
+    }
+    {details
+        This method is called just before a {docref TransitionFrame} that is using
+        this {docref TransitionEffect} begins a new transition.
+    }
+    {override
+        The base version of this method does nothing,
+        but subclasses can override it if there is bookkeeping to do when a
+        transition begins, for example if the transition has a random element
+        such as the (x, y) coordinates where the transition begins,
+        which should be newly decided every time a transition starts.
+        
+        If a subclass does override this method to set some internal state
+        variables, users of that subclass should be warned not to attach the
+        same subclass instance to multiple {docref TransitionFrame}s,
+        because doing so risks confusing the operation of the subclass by
+        changing its state variables midway through a transition in the case
+        where transitions in the multiple {docref TransitionFrame}s overlap
+        in time.
+    }
+  }
+  {method public {begin-transition}:void
+    || Default method does nothing.
+  }
+  
+  {doc-next
+    {purpose
+        Notify a {docref TransitionEffect} that a transition has just ended.
+    }
+    {details
+        This method is called just after a {docref TransitionFrame} that is using
+        this {docref TransitionEffect} completes a transition.
+    }
+    {override
+        The base version of this method does nothing,
+        but subclasses can override it if there is bookkeeping to do when a
+        transition ends.
+        
+        This method would usually be used in conjunction with
+        {docref TransitionEffect.begin-transition};
+        please see the documentation of that method for further information.
+    }
+  }
+  {method public {end-transition}:void
+    || Default method does nothing.
+  }
+  
+  {doc-next
+    {purpose
+        Create a {docref TransitionOverlay} that animates the disappearance of
+        a {docref TransitionFrame}'s initial look during the course of a transition.
+    }
+    {parameter pmap,
+        The {docref Pixmap} that represents the look of the {docref TransitionFrame}
+        at the beginning of the transition.
+    }
+    {return-vals
+        The desired {docref TransitionOverlay} object.
+    }
+    {override
+        This abstract method must be overridden in every concrete subclass
+        of {docref TransitionEffect}.
+||++    This method is called only if
+||++    {ctext self.{docref-abbr TransitionEffect.uses-in-out-transition-overlay?}}
+||++    returns false.
+||++         
+||++    The base implementation of this method throws an error if called.
+||++    It does not need to be overridden if
+||++    {docref-abbr TransitionEffect.uses-in-out-transition-overlay?} is overridden
+||++    to return true.
+    }
+  }
+  {method public abstract {make-out-transition-overlay pmap:Pixmap}:TransitionOverlay}
+  
+  {doc-next
+    {purpose
+        Indicate whether the {docref-abbr TransitionEffect.make-in-transition-overlay} method
+        of this {docref TransitionEffect} should be called.
+    }
+    {details
+        This getter returns true if this {docref TransitionEffect} uses a
+        {docref TransitionOverlay} that animates the appearance of the final look that the
+        {docref TransitionFrame} will have at the end of the transition.
+    }
+    {override
+        The base implementation of this getter returns false;
+        subclasses that provide a {docref-abbr TransitionEffect.make-in-transition-overlay} method
+        should override this getter to return true.
+    }
+  }
+  {getter public {uses-in-transition-overlay?}:bool
+    {return false}
+  }
+  
+  {doc-next
+    {purpose
+        Create a {docref TransitionOverlay} that animates the appearance of
+        a {docref TransitionFrame}'s final look during the course of a transition.
+    }
+    {parameter pmap,
+        The {docref Pixmap} that represents the look that the {docref TransitionFrame}
+        should have at the end of the transition.
+    }
+    {return-vals
+        The desired {docref TransitionOverlay} object.
+    }
+    {override
+        This method is called only if
+        {ctext self.{docref-abbr TransitionEffect.uses-in-transition-overlay?}}
+        returns true.
+        Therefore, if this method is overridden,
+        {docref-abbr TransitionEffect.uses-in-transition-overlay?} should also be overridden.
+        
+        The base implementation of this method throws an error if called.
+        It does not need to be overridden unless
+        {docref-abbr TransitionEffect.uses-in-transition-overlay?} is overridden
+        to return true.
+    }
+  }
+  {method public {make-in-transition-overlay pmap:Pixmap}:TransitionOverlay
+    {return {uninitialized-value-for-type TransitionOverlay}}
+  }
+}
+
+{doc-next
+    {purpose
+        Abstract superclass for {docref TransitionEffect}s with controllable durations.
+    }
+    {details
+        This class builds on {docref TransitionEffect} and adds fields for holding the
+        duration and pacing for the effect, implements the {docref-abbr TransitionEffect.duration}
+        getter to return that duration, and provides a default constructor
+        that sets the duration from a keyword argument.
+    }
+}
+{define-class public abstract StandardTransitionEffect {inherits TransitionEffect}
+  
+  || The fields that hold the specified duration and pacing:
+  field private constant _duration:Time
+  field private constant _pacing:#{proc-type {double}:double}
+  
+  {getter public {duration}:Time
+    {return self._duration}
+  }
+  
+  {getter public {pacing}:#{proc-type {double}:double}
+    {return self._pacing}
+  }
+  
+  {doc-next
+    {purpose
+        Construct a new {docref StandardTransitionEffect} object.
+    }
+    {parameter duration,
+        The duration of the transition effect.
+        This is the value that will be returned by the {docref-abbr TransitionEffect.duration} getter
+        for this object.
+    }
+    {parameter pacing,
+        A procedure that can be used to warp the time scale of a transition.
+        See {docref TransitionEffect.pacing} for additional information.
+    }
+  }
+  {constructor protected {default
+                             duration:Time = 0.3s,
+                             pacing:#{proc-type {double}:double} = null
+                         }
+    set self._duration = duration
+    set self._pacing = pacing
+  }
+}
+
+{doc-next
+    {purpose
+        A cross-fade effect that causes a {docref TransitionFrame}'s old screen to fade smoothly
+        into the new screen.
+    }
+}
+{define-class public CrossFadeTransitionEffect {inherits StandardTransitionEffect}
+  
+  {doc-next
+    {purpose
+        Construct a new {docref CrossFadeTransitionEffect} object.
+    }
+    {parameter duration,
+        The duration of the transition effect.
+    }
+    {parameter pacing,
+        A procedure that can be used to warp the time scale of a transition.
+        See {docref TransitionEffect.pacing} for additional information.
+    }
+  }
+  {constructor public {default
+                          duration:Time = 0.3s,
+                          pacing:#{proc-type {double}:double} = null
+                      }
+    {construct-super duration = duration, pacing = pacing}
+  }
+  
+  {method public {make-out-transition-overlay pmap:Pixmap}:TransitionOverlay
+    {return {FadingPixmap pmap}}
+  }
+}
+
+{doc-next
+    {purpose
+        An {quote explode} effect that causes a {docref TransitionFrame}'s old screen
+        to slide out to the four corners of the {docref TransitionFrame}.
+    }
+}
+{define-class public ExplodeTransitionEffect {inherits StandardTransitionEffect}
+  
+  {doc-next
+    {purpose
+        Construct a new {docref ExplodeTransitionEffect} object.
+    }
+    {parameter duration,
+        The duration of the transition effect.
+    }
+    {parameter pacing,
+        A procedure that can be used to warp the time scale of a transition.
+        See {docref TransitionEffect.pacing} for additional information.
+    }
+  }
+  {constructor public {default
+                          duration:Time = 0.3s,
+                          pacing:#{proc-type {double}:double} = null
+                      }
+    {construct-super duration = duration, pacing = pacing}
+  }
+  
+  {method public {make-out-transition-overlay pmap:Pixmap}:TransitionOverlay
+    {return {ExplodePixmap pmap}}
+  }
+}
+
+{doc-next
+    {purpose
+        An {quote implode} effect that causes a {docref TransitionFrame}'s new screen
+        to slide in from the four corners of the {docref TransitionFrame}.
+    }
+}
+{define-class public ImplodeTransitionEffect {inherits StandardTransitionEffect}
+  
+  {doc-next
+    {purpose
+        Construct a new {docref ImplodeTransitionEffect} object.
+    }
+    {parameter duration,
+        The duration of the transition effect.
+    }
+    {parameter pacing,
+        A procedure that can be used to warp the time scale of a transition.
+        See {docref TransitionEffect.pacing} for additional information.
+    }
+  }
+  {constructor public {default
+                          duration:Time = 0.3s,
+                          pacing:#{proc-type {double}:double} = null
+                      }
+    {construct-super duration = duration, pacing = pacing}
+  }
+  
+  {method public {make-out-transition-overlay pmap:Pixmap}:TransitionOverlay
+    {return {SteadyPixmap pmap}}
+  }
+  
+  {getter public {uses-in-transition-overlay?}:bool
+    {return true}
+  }
+  
+  {method public {make-in-transition-overlay pmap:Pixmap}:TransitionOverlay
+    {return {ImplodePixmap pmap}}
+  }
+}
+
+{doc-next
+    {purpose
+        A wipe effect that causes a {docref TransitionFrame}'s new screen
+        to appear behind a line that moves across the frame.
+    }
+}
+{define-class public WipeTransitionEffect {inherits StandardTransitionEffect}
+  field private direction:EffectDirection
+  
+  {doc-next
+    {purpose
+        Construct a new {docref WipeTransitionEffect} object.
+    }
+    {parameter duration,
+        The duration of the transition effect.
+    }
+    {parameter pacing,
+        A procedure that can be used to warp the time scale of a transition.
+        See {docref TransitionEffect.pacing} for additional information.
+    }
+    {parameter direction,
+        The direction in which the wipe line travels.
+    }
+  }
+  {constructor public {default
+                          duration:Time = 0.3s,
+                          pacing:#{proc-type {double}:double} = null,
+                          direction:EffectDirection = EffectDirection.up
+                      }
+    set self.direction = direction
+    {construct-super duration = duration, pacing = pacing}
+  }
+  
+  {method public {make-out-transition-overlay pmap:Pixmap}:TransitionOverlay
+    {return {WipePixmap pmap, direction = self.direction}}
+  }
+}
+
+{doc-next
+    {purpose
+        An effect that causes a {docref TransitionFrame}'s old screen
+        to slide out in a specified direction.
+    }
+}
+{define-class public SlideOutTransitionEffect {inherits StandardTransitionEffect}
+  field private direction:EffectDirection
+  
+  {doc-next
+    {purpose
+        Construct a new {docref SlideOutTransitionEffect} object.
+    }
+    {parameter duration,
+        The duration of the transition effect.
+    }
+    {parameter pacing,
+        A procedure that can be used to warp the time scale of a transition.
+        See {docref TransitionEffect.pacing} for additional information.
+    }
+    {parameter direction,
+        The direction in which the old screen slides out.
+    }
+  }
+  {constructor public {default
+                          duration:Time = 0.3s,
+                          pacing:#{proc-type {double}:double} = null,
+                          direction:EffectDirection = EffectDirection.down
+                      }
+    set self.direction = direction
+    {construct-super duration = duration, pacing = pacing}
+  }
+  
+  {method public {make-out-transition-overlay pmap:Pixmap}:TransitionOverlay
+    {return {SlideOutPixmap pmap, direction = self.direction}}
+  }
+}
+
+{doc-next
+    {purpose
+        An effect that causes a {docref TransitionFrame}'s new screen
+        to slide in in a specified direction.
+    }
+}
+{define-class public SlideInTransitionEffect {inherits StandardTransitionEffect}
+  field private direction:EffectDirection
+  
+  {doc-next
+    {purpose
+        Construct a new {docref SlideInTransitionEffect} object.
+    }
+    {parameter duration,
+        The duration of the transition effect.
+    }
+    {parameter pacing,
+        A procedure that can be used to warp the time scale of a transition.
+        See {docref TransitionEffect.pacing} for additional information.
+    }
+    {parameter direction,
+        The direction in which the new screen slides in.
+    }
+  }
+  {constructor public {default
+                          duration:Time = 0.3s,
+                          pacing:#{proc-type {double}:double} = null,
+                          direction:EffectDirection = EffectDirection.down
+                      }
+    set self.direction = direction
+    {construct-super duration = duration, pacing = pacing}
+  }
+  
+  {method public {make-out-transition-overlay pmap:Pixmap}:TransitionOverlay
+    {return {WipePixmap pmap, direction = self.direction}}
+  }
+  
+  {getter public {uses-in-transition-overlay?}:bool
+    {return true}
+  }
+  
+  {method public {make-in-transition-overlay pmap:Pixmap}:TransitionOverlay
+    {return {SlideInPixmap pmap, direction = self.direction}}
+  }
+}
+
+{doc-next
+    {purpose
+        An effect that causes a {docref TransitionFrame}'s new screen
+        to slide in, {quote pushing} the old screen to slide out,
+        in a specified direction.
+    }
+}
+{define-class public PushTransitionEffect {inherits StandardTransitionEffect}
+  field private direction:EffectDirection
+  
+  {doc-next
+    {purpose
+        Construct a new {docref PushTransitionEffect} object.
+    }
+    {parameter duration,
+        The duration of the transition effect.
+    }
+    {parameter pacing,
+        A procedure that can be used to warp the time scale of a transition.
+        See {docref TransitionEffect.pacing} for additional information.
+    }
+    {parameter direction,
+        The direction in which the screens slide.
+    }
+  }
+  {constructor public {default
+                          duration:Time = 0.3s,
+                          pacing:#{proc-type {double}:double} = null,
+                          direction:EffectDirection = EffectDirection.down
+                      }
+    set self.direction = direction
+    {construct-super duration = duration, pacing = pacing}
+  }
+  
+  {method public {make-out-transition-overlay pmap:Pixmap}:TransitionOverlay
+    {return {SlideOutPixmap pmap, direction = self.direction}}
+  }
+  
+  {getter public {uses-in-transition-overlay?}:bool
+    {return true}
+  }
+  
+  {method public {make-in-transition-overlay pmap:Pixmap}:TransitionOverlay
+    {return {SlideInPixmap pmap, direction = self.direction}}
+  }
+}
+
+{doc-next
+    {purpose
+        An effect that causes a {docref TransitionFrame}'s old screen
+        to split along a sawtooth line and slide out,
+        revealing the new screen.
+    }
+}
+{define-class public SplitSlideTransitionEffect {inherits StandardTransitionEffect}
+  field private orientation:EffectOrientation
+  
+  {doc-next
+    {purpose
+        Construct a new {docref SplitSlideTransitionEffect} object.
+    }
+    {parameter duration,
+        The duration of the transition effect.
+    }
+    {parameter pacing,
+        A procedure that can be used to warp the time scale of a transition.
+        See {docref TransitionEffect.pacing} for additional information.
+    }
+    {parameter orientation,
+        The orientation of the split line
+        (horizontal or vertical).
+    }
+  }
+  {constructor public {default
+                          duration:Time = 0.5s,
+                          pacing:#{proc-type {double}:double} = null,
+                          orientation:EffectOrientation = EffectOrientation.horizontal
+                      }
+    set self.orientation = orientation
+    {construct-super duration = duration, pacing = pacing}
+  }
+  
+  {method public {make-out-transition-overlay pmap:Pixmap}:TransitionOverlay
+    {return {SplitSlidePixmap pmap, orientation = self.orientation}}
+  }
+}
+
+{doc-next
+    {purpose
+        An effect that causes a {docref TransitionFrame}'s old screen
+        to split as if painted on an opening door,
+        revealing the new screen.
+    }
+}
+{define-class public DoorOpenTransitionEffect {inherits StandardTransitionEffect}
+  field private orientation:EffectOrientation
+  
+  {doc-next
+    {purpose
+        Construct a new {docref DoorOpenTransitionEffect} object.
+    }
+    {parameter duration,
+        The duration of the transition effect.
+    }
+    {parameter pacing,
+        A procedure that can be used to warp the time scale of a transition.
+        See {docref TransitionEffect.pacing} for additional information.
+    }
+    {parameter orientation,
+        The orientation of the split line
+        (horizontal or vertical).
+    }
+  }
+  {constructor public {default
+                          duration:Time = 0.5s,
+                          pacing:#{proc-type {double}:double} = null,
+                          orientation:EffectOrientation = EffectOrientation.horizontal
+                      }
+    set self.orientation = orientation
+    {construct-super duration = duration, pacing = pacing}
+  }
+  
+  {method public {make-out-transition-overlay pmap:Pixmap}:TransitionOverlay
+    {return {DoorOpenPixmap pmap, orientation = self.orientation}}
+  }
+}
+
+{doc-next
+    {purpose
+        An effect that causes a {docref TransitionFrame}'s old screen
+        to shrink and disappear,
+        revealing the new screen.
+    }
+    {notes
+        The shrinking screen can optionally rotate while shrinking,
+        and the position where it ultimately vanishes can be specified.
+    }
+}
+{define-class public ShrinkTransitionEffect {inherits StandardTransitionEffect}
+  field protected rotation:Angle
+  field protected x-percent:double
+  field protected y-percent:double
+  
+  {doc-next
+    {purpose
+        Construct a new {docref ShrinkTransitionEffect} object.
+    }
+    {parameter duration,
+        The duration of the transition effect.
+    }
+    {parameter pacing,
+        A procedure that can be used to warp the time scale of a transition.
+        See {docref TransitionEffect.pacing} for additional information.
+    }
+    {parameter rotation,
+        The angle through which the old screen rotates before disappearing completely.
+    }
+    {parameter (x-percent, y-percent),
+        The position within the {docref TransitionFrame}
+        (expressed as fractions between 0 and 1)
+        where the old screen ultimately vanishes.
+        The center of the shrinking screen moves evenly along a line
+        from the middle of the {docref TransitionFrame} to the specified point
+        as the transition effect progresses.
+    }
+  }
+  {constructor public {default
+                          duration:Time = 0.5s,
+                          pacing:#{proc-type {double}:double} = null,
+                          rotation:Angle = 0deg,
+                          x-percent:Fraction = 0.5,
+                          y-percent:Fraction = 0.5
+                      }
+    set self.rotation = rotation
+    set self.x-percent = x-percent
+    set self.y-percent = y-percent
+    {construct-super duration = duration, pacing = pacing}
+  }
+  
+  {method public {make-out-transition-overlay pmap:Pixmap}:TransitionOverlay
+    {return {ShrinkPixmap pmap, rotation = self.rotation, x-percent = self.x-percent, y-percent = self.y-percent}}
+  }
+}
+
+{doc-next
+    {purpose
+        An effect that causes a {docref TransitionFrame}'s new screen
+        to grow from nothing until it completely covers the old screen.
+    }
+    {notes
+        The growing screen can optionally rotate while growing,
+        and the position where it initially appears can be specified.
+    }
+}
+{define-class public GrowTransitionEffect {inherits StandardTransitionEffect}
+  field protected rotation:Angle
+  field protected x-percent:double
+  field protected y-percent:double
+  
+  {doc-next
+    {purpose
+        Construct a new {docref GrowTransitionEffect} object.
+    }
+    {parameter duration,
+        The duration of the transition effect.
+    }
+    {parameter pacing,
+        A procedure that can be used to warp the time scale of a transition.
+        See {docref TransitionEffect.pacing} for additional information.
+    }
+    {parameter rotation,
+        The angle through which the new screen rotates as it moves into place.
+    }
+    {parameter (x-percent, y-percent),
+        The position within the {docref TransitionFrame}
+        (expressed as fractions between 0 and 1)
+        from which the new screen grows.
+        The center of the growing screen moves evenly along a line
+        from the specified point
+        to the middle of the {docref TransitionFrame}
+        as the transition effect progresses.
+    }
+  }
+  {constructor public {default
+                          duration:Time = 0.5s,
+                          pacing:#{proc-type {double}:double} = null,
+                          rotation:Angle = 0deg,
+                          x-percent:Fraction = 0.5,
+                          y-percent:Fraction = 0.5
+                      }
+    set self.rotation = rotation
+    set self.x-percent = x-percent
+    set self.y-percent = y-percent
+    {construct-super duration = duration, pacing = pacing}
+  }
+  
+  {method public {make-out-transition-overlay pmap:Pixmap}:TransitionOverlay
+    {return {SteadyPixmap pmap}}
+  }
+  
+  {getter public {uses-in-transition-overlay?}:bool
+    {return true}
+  }
+  
+  {method public {make-in-transition-overlay pmap:Pixmap}:TransitionOverlay
+    {return {GrowPixmap pmap, rotation = self.rotation, x-percent = self.x-percent, y-percent = self.y-percent}}
+  }
+}
+
+{doc-next
+    {purpose
+        Abstract superclass for {docref TransitionOverlay}s that
+        use 3D effects.
+    }
+    {notes
+        This class provides
+        {docref-abbr Pixmap3dTransitionOverlay.scene-graphic} and
+        {docref-abbr Pixmap3dTransitionOverlay.scene} fields,
+        and a {docref-abbr Pixmap3dTransitionOverlay.make-scene} method
+        for initializing them.
+    }
+}
+{define-class public abstract Pixmap3dTransitionOverlay {inherits PixmapTransitionOverlay}
+  
+  {doc-next
+    {purpose
+        The {docref SceneGraphic} within which the transition will be displayed.
+    }
+  }
+  field protected scene-graphic:#SceneGraphic = null
+  
+  {doc-next
+    {purpose
+        The {docref Scene} within which the transition will be displayed.
+    }
+  }
+  field protected scene:#Scene = null
+  
+  {doc-next
+    {purpose
+        The cotangent of the field of view angle in the 3D scene that displays
+        the transition.
+    }
+    {notes
+        This value controls how extreme the perspective effects in the 3D view are.
+        When this value is smaller, the perspective is more extreme;
+        when this value is larger, the perspective is more flattened.
+    }
+  }
+  field protected constant fov-cotangent:double = 3.0
+  
+  {doc-next
+    {purpose
+        Construct a {docref Pixmap3dTransitionOverlay} object.
+    }
+    {parameter pixmap,
+        The {docref Pixmap} that records the {docref TransitionFrame} appearance
+        that should be animated.
+    }
+    {notes
+        See {docref PixmapTransitionOverlay.default} for further information.
+    }
+  }
+  {constructor public {default pixmap:Pixmap}
+    {construct-super pixmap}
+  }
+  
+  {getter public {uses-in-pixmap?}:bool
+    {return true}
+  }
+  
+  {doc-next
+    {purpose
+        Make the {docref Scene} and {docref SceneGraphic} that will
+        be used to display this transition.
+    }
+    {return-vals
+        The required {docref Scene} and {docref SceneGraphic} objects,
+        which will also have been stored into the
+        {docref-abbr Pixmap3dTransitionOverlay.scene} and
+        {docref-abbr Pixmap3dTransitionOverlay.scene-graphic} fields.
+    }
+    {details
+        This method creates the necessary {docref Scene}-related objects
+        and connects them together.
+        The {docref-abbr Pixmap3dTransitionOverlay.scene} and
+        {docref-abbr Pixmap3dTransitionOverlay.scene-graphic} fields are initialized,
+        and the {docref SceneGraphic} is added to the graphic hierarchy
+        of this {docref Pixmap3dTransitionOverlay} object.
+    }
+  }
+  {method protected {make-scene}:(Scene, SceneGraphic)
+    def camera =
+        {Camera.create-perspective-camera
+            position = {Distance3d 0m, 0m, 1m * self.fov-cotangent},
+            near-clipping-plane = 0.1m,
+            far-clipping-plane = 100m,
+            field-of-view = 2.0 * {atan 0.5 / self.fov-cotangent}
+        }
+    def scene =
+        {Scene
+            camera = camera
+        }
+    def scene-graphic =
+        {SceneGraphic
+            background = "gray",
+            scene
+        }
+    {self.add-internal scene-graphic}
+    set self.scene-graphic = scene-graphic
+    set self.scene = scene
+    {return scene, scene-graphic}
+  }
+}
+
+{doc-next
+    {purpose
+        A {docref TransitionOverlay} that 
+        rotates the old screen by 90 degrees in 3D, revealing the new screen.
+    }
+    {notes
+        This class is used by {docref Spin3dTransitionEffect}.
+    }
+}
+{define-class public Spin3dPixmap {inherits Pixmap3dTransitionOverlay}
+  
+  field private quad:#Quad = null
+  
+  {doc-next
+    {purpose
+        Construct an object of this type.
+    }
+    {notes
+        See {docref Pixmap3dTransitionOverlay.default} for further information.
+    }
+  }
+  {constructor public {default pixmap:Pixmap}
+    {construct-super pixmap}
+  }
+  
+  {method public {set-in-pixmap pmap:Pixmap}:void
+    {if self.scene-graphic == null then
+        || Create the SceneGraphic if necessary.
+        set self.completion = 0.0
+    }
+    {self.make-quad pmap, 10m}
+  }
+  
+  {method private {make-quad pmap:Pixmap, quad-scale:Distance}:Quad
+    def fill-pattern = {FillPattern.from-pixmap pmap}
+    def quad-height = quad-scale
+    def quad-width = (quad-scale * pmap.width) / pmap.height
+    def quad =
+        {Quad
+            fill-pattern = fill-pattern,
+            z = (1m - quad-scale) * self.fov-cotangent,
+            -0.5 * quad-width, -0.5 * quad-height, quad-width, quad-height
+        }
+    {self.scene.add-object
+        quad    
+    }
+    {return quad}
+  }
+  
+  {setter public {completion c:double}:void
+    def scene-graphic =
+        {if-non-null sc = self.scene-graphic then
+            sc
+         else
+            def (scene, scene-graphic) = {self.make-scene}
+            def quad = {self.make-quad self.pixmap, 1m}
+            set self.quad = quad
+            scene-graphic
+        }
+    
+    def xform = {Transformation3d}
+    {xform.local-rotate angle = c * 90deg}
+    set self.quad.transformation = xform
+    {scene-graphic.update-drawable}
+    {self.request-draw}
+  }
+}
+
+{doc-next
+    {purpose
+        An effect that causes a {docref TransitionFrame}'s old screen
+        to rotate by 90 degrees in 3D, revealing the new screen.
+    }
+    {details
+        The old screen rotates by 90 degrees from its initial position
+        until it is edge-on to the viewer and hence becomes invisible,
+        and at that point the transition effect ends.
+    }
+}
+{define-class public Spin3dTransitionEffect {inherits StandardTransitionEffect}
+  
+  {doc-next
+    {purpose
+        Construct a new {docref Spin3dTransitionEffect} object.
+    }
+    {parameter duration,
+        The duration of the transition effect.
+    }
+    {parameter pacing,
+        A procedure that can be used to warp the time scale of a transition.
+        See {docref TransitionEffect.pacing} for additional information.
+    }
+  }
+  {constructor public {default
+                          duration:Time = 0.5s,
+                          pacing:#{proc-type {double}:double} = null
+                      }
+    {construct-super duration = duration, pacing = pacing}
+  }
+  
+  {method public {make-out-transition-overlay out-pmap:Pixmap}:TransitionOverlay
+    {return {Spin3dPixmap out-pmap}}
+  }
+}
+
+{doc-next
+    {purpose
+        A {docref TransitionOverlay} that 
+        rotates the old screen by 180 degrees in 3D,
+        revealing the new screen as the back side of the old screen.
+    }
+    {notes
+        This class is used by {docref Spin180TransitionEffect}.
+    }
+}
+{define-class public Spin180Pixmap {inherits Pixmap3dTransitionOverlay}
+  
+  field private out-quad:#Quad = null
+  field private in-quad:#Quad = null
+  
+  {doc-next
+    {purpose
+        Construct an object of this type.
+    }
+    {notes
+        See {docref Pixmap3dTransitionOverlay.default} for further information.
+    }
+  }
+  {constructor public {default pixmap:Pixmap}
+    {construct-super pixmap}
+  }
+  
+  {method public {set-in-pixmap pmap:Pixmap}:void
+    {if self.scene-graphic == null then
+        || Create the SceneGraphic if necessary.
+        set self.completion = 0.0
+    }
+    set self.in-quad = {self.make-quad pmap, 1m}
+  }
+  
+  {method private {make-quad pmap:Pixmap, quad-scale:Distance}:Quad
+    def fill-pattern = {FillPattern.from-pixmap pmap}
+    def quad-height = quad-scale
+    def quad-width = (quad-scale * pmap.width) / pmap.height
+    def quad =
+        {Quad
+            fill-pattern = fill-pattern,
+            z = (1m - quad-scale) * self.fov-cotangent,
+            -0.5 * quad-width, -0.5 * quad-height, quad-width, quad-height
+        }
+    {self.scene.add-object
+        quad    
+    }
+    {return quad}
+  }
+  
+  {setter public {completion c:double}:void
+    def scene-graphic =
+        {if-non-null sc = self.scene-graphic then
+            sc
+         else
+            def (scene, scene-graphic) = {self.make-scene}
+            def quad = {self.make-quad self.pixmap, 1m}
+            set self.out-quad = quad
+            scene-graphic
+        }
+    
+    def out-xform = {Transformation3d}
+    {out-xform.local-rotate angle = c * 180deg}
+    {out-xform.local-translate 0m, 0m, 0.1mm}
+    set self.out-quad.transformation = out-xform
+    {if-non-null in-quad = self.in-quad then
+        def in-xform = {Transformation3d}
+        {in-xform.local-rotate angle = (1.0 + c) * 180deg}
+        {in-xform.local-translate 0m, 0m, 0.1mm}
+        set in-quad.transformation = in-xform
+    }
+    {scene-graphic.update-drawable}
+    {self.request-draw}
+  }
+}
+
+{doc-next
+    {purpose
+        An effect that causes a {docref TransitionFrame}'s old screen
+        to rotate by 180 degrees in 3D, revealing the new screen
+        as the back side of the old screen.
+    }
+    {details
+        The old screen rotates by 180 degrees from its initial position
+        and after it has rotated by 90 degrees, the new screen is seen
+        to be on the back side of the old screen.
+        After the 180-degree rotation is complete, the new screen is
+        fully installed.
+    }
+}
+{define-class public Spin180TransitionEffect {inherits StandardTransitionEffect}
+  
+  {doc-next
+    {purpose
+        Construct a new {docref Spin180TransitionEffect} object.
+    }
+    {parameter duration,
+        The duration of the transition effect.
+    }
+    {parameter pacing,
+        A procedure that can be used to warp the time scale of a transition.
+        See {docref TransitionEffect.pacing} for additional information.
+    }
+  }
+  {constructor public {default
+                          duration:Time = 0.5s,
+                          pacing:#{proc-type {double}:double} = null
+                      }
+    {construct-super duration = duration, pacing = pacing}
+  }
+  
+  {method public {make-out-transition-overlay out-pmap:Pixmap}:TransitionOverlay
+    {return {Spin180Pixmap out-pmap}}
+  }
+}
+
+{doc-next
+    {purpose
+        A {docref Quad} that allows texture coordinates to be specified in its
+        constructor call.
+    }
+    {usage
+        By specifying texture coordinates to the constructor of this class,
+        a programmer can cause just a portion of a given {docref FillPattern}
+        to be mapped onto the surface of the {docref PartialQuad}.
+    }
+}
+{define-class package PartialQuad {inherits Quad}
+  
+  field private s0:Fraction
+  field private s1:Fraction
+  field private t0:Fraction
+  field private t1:Fraction
+  
+  {doc-next
+    {purpose
+        Construct a {docref PartialQuad} object.
+    }
+    {parameter (s0, t0),
+        The texture coordinates to use for the top left corner of the quad.
+    }
+    {parameter (s1, t1),
+        The texture coordinates to use for the bottom right corner of the quad.
+    }
+    {parameter ...,
+        Any other keyword and positional arguments may be supplied, if they
+        are acceptable to the {docref Quad.default} constructor.
+    }
+  }
+  {constructor package {default
+                           s0:Fraction = 0.0,
+                           s1:Fraction = 1.0,
+                           t0:Fraction = 0.0,
+                           t1:Fraction = 1.0,
+                           ...
+                       }
+    set self.s0 = s0
+    set self.s1 = s1
+    set self.t0 = t0
+    set self.t1 = t1
+    {with-compiler-directives allow-slow-spliced-arguments? = true do
+        {construct-super ...}
+    }
+  }
+  
+  {method open public {paint renderer:Renderer3d, viewport-width:Distance, viewport-height:Distance}:void
+    {with 
+        renderer.texture = {self.fill-pattern.to-Texture},
+        renderer.lighting-enabled? = self.lighting-enabled?,
+        renderer.ambient-material-color = self.ambient-color,
+        renderer.diffuse-material-color = self.diffuse-color,
+        renderer.specular-material-color = self.specular-color,
+        renderer.specular-material-shininess = self.shininess
+     do
+        let ax:Distance = self.x
+        let ay:Distance = self.y
+        let az:Distance = self.z
+        let bx:Distance = ax + self.width
+        let by:Distance = ay + self.height
+        {render-primitive
+            p:Primitive,
+            type = Primitive.quads
+            on renderer do
+            {p.normal3fv {FloatDirection3d 0, 0, 1}}
+            {p.texture-coord2 self.s0, self.t1}
+            {p.vertex3 ax, ay, az}
+            {p.texture-coord2 self.s1, self.t1}
+            {p.vertex3 bx, ay, az}
+            {p.texture-coord2 self.s1, self.t0}
+            {p.vertex3 bx, by, az}
+            {p.texture-coord2 self.s0, self.t0}
+            {p.vertex3 ax, by, az}
+        }
+    }
+  }
+}
+
+{doc-next
+    {purpose
+        A {docref TransitionOverlay} that implements
+        an effect that looks like a stiff page is being turned in a book,
+        revealing the new screen as the next double-page spread in the book.
+    }
+    {notes
+        This class is used by {docref StiffPageTurnTransitionEffect}.
+    }
+}
+{define-class public StiffPageTurnPixmap {inherits Pixmap3dTransitionOverlay}
+  
+  field private out-quad:#Quad = null
+  field private in-quad:#Quad = null
+  
+  {doc-next
+    {purpose
+        Construct an object of this type.
+    }
+    {notes
+        See {docref Pixmap3dTransitionOverlay.default} for further information.
+    }
+  }
+  {constructor public {default pixmap:Pixmap}
+    {construct-super pixmap}
+  }
+  
+  {method public {set-in-pixmap pmap:Pixmap}:void
+    {if self.scene-graphic == null then
+        || Create the SceneGraphic if necessary.
+        set self.completion = 0.0
+    }
+    set self.in-quad = {self.make-quad pmap, 1m}
+    {self.make-quad pmap, 1m, s1 = 0.5}
+    {self.make-quad self.pixmap, 1m, s0 = 0.5}
+  }
+  
+  {method private {make-quad
+                      pmap:Pixmap,
+                      quad-scale:Distance,
+                      s0:Fraction = 0.0,
+                      s1:Fraction = 1.0,
+                      t0:Fraction = 0.0,
+                      t1:Fraction = 1.0
+                      
+                  }:Quad
+    def fill-pattern = {FillPattern.from-pixmap pmap}
+    def quad-height = quad-scale
+    def quad-width = (quad-scale * pmap.width) / pmap.height
+    def quad =
+        {PartialQuad
+            s0 = s0, s1 = s1, t0 = t0, t1 = t1,
+            fill-pattern = fill-pattern,
+            z = (1m - quad-scale) * self.fov-cotangent,
+            (s0 - 0.5) * quad-width,
+            (t0 - 0.5) * quad-height,
+            (s1 - s0) * quad-width,
+            (t1 - t0) * quad-height
+        }
+    {self.scene.add-object
+        quad    
+    }
+    {return quad}
+  }
+  
+  {setter public {completion c:double}:void
+    def scene-graphic =
+        {if-non-null sc = self.scene-graphic then
+            sc
+         else
+            def (scene, scene-graphic) = {self.make-scene}
+            def quad = {self.make-quad self.pixmap, 1m}
+            set self.out-quad = quad
+            scene-graphic
+        }
+    
+    def out-xform = {Transformation3d}
+    {out-xform.local-rotate angle = c * 180deg}
+    {out-xform.local-translate 0m, 0m, 0.1mm}
+    set self.out-quad.transformation = out-xform
+    {if-non-null in-quad = self.in-quad then
+        def in-xform = {Transformation3d}
+        {in-xform.local-rotate angle = (1.0 + c) * 180deg}
+        {in-xform.local-translate 0m, 0m, 0.1mm}
+        set in-quad.transformation = in-xform
+    }
+    {scene-graphic.update-drawable}
+    {self.request-draw}
+  }
+}
+
+{doc-next
+    {purpose
+        An effect that looks like a stiff page is being turned in a book,
+        revealing the new screen as the next double-page spread in the book.
+    }
+    {details
+        The {quote spine} of the book is a vertical line in the middle
+        of the screen.
+        The page turn looks like a 180-degree turn of a stiff page anchored
+        at that spine.
+    }
+}
+{define-class public StiffPageTurnTransitionEffect {inherits StandardTransitionEffect}
+  
+  {doc-next
+    {purpose
+        Construct a new {docref StiffPageTurnTransitionEffect} object.
+    }
+    {parameter duration,
+        The duration of the transition effect.
+    }
+    {parameter pacing,
+        A procedure that can be used to warp the time scale of a transition.
+        See {docref TransitionEffect.pacing} for additional information.
+    }
+  }
+  {constructor public {default
+                          duration:Time = 0.5s,
+                          pacing:#{proc-type {double}:double} = null
+                      }
+    {construct-super duration = duration, pacing = pacing}
+  }
+  
+  {method public {make-out-transition-overlay out-pmap:Pixmap}:TransitionOverlay
+    {return {StiffPageTurnPixmap out-pmap}}
+  }
+}
+
+{doc-next
+    {purpose
+        Build an array of texture coordinates for a {docref PolygonSet}
+        based on the mapping specified by a {docref DisplacementMesh}.
+    }
+    {parameter mesh,
+        The {docref DisplacementMesh} that specifies the mapping to apply.
+    }
+    {parameter dest,
+        An array into which to write the texture coordinates.
+        If this parameter is supplied, the array will first be cleared
+        and then the new texture coordinates will be written into it.
+        Otherwise, a new array will be allocated and filled with
+        the texture coordinates.
+    }
+    {return-vals
+        The array that contains the texture coordinates.
+    }
+}
+{define-proc public {make-texture-coords-from-mesh
+                        mesh:DisplacementMesh,
+                        dest:{Array-of FloatFraction2d} = {new {Array-of FloatFraction2d}}
+                    }:{Array-of FloatFraction2d}
+    {dest.clear}
+    def mh = mesh.height - 1
+    def mw = mesh.width - 1
+    {for i = 0 below mw do
+        def x0 = (i / mw) asa float
+        def x1 = ((i + 1) / mw) asa float
+        {for j = 0 below mh do
+            def y0 = (j / mh) asa float
+            def y1 = ((j + 1) / mh) asa float
+            {dest.append {FloatFraction2d x0, y0}}
+            {dest.append {FloatFraction2d x0, y1}}
+            {dest.append {FloatFraction2d x1, y1}}
+            {dest.append {FloatFraction2d x1, y0}}
+        }
+    }
+    {return dest}
+}
+
+{doc-next
+    {purpose
+        Build an array of vertex coordinates for a {docref PolygonSet}
+        corresponding to a given a {docref DisplacementMesh}.
+    }
+    {parameter mesh,
+        The {docref DisplacementMesh}.
+        Only the width and height information from
+        {param mesh} are actually used.
+    }
+    {parameter (x, y, z),
+        The coordinates of the lower left corner of the quadrilateral
+        that is displayed as the {docref PolygonSet}.
+    }
+    {parameter width,
+        The width of the quadrilateral in the x direction.
+    }
+    {parameter height,
+        The height of the quadrilateral in the y direction.
+    }
+    {parameter dest,
+        An array into which to write the vertex coordinates.
+        If this parameter is supplied, the array will first be cleared
+        and then the new vertex coordinates will be written into it.
+        Otherwise, a new array will be allocated and filled with
+        the vertex coordinates.
+    }
+    {return-vals
+        The array that contains the vertex coordinates.
+    }
+}
+{define-proc public {make-vertex-list-from-mesh
+                        mesh:DisplacementMesh,
+                        x:Distance, y:Distance, z:Distance,
+                        width:Distance, height:Distance,
+                        dest:{Array-of FloatDistance3d} = {new {Array-of FloatDistance3d}}
+                    }:{Array-of FloatDistance3d}
+    {dest.clear}
+    def mh = mesh.height - 1
+    def mw = mesh.width - 1
+    def append-vertex =
+        {proc {v:Fraction2d}:void
+            {dest.append
+                {FloatDistance3d
+                    (x + v.x * width) asa FloatDistance,
+                    (y + (1.0 - v.y) * height) asa FloatDistance,
+                    z asa FloatDistance
+                }
+            }
+        }
+    {for i = 0 below mw do
+        {for j = 0 below mh do
+            def v0 = mesh[i, j]
+            def v1 = mesh[i, j + 1]
+            def v2 = mesh[i + 1, j + 1]
+            def v3 = mesh[i + 1, j]
+            {append-vertex v0}
+            {append-vertex v1}
+            {append-vertex v2}
+            {append-vertex v3}
+        }
+    }
+    {return dest}
+}
+
+
+{doc-next
+    {purpose
+        Return a regular {docref DisplacementMesh} of a specified size.
+    }
+    {parameter (width, height),
+        The width and height of the {docref DisplacementMesh} that should
+        be returned.
+    }
+    {return-vals
+        A regular {docref DisplacementMesh} having the specified width and height.
+        {quote Regular} means that the {docref DisplacementMesh} maps every
+        point to itself and does not specify any distortion.
+    }
+}
+{define-proc public {make-regular-displacement-mesh width:int, height:int}:DisplacementMesh
+    {return {DisplacementMesh width, height}}
+}
+
+{doc-next
+    {purpose
+        Make a {quote genie going into a bottle} {docref DisplacementMesh},
+        similar to the Macintosh window minimization effect.
+    }
+    {parameter base-mesh,
+        A {docref DisplacementMesh} that is cloned to serve as the starting point for
+        this operation.
+        Usually this would be a regular {docref DisplacementMesh} whose points are
+        then warped into the {quote genie going into a bottle} shape.
+        However, a different {docref DisplacementMesh} could be supplied,
+        and its points will be warped according to the same transformation,
+        providing a route to some variants on the basic {quote genie} shape.
+    }
+    {parameter strength,
+        Controls the strength of the {quote pinch} in the middle of the
+        {quote genie} shape.
+        If {param strength} is 0, then the shape will be a triangle pointing
+        downward.
+        As {param strength} is increased, the sides of the triangle will
+        become more concave, leading to a sharper point at the bottom of the shape.
+    }
+    {parameter base-x,
+        The x position along the bottom of the {docref DisplacementMesh} where
+        the bottom point of the genie shape is located.
+        This should be a number in the range from 0 to 1.
+    }
+    {return-vals
+        The desired {docref DisplacementMesh}.
+    }
+}
+{define-proc public {make-genie-displacement-mesh
+                        base-mesh:DisplacementMesh,
+                        strength:Fraction = 0.8,
+                        base-x:Fraction = 0.3
+                    }:DisplacementMesh
+    def genie-mesh = {base-mesh.clone}
+    def width = genie-mesh.width
+    def height = genie-mesh.height
+    {for i = 0 below width do
+        {for j = 0 below height do
+            def p = base-mesh[i, j]
+            def x = p.x
+            def y = p.y
+            let extension:double = 1.0 - y
+            def esq = extension * extension
+            set extension = (1.0 - strength) * extension + strength * esq
+            set genie-mesh[i, j] =
+                {Fraction2d
+                    extension * x + (1.0 - extension) * base-x,
+                    y
+                }
+        }
+    }
+    {return genie-mesh}
+}
+
+{doc-next
+    {purpose
+        Make a {docref DisplacementMesh} that maps all points to a
+        single, specified (x, y) position.
+    }
+    {parameter base-mesh,
+        A {docref DisplacementMesh} whose width and height control
+        the width and height of the new {docref DisplacementMesh}
+        that will be created.
+    }
+    {parameter (x, y),
+        The texture coordinates to which the returned {docref DisplacementMesh}
+        should map all points.
+        These coordinates are within the unit square that goes from
+        0 to 1.
+    }
+    {return-vals
+        A {docref DisplacementMesh} that maps all points to the
+        position given by {param x} and {param y}.
+    }
+}
+{define-proc public {make-point-displacement-mesh
+                        base-mesh:DisplacementMesh,
+                        x:Fraction = 0.3,
+                        y:Fraction = 1.0
+                    }:DisplacementMesh
+    def point-mesh = {base-mesh.clone}
+    def width = point-mesh.width
+    def height = point-mesh.height
+    {for i = 0 below width do
+        {for j = 0 below height do
+            set point-mesh[i, j] = {Fraction2d x, y}
+        }
+    }
+    {return point-mesh}
+}
+
+{doc-next
+    {purpose
+        Make a pincushion-shaped {docref DisplacementMesh},
+        that looks like a rectangle where the middle of each side has been
+        pulled in toward the center.
+    }
+    {parameter base-mesh,
+        A {docref DisplacementMesh} that is cloned to serve as the starting point for
+        this operation.
+        Usually this would be a regular {docref DisplacementMesh} whose points are
+        then warped into the pincushion shape.
+        However, a different {docref DisplacementMesh} could be supplied,
+        and its points will be warped according to the same transformation,
+        providing a route to some variants on the basic pincushion shape.
+    }
+    {parameter strength,
+        Controls the strength of the {quote pinch} in the middle of the
+        sides of the pincushion shape.
+        As {param strength} is increased, the sides of the rectangle
+        will be more pulled-in in the center,
+        leading to a more exaggerated pincushion shape.
+    }
+    {return-vals
+        The desired {docref DisplacementMesh}.
+    }
+}
+{define-proc public {make-pincushion-displacement-mesh
+                        base-mesh:DisplacementMesh,
+                        strength:Fraction = 0.65
+                    }:DisplacementMesh
+    def result-mesh = {base-mesh.clone}
+    def width = result-mesh.width
+    def height = result-mesh.height
+    def center-x = 0.5
+    def center-y = 0.5
+    def normalizer = 2.0 * {sqrt 2.0}
+    {for i = 0 below width do
+        {for j = 0 below height do
+            def p = base-mesh[i, j]
+            def x = p.x
+            def y = p.y
+            def dx = x - center-x
+            def dy = y - center-y
+            def dsq = dx * dx + dy * dy
+            def d = {sqrt dsq}
+            def dnew = dsq * dsq * normalizer
+            def scale = dnew / d
+            set result-mesh[i, j] =
+                {Fraction2d
+                    center-x + scale * dx,
+                    center-y + scale * dy
+                }
+        }
+    }
+    {result-mesh.interpolate-from base-mesh, strength, result-mesh}
+    {return result-mesh}
+}
+
+{doc-next
+    {purpose
+        Compute a {docref DisplacementMesh} by Bezier interpolation using
+        four specified meshes as the control points.
+    }
+    {parameter (a, b, c, d),
+        The control points for the interpolation.
+        Each point in the result mesh will be computed by applying Bezier interpolation
+        to the corresponding points in
+        {param a}, {param b}, {param c}, and {param d},
+        using the interpolation parameter {param t}.
+        All four of these meshes must have the same heights and widths.
+    }
+    {parameter t,
+        The interpolation parameter, which should be between 0 and 1, inclusive.
+        If {param t} is 0, then the result mesh will equal {param a}.
+        If {param t} is 1, then the result mesh will equal {param d}.
+    }
+    {parameter target-mesh,
+        The {docref DisplacementMesh} into which to store the result of
+        the interpolation.
+        This mesh must have the same height and width as the four control meshes
+        {param a} through {param d}.
+        If this keyword argument is not supplied, the target mesh
+        is created by making a clone of {param a}.
+    }
+    {return-vals
+        The desired {docref DisplacementMesh}.
+    }
+}
+{define-proc public {bezier-interpolate-displacement-mesh
+                        a:DisplacementMesh,
+                        b:DisplacementMesh,
+                        c:DisplacementMesh,
+                        d:DisplacementMesh,
+                        t:Fraction,
+                        target-mesh:DisplacementMesh = {a.clone}
+                    }:DisplacementMesh
+    def width = a.width
+    def height = a.height
+    def tbar = 1.0 - t
+    || Calculate the Bezier interpolation coefficients:
+    def ca = tbar * tbar * tbar
+    def cb = 3.0 * tbar * tbar * t
+    def cc = 3.0 * tbar * t * t
+    def cd = t * t * t
+    {for i = 0 below width do
+        {for j = 0 below height do
+            def pa = a[i, j]
+            def pb = b[i, j]
+            def pc = c[i, j]
+            def pd = d[i, j]
+            set target-mesh[i, j] =
+                {Fraction2d
+                    ca * pa.x + cb * pb.x + cc * pc.x + cd * pd.x,
+                    ca * pa.y + cb * pb.y + cc * pc.y + cd * pd.y
+                }
+        }
+    }
+    {return target-mesh}
+}
+
+{doc-next
+    {purpose
+        A {docref TransitionOverlay} that morphs the old screen through a series of
+        {docref DisplacementMesh}es, revealing the new screen under the
+        morphing old screen.
+    }
+    {notes
+        This class is used by {docref BezierDisplacementTransitionEffect}.
+    }
+}
+{define-class public BezierDisplacementPixmap {inherits Pixmap3dTransitionOverlay}
+  
+  field private start-mesh:DisplacementMesh
+  field private t1-mesh:DisplacementMesh
+  field private t2-mesh:DisplacementMesh
+  field private end-mesh:DisplacementMesh
+  field private temp-mesh:DisplacementMesh
+  
+  {doc-next
+    {purpose
+        Create a new {docref BezierDisplacementPixmap} object.
+    }
+    {parameter pixmap,
+        A {docref Pixmap} that shows the initial state of the old screen
+        in the transition.
+    }
+    {parameter (start-mesh, t1-mesh, t2-mesh, end-mesh),
+        {docref DisplacementMesh}es that control how the old screen warps during
+        the transition.
+        See {docref BezierDisplacementTransitionEffect.default} for more information.
+    }
+  }
+  {constructor public {default
+                          pixmap:Pixmap,
+                          start-mesh:DisplacementMesh,
+                          t1-mesh:DisplacementMesh,
+                          t2-mesh:DisplacementMesh,
+                          end-mesh:DisplacementMesh
+                      }
+    {construct-super pixmap}
+    set self.start-mesh = start-mesh
+    set self.t1-mesh = t1-mesh
+    set self.t2-mesh = t2-mesh
+    set self.end-mesh = end-mesh
+    set self.temp-mesh = {start-mesh.clone}
+  }
+  
+  {method public {set-in-pixmap pmap:Pixmap}:void
+    {if self.scene-graphic == null then
+        || Create the SceneGraphic if necessary.
+        set self.completion = 0.0
+    }
+    {self.make-quad pmap, 2m}
+  }
+  
+  {method private {make-quad
+                      pmap:Pixmap,
+                      quad-scale:Distance,
+                      s0:Fraction = 0.0,
+                      s1:Fraction = 1.0,
+                      t0:Fraction = 0.0,
+                      t1:Fraction = 1.0
+                  }:Quad
+    def fill-pattern = {FillPattern.from-pixmap pmap}
+    def quad-height = quad-scale
+    def quad-width = (quad-scale * pmap.width) / pmap.height
+    def quad =
+        {PartialQuad
+            s0 = s0, s1 = s1, t0 = t0, t1 = t1,
+            fill-pattern = fill-pattern,
+            z = (1m - quad-scale) * self.fov-cotangent,
+            (s0 - 0.5) * quad-width,
+            (t0 - 0.5) * quad-height,
+            (s1 - s0) * quad-width,
+            (t1 - t0) * quad-height
+        }
+    {self.scene.add-object quad}
+    {return quad}
+  }
+  
+  {method private {make-polygon-set
+                      pmap:Pixmap,
+                      quad-scale:Distance
+                  }:PolygonSet
+    def base-mesh = self.start-mesh
+    def quad-height = quad-scale
+    def quad-width = (quad-scale * pmap.width) / pmap.height
+    def pset =
+        {PolygonSet
+            fill-pattern = {FillPattern.from-pixmap self.pixmap},
+            texture-coords = {make-texture-coords-from-mesh base-mesh},
+            vertices =
+                {make-vertex-list-from-mesh
+                    base-mesh,
+                    -0.5 * quad-width, -0.5 * quad-height, 0m,
+                    quad-width, quad-height
+                },
+            primitive-type = "quads"
+        }
+    {return pset}
+  }
+  
+  field private pset:#PolygonSet = null
+  
+  {setter public {completion c:double}:void
+    def quad-scale = 1m
+    
+    def scene-graphic =
+        {if-non-null sc = self.scene-graphic then
+            sc
+         else
+            def (scene, scene-graphic) = {self.make-scene}
+            def pset = {self.make-polygon-set self.pixmap, quad-scale}
+            set self.pset = pset
+            {self.scene.add-object pset}
+            scene-graphic
+        }
+    
+    {bezier-interpolate-displacement-mesh
+        self.start-mesh,
+        self.t1-mesh,
+        self.t2-mesh,
+        self.end-mesh,
+        c,
+        target-mesh = self.temp-mesh
+    }
+    def pmap = self.pixmap
+    def quad-height = quad-scale
+    def quad-width = (quad-scale * pmap.width) / pmap.height
+    set self.pset.vertices =
+        {make-vertex-list-from-mesh
+            self.temp-mesh,
+            -0.5 * quad-width, -0.5 * quad-height, 0m,
+            quad-width, quad-height
+        }
+    {scene-graphic.update-drawable}
+    {self.request-draw}
+  }
+}
+
+{doc-next
+    {purpose
+        A transition effect that morphs the old screen through a series of
+        {docref DisplacementMesh}es, revealing the new screen under the
+        morphing old screen.
+    }
+    {usage
+        This class can be used for a whole variety of transition effects
+        in which the old screen is deformed in different ways but ultimately
+        collapses to a point and disappears.
+    }
+}
+{define-class public BezierDisplacementTransitionEffect {inherits StandardTransitionEffect}
+  
+  field private start-mesh:DisplacementMesh
+  field private t1-mesh:DisplacementMesh
+  field private t2-mesh:DisplacementMesh
+  field private end-mesh:DisplacementMesh
+  
+  {doc-next
+    {purpose
+        Create a {docref BezierDisplacementMeshTransitionEffect} object.
+    }
+    {parameter duration,
+        The duration of the transition effect.
+        This is the value that will be returned by the {docref-abbr TransitionEffect.duration} getter
+        for this object.
+    }
+    {parameter pacing,
+        A procedure that can be used to warp the time scale of a transition.
+        See {docref TransitionEffect.pacing} for additional information.
+    }
+    {parameter mesh-size,
+        The width and height of the {docref DisplacementMesh} objects
+        that will be used.
+        Larger numbers for this parameter lead to smoother warping of the old screen,
+        while smaller numbers may increase performance at the expense of a more angular
+        look to the warping.
+        After a certain mesh size is reached, however, the added improvement from
+        further increases in the mesh size is very difficult to notice.
+        
+        The {param mesh-size} parameter is only used if no value is specified
+        for the {param start-mesh} parameter.
+        If a {docref DisplacementMesh} is specified for the {param start-mesh} parameter, then the
+        height and width of that {docref DisplacementMesh} will govern.
+    }
+    {parameter start-mesh,
+        A {docref DisplacementMesh} describing the initial warping of the old screen
+        in the transition.
+        Ordinarily the old screen should not be warped at the beginning of the transition,
+        so this mesh should usually be a regular {docref DisplacementMesh}
+        such as is returned by {docref make-regular-displacement-mesh}.
+        If no value is explicitly specified for this argument,
+        a regular {docref DisplacementMesh} with height and width equal
+        to {param mesh-size} is used.
+    }
+    {parameter (t1-mesh, t2-mesh),
+        These {docref DisplacementMesh}es specify the control points for a
+        Bezier cubic curve that smoothly transitions from
+        {param start-mesh} to {param end-mesh}.
+        If only {param t1-mesh} is specified,
+        the same {docref DisplacementMesh} is used for {param t2-mesh}.
+        In this case, the shape of the old screen will warp toward{em-dash}but
+        not actually reach{em-dash} this shape as it transitions from
+        {param start-mesh} to {param end-mesh}.
+        If different meshes are specified for {param t1-mesh} and {param t2-mesh},
+        a greater degree of control over the trajectory of the animation
+        is possible.
+    }
+    {parameter end-mesh,
+        A {docref DisplacementMesh} describing the final warping of the old screen
+        in the transition.
+        Ordinarily the old screen should disappear at the end of the transition,
+        so this mesh should usually be a {docref DisplacementMesh} that maps all
+        coordinates to the same point,
+        such as is returned by {docref make-point-displacement-mesh}.
+        Callers may want to specify this {docref DisplacementMesh} explicitly
+        to control the (x, y) coordinates of the final point into which the
+        old screen vanishes.
+    }
+    {notes
+        All four {docref DisplacementMesh}es {param start-mesh}, {param t1-mesh},
+        {param t2-mesh}, and {param end-mesh}, must have the same width and height.
+    }
+  }
+  {constructor public {default
+                          duration:Time = 0.5s,
+                          pacing:#{proc-type {double}:double} = null,
+                          mesh-size:int = 30,
+                          start-mesh:DisplacementMesh =
+                              {make-regular-displacement-mesh mesh-size, mesh-size},
+                          t1-mesh:DisplacementMesh =
+                              {make-genie-displacement-mesh start-mesh},
+                          t2-mesh:DisplacementMesh = t1-mesh,
+                          end-mesh:DisplacementMesh = {make-point-displacement-mesh start-mesh}
+                      }
+    {construct-super duration = duration, pacing = pacing}
+    set self.start-mesh = start-mesh
+    set self.t1-mesh = t1-mesh
+    set self.t2-mesh = t2-mesh
+    set self.end-mesh = end-mesh
+  }
+  
+  {method public {make-out-transition-overlay out-pmap:Pixmap}:TransitionOverlay
+    {return
+        {BezierDisplacementPixmap
+            out-pmap,
+            self.start-mesh,
+            self.t1-mesh,
+            self.t2-mesh,
+            self.end-mesh
+        }
+    }
+  }
+}
+
+
+{doc-next
+    {purpose
+        The default value of the {docref TransitionFrame.transition-effect} option.
+    }
+    {details
+        The default transition effect for a {docref TransitionFrame},
+        if none is explicitly specified,
+        is {docref CrossFadeTransitionEffect}.
+    }
+}
+{def public default-transition-effect = {CrossFadeTransitionEffect}}
+
+{doc-next
+    {purpose
+        Graphical container that provides animated transitions between screens.
+    }
+    {details
+        {ctext TransitionFrame} is a graphical container that can hold multiple child
+        objects.
+        At any given time, one of those objects is displayed and the others are hidden
+        (although all child objects, hidden or not, affect the layout of the
+        {ctext TransitionFrame}).
+        New child objects can be added using the
+        {docref-abbr TransitionFrame.add} method,
+        while child objects can be removed using the
+        {docref-abbr TransitionFrame.remove-screen} or
+        {docref-abbr TransitionFrame.clear} methods.
+        The currently visible child object is controlled by calling
+        {docref-abbr TransitionFrame.set-active-screen}.
+        The transition effect that occurs when the visible child object changes
+        is controlled by the {docref-abbr TransitionFrame.transition-effect} option.
+    }
+}
+{define-class public TransitionFrame {inherits BaseFrame, FontGraphicMixin}
+  
+  || A TransitionFrame object is a BaseFrame that contains an OverlayBox.
+  || A pointer to this OverlayBox is stored in self.obox.
+  || The OverlayBox, in turn, acts as a graphical ancestor for all of the screens
+  || that have been added to the TransitionFrame.  Each screen has an index,
+  || and the graphical object for the screen itself is found in self.screens[index].
+  || Each screen is contained within a "screen holder" Frame, which is found in
+  || self.screen-holders[index].  The screen holders, in turn, are children of
+  || the OverlayBox.  The OverlayBox also has two child objects that are on top
+  || of all the screens in the OverlayBox's stacking order.  The first of these
+  || objects is self.out-effect-screen, and the second, which is at the very top
+  || of the stacking order, is self.in-effect-screen.  Each of these is a Frame
+  || that can hold a Graphic that draws an animated effect.
+  ||
+  || out-effect-screen is used to hold an animated effect that displays the
+  || "before" screen in an animated transition.  For example, this Frame can
+  || hold a version of the "before" screen that is fading out, shrinking in size,
+  || or sliding out of view.  in-effect-screen is used to hold an animated effect
+  || that displays the "after" screen in an animated transition.  in-effect-screen
+  || is not always used.  It is only needed when the "after" screen is sliding in
+  || in some way.  It is not needed if the "after" screen is just being revealed
+  || in place as a result of the out-effect-screen animation, because the "after"
+  || contents are already marked as visible in the OverlayBox while the animation
+  || is going on.
+  ||
+  || When no animation is active, the visible? and enabled? options are set to false
+  || on all screens except the one that is currently shown.  When a transition to a
+  || new screen begins, the current appearance of the TransitionFrame is captured
+  || in a Pixmap that serves as the starting state of the out-effect-screen, and
+  || then the currently shown screen is made invisible and the new screen to be shown
+  || is made visible.  Because the "before" appearance of the TransitionFrame has
+  || already been loaded into the out-effect-screen, however, the user does not notice
+  || a change immediately.  As the animation in the out-effect-screen progresses,
+  || the new screen will be revealed, and at the end of the animation, the
+  || out-effect-screen will be disabled so the TransitionFrame returns to its
+  || quiescent state.
+  ||
+  || If, as discussed above, the arrival of the new screen is not just a matter of
+  || being revealed, but requires some animation of the new screen contents as well,
+  || then after the visible? and enabled? options are unset on the new screen
+  || (allowing it to be displayed), the appearance of the new screen, without the
+  || out-effect-screen overlay, will be captured into another Pixmap and an
+  || animation based on that Pixmap will be installed in the in-effect-screen.
+  || At the end of the transition, the in-effect-screen is disabled and finally
+  || the actual new screen contents will show through.
+  
+  field private constant obox:OverlayBox = {OverlayBox horigin = "left", vorigin = "top"}
+  field private constant screens:{Array-of Graphic} = {new {Array-of Graphic}}
+  field private constant screen-holders:{Array-of Frame} = {new {Array-of Frame}}
+  field private constant out-effect-screen:Frame = {Frame horigin = "left", vorigin = "top", {Fill}}
+  field private constant in-effect-screen:Frame = {Frame horigin = "left", vorigin = "top", {Fill}}
+  
+  || The index of the currently shown screen:
+  field private current-active-index:int = -1
+  
+  {doc-next
+    {purpose
+        The transition effect that will occur when changing to a new screen.
+    }
+  }
+  {local-option public transition-effect:TransitionEffect = default-transition-effect}
+  
+  {doc-next
+    {purpose
+        This option is still experimental.
+    }
+  }
+  {local-option public frame-rate:Frequency = 500fps}
+  
+  || This field is true while the TransitionFrame is initially being constructed.
+  field private constructing?:bool = true
+  
+  {doc-next
+    {purpose
+        Create a new {docref TransitionFrame} object with the specified parameters.
+    }
+    {details
+        This method accepts three kinds of arguments:
+        {itemize
+            {item Keyword arguments that specify options to set on
+                the new {docref TransitionFrame}.
+            }
+            {item Graphical objects that should be added as child objects
+                to the new {docref TransitionFrame}.
+            }
+            {item Dynamic event handler specifications that should be added
+                to the new {docref TransitionFrame}.
+            }
+        }
+        The form of these arguments is the same as for other graphical containers
+        such as {docref VBox}.
+    }
+  }
+  {constructor public {default ...}
+    {self.obox.add self.out-effect-screen}
+    {self.obox.add self.in-effect-screen}
+    {construct-super.BaseFrame ...}
+    {self.add-internal self.obox}
+    set self.constructing? = false
+  }
+  
+  {method public {non-keyword-init-arg a:any}:void
+    {self.add a}
+  }
+  
+  {getter public {style-element}:String
+    {if self._style-element == "" then
+        {return "TransitionFrame"} ||""
+     else
+        {return self._style-element}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Return the numerical index that is associated with the specified {docref Graphic}.
+    }
+    {parameter g,
+        The {docref Graphic} whose numerical index is wanted.
+    }
+    {return-vals
+        The numerical index of {param g} in this {docref TransitionFrame}.
+        If {param g} has not been added as a screen to this {docref TransitionFrame},
+        then {ctext -1} is returned.
+    }
+  }
+  {method public {index-for-screen g:Graphic}:int
+    {return {self.screens.find g}}
+  }
+  
+  {doc-next
+    {purpose
+        The screen that is currently displayed in this {docref TransitionFrame}.
+    }
+    {details
+        If no screen is currently displayed in this {docref TransitionFrame},
+        then this getter returns {ctext null}.
+    }
+    {notes
+        If this getter is called during a transition, the value returned
+        corresponds to the screen that will be visible at the end of the transition.
+        
+        Calling this setter will cause the displayed screen to change.
+        The setter will throw an error if asked to display an object
+        that has not been added as a screen to this {docref TransitionFrame}.
+    }
+  }
+  {getter public {current-screen}:#Graphic
+    {if self.current-active-index >= 0 then
+        {return self.screens[self.current-active-index]}
+    }
+    {return null}
+  }
+  
+  {setter public {current-screen g:Graphic}:void
+    set self.current-screen-index = {self.index-for-screen g}
+  }
+  
+  {doc-next
+    {purpose
+        The index of the screen that is currently displayed in this {docref TransitionFrame}.
+    }
+    {details
+        If no screen is currently displayed in this {docref TransitionFrame},
+        then this getter returns {ctext -1}.
+    }
+    {notes
+        If this getter is called during a transition, the value returned
+        corresponds to the screen that will be visible at the end of the transition.
+        
+        Calling this setter will cause the displayed screen to change.
+        The setter will throw an error if given an index value that is negative
+        or larger than the number of screens that have been added to this
+        {docref TransitionFrame}.
+    }
+  }
+  {getter public {current-screen-index}:int
+    {return self.current-active-index}
+  }
+  
+  {setter public {current-screen-index index:int}:void
+    {if not {self.show-screen-at-index index} then
+        {error "Invalid screen index"}
+    }
+  }
+  
+  {method public {add g:any, ...}:#Visual
+    def gg = g asa Graphic
+    def f = {Dialog gg, horigin = "left", vorigin = "top"}
+    {self.obox.add f, before = self.out-effect-screen}
+    {self.screens.append gg}
+    {self.screen-holders.append f}
+    {self.set-active-screen gg}
+    {return gg}
+  }
+  
+  {doc-next
+    {purpose
+        Remove a screen from this {docref TransitionFrame}.
+    }
+    {parameter g,
+        The screen to remove.
+    }
+    {return-vals
+        True if the removal was successful; otherwise false.
+        The only reason for a false return would be if {param g}
+        was not currently one of the screens in this {docref TransitionFrame}.
+    }
+    {notes
+        If {param g} is the currently shown screen, the {docref TransitionFrame}
+        will switch to displaying another screen as a side effect of removing {param g}.
+        If you want to control which screen will be seen after {param g} is removed,
+        switch to that screen first and then call the
+        {docref-abbr TransitionFrame.remove-screen} method.
+        
+        If {param g} is the only screen in this {docref TransitionFrame},
+        the {docref TransitionFrame} will become blank as a result of calling
+        this method.  The transition to the blank state will not be animated.
+    }
+  }
+  {method public {remove-screen g:Graphic}:bool
+    {return {self.remove-screen-at-index {self.index-for-screen g}}}
+  }
+  
+  {doc-next
+    {purpose
+        Remove a screen from this {docref TransitionFrame}.
+    }
+    {parameter index,
+        The index of the screen to remove.
+    }
+    {return-vals
+        True if the removal was successful; otherwise false.
+        The only reason for a false return would be if {param index}
+        is outside the current range of indices for this {docref TransitionFrame}.
+    }
+    {notes
+        If the screen to be removed is the currently shown screen, the {docref TransitionFrame}
+        will switch to displaying another screen as a side effect of the removal operation.
+        If you want to control which screen will be seen after the removal,
+        switch to that screen first and then call this method.
+        
+        If the removed screen is the only screen in this {docref TransitionFrame},
+        the {docref TransitionFrame} will become blank as a result of calling
+        this method.  The transition to the blank state will not be animated.
+    }
+  }
+  {method public {remove-screen-at-index index:int}:bool
+    {if index >= 0 and index < self.screens.size then
+        {if index == self.current-active-index then
+            {if index + 1 < self.screens.size then
+                {self.show-screen-at-index index + 1}
+             elseif index > 0 then
+                {self.show-screen-at-index index - 1}
+             else
+                {if-non-null cleanup = self.clean-up-transition then
+                    {cleanup}
+                }
+                set self.current-active-index = -1
+            }
+        }
+        def g = self.screens[index]
+        def holder = self.screen-holders[index]
+        {g.detach}
+        {holder.detach}
+        {self.screens.remove index}
+        {self.screen-holders.remove index}
+        {if self.current-active-index >= index then
+            {assert self.current-active-index != index}
+            {dec self.current-active-index}
+        }
+        {return true}
+     else
+        {return false}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Remove all screens from this {docref TransitionFrame}.
+    }
+    {notes
+        The {docref TransitionFrame} will become blank as a result of calling
+        this method.  The transition to the blank state will not be animated.
+    }
+  }
+  {method public {clear}:void
+    {if-non-null cleanup = self.clean-up-transition then
+        {cleanup}
+    }
+    set self.current-active-index = -1
+    {for g in self.screens do {g.detach}}
+    {for h in self.screen-holders do {h.detach}}
+    {self.screens.clear}
+    {self.screen-holders.clear}
+  }
+  
+  {doc-next
+    {purpose
+        Render a graphic into an offscreen {docref Drawable} and {docref Pixmap}.
+    }
+    {parameter g,
+        The graphic to render.
+        This should either be the {docref TransitionFrame} itself,
+        or one of the {docref Frame}s that is in this {docref TransitionFrame}'s
+        {docref-abbr TransitionFrame.screen-holders} array.
+    }
+    {return-vals
+        A {docref Pixmap} and a {docref Drawable} that contain the result of
+        rendering {param g}.
+        The {docref Drawable} is created first, with a size in pixels that
+        equals the current size of this {docref TransitionFrame},
+        and then the {docref Pixmap} is created from that.
+        When these objects are no longer needed,
+        the {docref Drawable} should be explicitly destroyed
+        by calling {docref Drawable.destroy}.
+    }
+  }
+  {method private {make-pixmap-from g:GetBoundsBox}:(Pixmap, Drawable)
+    def self-bounds = {self.get-bounds}
+    def dc = {self.get-display-context}
+    def (r2d, drawable) =
+        {Renderer2d.create-offscreen
+            self-bounds.width,
+            self-bounds.height,
+            resolution = 1.0 / dc.pixel-size
+        }
+    def bg = {g.background.to-FillPattern}
+    {r2d.render-rectangle 0m, 0m, self-bounds.width, self-bounds.height, fill-pattern = bg}
+    
+    def bounds = {g.get-bounds}
+    def (xr, yr) = {g.get-origin-in-root}
+    def pixel-size = dc.pixel-size
+    def (xp, xo) = {round xr, pixel-size}
+    def (yp, yo) = {round yr, pixel-size}
+    {with-render-properties
+        translation = {Distance2d bounds.lextent + xo, bounds.ascent + yo}
+     on r2d do
+        {g.draw r2d}
+    }
+    
+    def pmap = {drawable.to-Pixmap}
+    || Patch for the bug that the default black color has alpha == 0!! 
+    {for-pixel p:Pixel in pmap do
+        set p = {Pixel.from-uint8 p.red-as-uint8, p.green-as-uint8, p.blue-as-uint8, alpha = 255}
+    }
+    {return pmap, drawable}
+  }
+  
+  || If this field is not null, then it holds a procedure that should be
+  || called to clean up the state of a transition that is currently in progress,
+  || including destroying the Drawables that were created for the transition.
+  field private clean-up-transition:#{proc-type {early?:bool = false}:void} = null
+  
+  {doc-next
+    {purpose
+        Show a specified screen in this {docref TransitionFrame}.        
+    }
+    {parameter g,
+        The screen to show, specified either as a {docref Graphic}
+        or as the screen's numeric index.
+    }
+    {details
+        The operation of this method is like that of
+        {docref-abbr TransitionFrame.show-screen} or
+        {docref-abbr TransitionFrame.show-screen-at-index},
+        depending on whether a {docref Graphic} or a numeric index is specified
+        for {param g}.
+        If the index is out of bounds or the {docref Graphic} is not one
+        of the screens in this {docref TransitionFrame},
+        an error will be thrown.
+    }
+  }
+  {method public {set-active-screen g:any}:void
+    let index:int
+    {type-switch g
+     case i:int do
+        set index = i
+     case gg:Graphic do
+        set index = {self.screens.find gg}
+     else
+        {error "Bad argument to TransitionFrame.set-active-screen"}
+    }
+    {if not {self.show-screen-at-index index} then
+        {error "Bad argument to TransitionFrame.set-active-screen"}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Show a specified screen in this {docref TransitionFrame}.
+    }
+    {parameter g,
+        The screen to show, which should already have been added to the
+        {docref TransitionFrame}.
+    }
+    {return-vals
+        True if {param g} could be shown; otherwise false.
+        The only reason for a false return would be if {param g}
+        was not currently one of the screens in this {docref TransitionFrame}.
+    }
+    {notes
+        If the specified screen is the screen currently being shown,
+        no transition effect will be displayed.
+    }
+  }
+  {method public {show-screen g:Graphic}:bool
+    {return {self.show-screen-at-index {self.index-for-screen g}}}
+  }
+  
+  || Temporary tracing tool to investigate timing behavior.
+  field public constant time-trace:{Array-of Time} = {new {Array-of Time}}  || *temp* RHH
+  field public constant end-time-trace:{Array-of Time} = {new {Array-of Time}}  || *temp* RHH
+  field public constant next-time-trace:{Array-of Time} = {new {Array-of Time}}  || *temp* RHH
+  
+  {doc-next
+    {purpose
+        Show a screen in this {docref TransitionFrame}, specified using an index.
+    }
+    {parameter index,
+        The index of the screen to show.
+    }
+    {return-vals
+        True if the screen could be shown; otherwise false.
+        The only reason for a false return would be if {param index}
+        is outside the current range of indices for this {docref TransitionFrame}.
+    }
+    {notes
+        If the specified screen is the screen currently being shown,
+        no transition effect will be displayed.
+    }
+  }
+  {method public {show-screen-at-index index:int}:bool
+    {if index < 0 or index >= self.screens.size then
+        {return false}
+    }
+    {if index == self.current-active-index then
+        {return true}
+    }
+    def active-index = self.current-active-index
+    
+    {if self.constructing? then
+        || If we're still adding screens as part of the initial construction
+        || of this object, skip the animations.
+        {self.update-screen-visibility index}
+        {return true}
+    }
+    
+    {if-non-null cleanup = self.clean-up-transition then
+        {cleanup early? = true}
+    }
+    
+    {self.time-trace.clear}   || *temp* RHH
+    {self.end-time-trace.clear}   || *temp* RHH
+    {self.next-time-trace.clear}   || *temp* RHH
+    def (pmap, drawable) = {self.make-pixmap-from self}
+    def effect = self.transition-effect
+    {effect.begin-transition}
+    def out-fader = {effect.make-out-transition-overlay pmap}
+    {self.out-effect-screen.add out-fader, replace? = true}
+    set out-fader.completion = 0.0
+    {unset self.out-effect-screen.visible?}
+    
+    {self.update-screen-visibility index}
+    
+    def new-screen = self.screen-holders[index]
+    let new-screen-captured?:bool = false
+    let new-screen-pmap:Pixmap = {uninitialized-value-for-type Pixmap}
+    let new-screen-drawable:Drawable = {uninitialized-value-for-type Drawable}
+    let in-fader:TransitionOverlay = {uninitialized-value-for-type TransitionOverlay}
+    def effect-uses-in-overlay? = effect.uses-in-transition-overlay?
+    def effect-needs-new-screen? = effect-uses-in-overlay? or out-fader.uses-in-pixmap?
+    
+    def animation-start-time = {DateTime}
+    let last-update-time:Time = -1s
+    def refresh-interval = 1s / 59.5
+    def duration = effect.duration
+    def pacing = effect.pacing
+    let animation-timer:#Timer = null
+    
+    set self.clean-up-transition =
+        {proc {early?:bool = false}:void
+            set self.clean-up-transition = null
+            set animation-timer.enabled? = false
+            set self.out-effect-screen.visible? = false
+            {if early? then
+                {self.out-effect-screen.add {Fill}, replace? = true}
+                {drawable.destroy}
+             else
+                {after 0s do
+                    {self.out-effect-screen.add {Fill}, replace? = true}
+                    {drawable.destroy}
+                }
+            }
+            {if new-screen-captured? then
+                set self.in-effect-screen.visible? = false
+                {self.in-effect-screen.add {Fill}, replace? = true}
+                {new-screen-drawable.destroy}
+            }
+            {effect.end-transition}
+        }
+    
+    set animation-timer =
+        {Timer
+            interval = 1ms,
+            {on TimerEvent do
+                {if-non-null cleanup = self.clean-up-transition then
+                    {if effect-needs-new-screen? and not new-screen-captured? then
+                        set (new-screen-pmap, new-screen-drawable) =
+                            {self.make-pixmap-from new-screen}
+                        set new-screen-captured? = true
+                        {if effect-uses-in-overlay? then
+                            set in-fader = {effect.make-in-transition-overlay new-screen-pmap}
+                            {self.in-effect-screen.add in-fader, replace? = true}
+                            set in-fader.completion = 0.0
+                            {unset self.in-effect-screen.visible?}
+                         else
+                            {assert out-fader.uses-in-pixmap?}
+                            {out-fader.set-in-pixmap new-screen-pmap}
+                        }
+                    }
+                    def etime = {animation-start-time.elapsed}
+                    {if self.next-time-trace.size < self.time-trace.size then {self.next-time-trace.append etime}}  || *temp* RHH
+                    {if {floor etime, refresh-interval} > {floor last-update-time, refresh-interval} then
+                        set last-update-time = etime
+                        {self.time-trace.append etime}  || *temp* RHH
+                        {if etime < duration then
+                            let completion:double = {min 1.0, etime / duration}
+                            {if-non-null pacing then
+                                set completion = {pacing completion}
+                            }
+                            set out-fader.completion = completion
+                            {if effect-uses-in-overlay? then
+                                set in-fader.completion = completion
+                            }
+                         else
+                            {cleanup}
+                        }
+                        {self.end-time-trace.append {animation-start-time.elapsed}}  || *temp* RHH
+                    }
+                }
+            }
+        }
+    
+    {out-fader.add-event-handler
+        {on DetachEvent do
+            {if-non-null cleanup = self.clean-up-transition then
+                {cleanup early? = true}
+            }
+        }
+    }
+    
+    set self.current-active-index = index
+    {return true}
+  }
+  
+  || Configures the TransitionFrame so that the screen specified by index
+  || is the visible screen.  This method does not touch any of the transition
+  || effect screens.
+  {method private {update-screen-visibility index:int}:void
+    def active-index = self.current-active-index
+    def new-screen = self.screen-holders[index]
+    {unset new-screen.visible?}
+    {unset new-screen.enabled?}
+    {if active-index >= 0 then
+        set self.screen-holders[active-index].visible? = false
+        set self.screen-holders[active-index].enabled? = false
+    }
+  }
+}

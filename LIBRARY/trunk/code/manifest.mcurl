@@ -1,6 +1,14 @@
 {curl 7.0 manifest}
 {curl-file-attributes character-encoding = "windows-latin-1"}
 {manifest COM.CURL.EXT}
+{component file sample-transition-frame.curl,
+    location = "docs/samples/sample-transition-frame.curl"
+}
+
+
+{component package COM.CURL.EXT.TRANSITION-LIBRARY,
+    location = "transition-library/load.scurl"
+}
 
 {component file start.curl,
     location = "start.curl"
