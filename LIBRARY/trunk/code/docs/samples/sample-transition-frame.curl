@@ -380,22 +380,6 @@
             {RadioButton
                 label = "Implode",
                 radio-value = ImplodeTransitionEffect
-            }
-        }
-    }
-    {trbhbox.add
-        {VBox
-            {RadioButton
-                label = "3D Spin",
-                radio-value = Spin3dTransitionEffect
-            },
-            {RadioButton
-                label = "Spin Around",
-                radio-value = Spin180TransitionEffect
-            },
-            {RadioButton
-                label = "Page Turn",
-                radio-value = StiffPageTurnTransitionEffect
             },
             {RadioButton
                 label = "Squeeze",
@@ -415,6 +399,26 @@
                             }
                         }
                     }
+            }
+        }
+    }
+    {trbhbox.add
+        {VBox
+            {RadioButton
+                label = "3D Spin",
+                radio-value = Spin3dTransitionEffect
+            },
+            {RadioButton
+                label = "Spin Around",
+                radio-value = Spin180TransitionEffect
+            },
+            {RadioButton
+                label = "Page Turn",
+                radio-value = StiffPageTurnTransitionEffect
+            },
+            {RadioButton
+                label = "3D Page Turn",
+                radio-value = PageTurnTransitionEffect
             }
         }
     }

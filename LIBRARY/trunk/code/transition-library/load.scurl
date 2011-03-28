@@ -2002,6 +2002,7 @@
     def scene-graphic =
         {SceneGraphic
             background = "gray",
+            camera-motion-mode = "none",
             scene
         }
     {self.add-internal scene-graphic}
@@ -2440,6 +2441,1155 @@
   
   {method public {make-out-transition-overlay out-pmap:Pixmap}:TransitionOverlay
     {return {StiffPageTurnPixmap out-pmap}}
+  }
+}
+
+{doc-next
+    {purpose
+        Calculate the distance from a point to a line in (u, v) texture space.
+    }
+    {parameter point,
+        The coordinates of the point.
+    }
+    {parameter (from, to),
+        The coordinates of a pair of points that determine the line.
+    }
+    {return-vals
+        The distance from the point to the line.
+        This value is positive if the point lies to the left of the line,
+        viewed as going from {param from} to {param to}.
+        This value is negative if the point lies to the right of the line.
+    }
+}
+{define-proc public {texture-distance-from-line
+                        point:FloatFraction2d,
+                        from:FloatFraction2d,
+                        to:FloatFraction2d
+                    }:float
+    def line-vec = to - from
+    def point-vec = point - from
+    {return {cross-product point-vec, line-vec} / {sqrt {dot-product line-vec, line-vec}}}
+}
+
+{doc-next
+    {purpose
+        Determine whether a point lies to the right of a line in (u, v) space.
+    }
+    {parameter point,
+        The coordinates of the point.
+    }
+    {parameter (from, to),
+        The coordinates of a pair of points that determine the line.
+    }
+    {return-vals
+        True if the point lies to the right of the line,
+        viewed as going from {param from} to {param to};
+        false if the point lies to the right of the line.
+    }
+}
+{define-proc public {texture-point-right-of-line?
+                        point:FloatFraction2d,
+                        from:FloatFraction2d,
+                        to:FloatFraction2d
+                    }:bool
+    def line-vec = to - from
+    def point-vec = point - from
+    {return {cross-product point-vec, line-vec} < 0}
+}
+
+{doc-next
+    {purpose
+        An auxiliary procedure for {docref QuadSpec.xyz-to-uv} that
+        expresses a vector as a linear combination of two given basis vectors.
+    }
+    {parameter vertex,
+        The origin of the three vectors considered in this method.
+    }
+    {parameter (p1, p2),
+        The endpoints of the two basis vectors.
+        The vectors themselves are defined as
+        {no-break {ctext p1 - vertex}} and {no-break {ctext p2 - vertex}}.
+    }
+    {parameter p,
+        The endpoint of the vector that is to be expressed as a linear
+        combination of the two basis vectors.
+        The vector itself is defined as {no-break {ctext p - vertex}}.
+    }
+    {return-vals
+        A pair of scalar coefficients {param c1} and {param c2}
+        such that
+        {no-break {ctext p - vertex == c1 * (p1 - vertex) + c2 * (p2 - vertex)}}.
+    }
+}
+{define-proc package {xyz-weights
+                         vertex:FloatDistance3d, p1:FloatDistance3d, p2:FloatDistance3d,
+                         p:FloatDistance3d
+                     }:(c1:float, c2:float)
+    def d1 = p1 - vertex
+    def d2 = p2 - vertex
+    def d = p - vertex
+    def det-vec = {cross-product d1, d2}
+    def detsq = {dot-product det-vec, det-vec}
+    def c1-vec = {cross-product d, d2}
+    def c2-vec = {cross-product d1, d}
+    {return
+        ({dot-product c1-vec, det-vec} / detsq) asa float,
+        ({dot-product c2-vec, det-vec} / detsq) asa float
+    }
+}
+
+{doc-next
+    {purpose
+        A representation of a texture-mapped quad that may need to be
+        clipped along one or more lines in (u, v) texture space.
+    }
+}
+{define-value-class public final QuadSpec
+  
+  {doc-next
+    {purpose
+        An array of texture coordinates for a {docref PolygonSet} of type {ctext quads}.
+    }
+  }
+  field public constant texture-coords:{Array-of FloatFraction2d}
+  
+  {doc-next
+    {purpose
+        An array of vertex coordinates for a {docref PolygonSet} of type {ctext quads}.
+    }
+  }
+  field public constant vertex-list:{Array-of FloatDistance3d}
+  
+  {doc-next
+    {purpose
+        The index in {docref-abbr QuadSpec.texture-coords}
+        and {docref-abbr QuadSpec.vertex-list} where
+        the information for the quad that is described by
+        this {docref QuadSpec} begins.
+    }
+  }
+  field public constant index:int
+  
+  {doc-next
+    {purpose
+        Construct a {docref QuadSpec} object.
+    }
+    {parameter texture-coords,
+        An array of texture coordinates for a {docref PolygonSet} of type {ctext quads}.
+    }
+    {parameter vertex-list,
+        A corresponding array of vertex coordinates
+        for a {docref PolygonSet} of type {ctext quads}.
+    }
+    {parameter index,
+        The index in {param texture-coords} and {param vertex-list} where
+        the information for the quad that is to be described by
+        this {docref QuadSpec} begins.
+    }
+  }
+  {constructor public {default
+                          texture-coords:{Array-of FloatFraction2d},
+                          vertex-list:{Array-of FloatDistance3d},
+                          index:int
+                      }
+    set self.texture-coords = texture-coords
+    set self.vertex-list = vertex-list
+    set self.index = index
+  }
+  
+  {doc-next
+    {purpose
+        Give the texture coordinates in this quad that correspond to
+        the given (x, y, z) point.
+    }
+    {parameter xyz,
+        The (x, y, z) point of interest.
+    }
+    {return-vals
+        The (u, v) texture coordinates that would be mapped to the
+        point {param xyz} in the quad specified by this {docref QuadSpec}.
+    }
+  }
+  {method public {xyz-to-uv xyz:FloatDistance3d}:FloatFraction2d
+    || This isn't completely right because it doesn't guard against the possibility
+    || that two of the chosen vertices are at the same point or extremely close.
+    def xyz0 = self.vertex-list[self.index]
+    def xyz1 = self.vertex-list[self.index + 1]
+    def xyz2 = self.vertex-list[self.index + 2]
+    {assert xyz0 != xyz1}
+    {assert xyz1 != xyz2}
+    {assert xyz2 != xyz0}
+    def (c1, c2) = {xyz-weights xyz0, xyz1, xyz2, xyz}
+    def uv0 = self.texture-coords[self.index]
+    def uv1 = self.texture-coords[self.index + 1]
+    def uv2 = self.texture-coords[self.index + 2]
+    {return
+        uv0 + c1 * (uv1 - uv0) + c2 * (uv2 - uv0)
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Auxiliary method for {docref-abbr QuadSpec.intersect-two-sides} to
+        calculate the texture and vertex coordinates of the point
+        where an edge should be clipped.
+    }
+    {parameter (i0, i1),
+        The indices in {docref-abbr QuadSpec.texture-coords}
+        and {docref-abbr QuadSpec.vertex-list} of the two vertices
+        that define the edge to be clipped.
+        It is expected that one of these vertices is on each
+        side of the clipping line.
+    }
+    {parameter (from, to),
+        The two points in texture-coordinate space that determine the
+        clipping line.
+        The area that lies to the right as you move from {param from} to
+        {param to} is clipped out.
+    }
+    {return-vals
+        The first return value is the texture coordinate value
+        where the edge crosses the clipping line.
+        The second return value is the (x, y, z) coordinate value
+        where the edge crosses the clipping line.
+    }
+  }
+  {method private {intersect-edge
+                      i0:int, i1:int,
+                      from:FloatFraction2d,
+                      to:FloatFraction2d
+                  }:(uv01:FloatFraction2d, xyz01:FloatDistance3d)
+    def uv0 = self.texture-coords[i0]
+    def uv1 = self.texture-coords[i1]
+    def d0 = uv0 - from
+    def d1 = uv1 - from
+    def dto = to - from
+    def cp0 = {cross-product d0, dto}
+    def cp1 = {cross-product d1, dto}
+    def t = -cp0 / (cp1 - cp0)
+    def uv-cut = uv0 + t * (uv1 - uv0)
+    def xyz0 = self.vertex-list[i0]
+    def xyz1 = self.vertex-list[i1]
+    def xyz-cut = xyz0 + t * (xyz1 - xyz0)
+    {return uv-cut, xyz-cut}
+  }
+  
+  {doc-next
+    {purpose
+        Auxiliary method for {docref-abbr QuadSpec.clip-at-texture-line} to
+        generate a quad with two vertices clipped out.
+    }
+    {parameter (i1, i2, i3, i0),
+        The indices in {docref-abbr QuadSpec.texture-coords}
+        and {docref-abbr QuadSpec.vertex-list} of the vertices of the
+        original quad.
+        The vertices corresponding to {param i2} and {param i3}
+        should be kept in the final quad,
+        while the vertices corresponding to {param i0} and {param i1}
+        should be clipped out.
+        The values {param i0}, {param i1}, {param i2}, and {param i3}
+        give the indices of vertices of the original quad in counterclockwise order.
+    }
+    {parameter (from, to),
+        The two points in texture-coordinate space that determine the
+        clipping line.
+        The area that lies to the right as you move from {param from} to
+        {param to} is clipped out.
+    }
+    {details
+        This method replaces the texture and vertex
+        coordinate values of the original quad, in place,
+        with new coordinate values that represent the quad that
+        results from the clipping operation.
+    }
+  }
+  {method private {intersect-two-sides
+                      i1:int, i2:int, i3:int, i0:int,
+                      from:FloatFraction2d,
+                      to:FloatFraction2d
+                  }:void
+    || i2 and i3 are on the right side of the line, i0 and i1 are on the wrong side.
+    def (uv12, xyz12) = {self.intersect-edge i1, i2, from, to}
+    def (uv03, xyz03) = {self.intersect-edge i0, i3, from, to}
+    def uv2 = self.texture-coords[i2]
+    def xyz2 = self.vertex-list[i2]
+    def uv3 = self.texture-coords[i3]
+    def xyz3 = self.vertex-list[i3]
+    set self.texture-coords[self.index] = uv12
+    set self.texture-coords[self.index + 1] = uv2
+    set self.texture-coords[self.index + 2] = uv3
+    set self.texture-coords[self.index + 3] = uv03
+    set self.vertex-list[self.index] = xyz12
+    set self.vertex-list[self.index + 1] = xyz2
+    set self.vertex-list[self.index + 2] = xyz3
+    set self.vertex-list[self.index + 3] = xyz03
+  }
+  
+  {doc-next
+    {purpose
+        Auxiliary method for {docref-abbr QuadSpec.clip-at-texture-line} to
+        handle the case where at least three vertices are clipped out.
+    }
+    {parameter (i0, i1, i2),
+        The indices in {docref-abbr QuadSpec.texture-coords}
+        and {docref-abbr QuadSpec.vertex-list} of the vertices that
+        definitely need to be clipped out.
+    }
+    {parameter i3,
+        The indices of a vertex that may or may not need to be clipped out.
+        The values {param i0}, {param i1}, {param i2}, and {param i3}
+        give the indices of vertices of the quad in counterclockwise order.
+    }
+    {parameter out3?,
+        A boolean indicating whether the vertex at
+        {param i3} will need to be clipped out.
+    }
+    {parameter (from, to),
+        The two points in texture-coordinate space that determine the
+        clipping line.
+        The area that lies to the right as you move from {param from} to
+        {param to} is clipped out.
+    }
+    {return-vals
+        The index of the first slot in the texture and vertex coordinate arrays
+        that does not contain information pertaining to this quad
+        at the end of the clipping operation.
+    }
+    {details
+        This method updates the texture and vertex coordinate arrays
+        to contain zero or more quad specifications that together
+        describe the result of the clipping operation,
+        as described for the {docref-abbr QuadSpec.clip-at-texture-line}
+        method.
+    }
+  }
+  {method private {clip1
+                      i3:int, out3?:bool,
+                      i0:int, i1:int, i2:int,
+                      from:FloatFraction2d,
+                      to:FloatFraction2d
+                  }:int
+    {if out3? then
+        || All four vertices are on the wrong side of the line, so prune the
+        || quad out completely.
+        {self.texture-coords.remove self.index, length = 4}
+        {self.vertex-list.remove self.index, length = 4}
+        {return self.index}
+    }
+    {self.intersect-two-sides i2, i3, i3, i0, from, to}
+    {return self.index + 4}
+  }
+  
+  {doc-next
+    {purpose
+        Auxiliary method for {docref-abbr QuadSpec.clip-at-texture-line} to
+        handle the case where at least two vertices are clipped out.
+        Note that these two vertices must always be adjacent to each other.
+    }
+    {parameter (i0, i1),
+        The indices in {docref-abbr QuadSpec.texture-coords}
+        and {docref-abbr QuadSpec.vertex-list} of the vertices that
+        definitely need to be clipped out.
+    }
+    {parameter (i2, i3),
+        The indices of vertices that may or may not need to be clipped out.
+        The values {param i0}, {param i1}, {param i2}, and {param i3}
+        give the indices of vertices of the quad in counterclockwise order.
+    }
+    {parameter (out2?, out3?),
+        Booleans indicating whether the vertices at
+        {param i2}, and {param i3} will need to be clipped out.
+    }
+    {parameter (from, to),
+        The two points in texture-coordinate space that determine the
+        clipping line.
+        The area that lies to the right as you move from {param from} to
+        {param to} is clipped out.
+    }
+    {return-vals
+        The index of the first slot in the texture and vertex coordinate arrays
+        that does not contain information pertaining to this quad
+        at the end of the clipping operation.
+    }
+    {details
+        This method updates the texture and vertex coordinate arrays
+        to contain zero or more quad specifications that together
+        describe the result of the clipping operation,
+        as described for the {docref-abbr QuadSpec.clip-at-texture-line}
+        method.
+    }
+  }
+  {method private {clip2
+                      i2:int, out2?:bool, i3:int, out3?:bool,
+                      i0:int, i1:int,
+                      from:FloatFraction2d,
+                      to:FloatFraction2d
+                  }:int
+    {if out2? then
+        {return {self.clip1 i3, out3?, i0, i1, i2, from, to}}
+    }
+    {if out3? then
+        {return {self.clip1 i2, out2?, i3, i0, i1, from, to}}
+    }
+    || Both i2 and i3 are on the right side of the line, so compute new quad.
+    {self.intersect-two-sides i1, i2, i3, i0, from, to}
+    {return self.index + 4}
+  }
+  
+  {doc-next
+    {purpose
+        Auxiliary method for {docref-abbr QuadSpec.clip-at-texture-line} to
+        handle the case where at least one vertex is clipped out.
+    }
+    {parameter i0,
+        The index in {docref-abbr QuadSpec.texture-coords}
+        and {docref-abbr QuadSpec.vertex-list} of the vertex that
+        definitely needs to be clipped out.
+    }
+    {parameter (i1, i2, i3),
+        The indices of vertices that may or may not need to be clipped out.
+        The values {param i0}, {param i1}, {param i2}, and {param i3}
+        give the indices of vertices of the quad in counterclockwise order.
+    }
+    {parameter (out1?, out2?, out3?),
+        Booleans indicating whether the vertices at
+        {param i1}, {param i2}, and {param i3} will need to be clipped out.
+    }
+    {parameter (from, to),
+        The two points in texture-coordinate space that determine the
+        clipping line.
+        The area that lies to the right as you move from {param from} to
+        {param to} is clipped out.
+    }
+    {return-vals
+        The index of the first slot in the texture and vertex coordinate arrays
+        that does not contain information pertaining to this quad
+        at the end of the clipping operation.
+    }
+    {details
+        This method updates the texture and vertex coordinate arrays
+        to contain zero or more quad specifications that together
+        describe the result of the clipping operation,
+        as described for the {docref-abbr QuadSpec.clip-at-texture-line}
+        method.
+    }
+  }
+  {method private {clip3
+                      i1:int, out1?:bool, i2:int, out2?:bool, i3:int, out3?:bool,
+                      i0:int,
+                      from:FloatFraction2d,
+                      to:FloatFraction2d
+                  }:int
+    {if out1? then
+        {return {self.clip2 i2, out2?, i3, out3?, i0, i1, from, to}}
+    }
+    {if out3? then
+        {return {self.clip2 i1, out1?, i2, out2?, i3, i0, from, to}}
+    }
+    {assert not out2?}
+    || If one of the vertices is very close to the line, simplify things by treating it as out.
+    {if {texture-distance-from-line self.texture-coords[i1], from, to} < 1e-4 then
+        {return {self.clip2 i2, out2?, i3, out3?, i0, i1, from, to}}
+    }
+    {if {texture-distance-from-line self.texture-coords[i3], from, to} < 1e-4 then
+        {return {self.clip2 i1, out1?, i2, out2?, i3, i0, from, to}}
+    }
+    def uv1 = self.texture-coords[i1]
+    def xyz1 = self.vertex-list[i1]
+    def uv2 = self.texture-coords[i2]
+    def xyz2 = self.vertex-list[i2]
+    def uv3 = self.texture-coords[i3]
+    def xyz3 = self.vertex-list[i3]
+    {self.intersect-two-sides i0, i1, i3, i0, from, to}
+    {self.texture-coords.insert uv1, self.index + 4}
+    {self.texture-coords.insert uv2, self.index + 5}
+    {self.texture-coords.insert uv2, self.index + 6}
+    {self.texture-coords.insert uv3, self.index + 7}
+    {self.vertex-list.insert xyz1, self.index + 4}
+    {self.vertex-list.insert xyz2, self.index + 5}
+    {self.vertex-list.insert xyz2, self.index + 6}
+    {self.vertex-list.insert xyz3, self.index + 7}
+    {return self.index + 8}
+  }
+  
+  {doc-next
+    {purpose
+        Clip this quad at the line determined by two texture coordinates.
+    }
+    {parameter (from, to),
+        The two points in texture-coordinate space that determine the
+        clipping line.
+        The area that lies to the right as you move from {param from} to
+        {param to} is clipped out.
+    }
+    {return-vals
+        The index of the first slot in the texture and vertex coordinate arrays
+        that does not contain information pertaining to this quad
+        at the end of the clipping operation.
+    }
+    {details
+        This method updates the texture and vertex coordinate arrays
+        to contain zero or more quad specifications that together
+        describe the result of the clipping operation.
+        If the entire quad lies to the right of the clipping line,
+        then zero quad specifications will result.
+        If the entire quad lies to the left of the clipping line,
+        then the originally existing quad specification will be left
+        untouched.
+        In other cases, the original quad specification may be modified,
+        or in some cases the result of the clipping operation is a
+        pentagon that needs to be represented using two quad specifications.
+        
+        If zero quad specifications result, then the initial quad
+        information is removed from the texture and vertex coordinate
+        arrays
+        (with the gap being closed up so those arrays become shorter)
+        and {ctext self.index} is returned as the return value.
+        If one quad specification results,
+        then the quad specification is modified in place if necessary,
+        and {no-break {ctext self.index + 4}} is returned.
+        If two quad specifications result,
+        then the added quad specification is inserted into the
+        texture and vertex coordinate arrays immediately after
+        the original quad specification
+        (which possibly will also be modified in place),
+        and {no-break {ctext self.index + 8}} is returned.
+    }
+    {notes
+        This method assumes that the quad is convex and the edges
+        do not cross each other.
+        
+        The vertices of each quad are given by four consecutive elements
+        of the {docref-abbr QuadSpec.texture-coords}
+        and {docref-abbr QuadSpec.vertex-list} arrays.
+        Within each group of four elements,
+        the vertices of the quad appear in counterclockwise order.
+    }
+  }
+  {method {clip-at-texture-line from:FloatFraction2d, to:FloatFraction2d}:int
+    || Clips off the area that's to the right of the line that goes from "from" to "to".
+    || The coordinate space of texture coordinates is such that (0, 0) corresponds to
+    || the upper left corner of a texture and (1, 1) corresponds to the bottom right.
+    def i0 = self.index
+    def i1 = i0 + 1
+    def i2 = i1 + 1
+    def i3 = i2 + 1
+    def out0? = {texture-point-right-of-line? self.texture-coords[i0], from, to}
+    def out1? = {texture-point-right-of-line? self.texture-coords[i1], from, to}
+    def out2? = {texture-point-right-of-line? self.texture-coords[i2], from, to}
+    def out3? = {texture-point-right-of-line? self.texture-coords[i3], from, to}
+    {if out0? then
+        {return {self.clip3 i1, out1?, i2, out2?, i3, out3?, i0, from, to}}
+     elseif out1? then
+        {return {self.clip3 i2, out2?, i3, out3?, i0, out0?, i1, from, to}}
+     elseif out2? then
+        {return {self.clip3 i3, out3?, i0, out0?, i1, out1?, i2, from, to}}
+     elseif out3? then
+        {return {self.clip3 i0, out0?, i1, out1?, i2, out2?, i3, from, to}}
+    }
+    || If we fall through directly to here, then all four corners of the quad
+    || are on the inside of the line and no changes are needed.
+    {return i0 + 4}
+  }
+}
+
+{doc-next
+    {purpose
+        Reflect a (u, v) texture coordinate about the line {no-break u = 0.5}.
+    }
+    {parameter uv,
+        The texture coordinate to be reflected.
+    }
+    {return-vals
+        The texture coordinate that results from the reflection operation.
+    }
+}
+{define-proc package {urefl uv:FloatFraction2d}:FloatFraction2d
+    {return
+        {FloatFraction2d 1f - uv.u, uv.v}
+    }
+}
+
+{define-class package PageTurn2DGeometry
+  
+  field constant page-width:Distance
+  field constant page-height:Distance
+  field constant top-y:Distance
+  field constant left-x:Distance
+  
+  field alpha:Angle
+  field d:double
+  
+  field texture-coords:{Array-of FloatFraction2d} = {new {Array-of FloatFraction2d}}
+  field vertex-list:{Array-of FloatDistance3d} = {new {Array-of FloatDistance3d}}
+  
+  {constructor {default
+                   page-height:Distance = 1m,
+                   page-width:Distance = page-height,
+                   alpha:Angle = 10deg
+               }
+    set self.page-height = page-height
+    set self.page-width = page-width
+    set self.alpha = alpha
+    set self.top-y = 0.5 * page-height
+    set self.left-x = -0.5 * page-width
+  }
+  
+  {method {get-effective-alpha}:(alpha:Angle, d:double)
+    let alpha:Angle = self.alpha
+    let d:double = self.d
+    {if d > 1.0 then
+        def d-extra = d - 1.0
+        def new-alpha = alpha - d-extra * 1rad
+        set alpha = {max 0.00001deg, new-alpha}
+        set d = 1.0
+    }
+    {return alpha, d}
+  }
+  
+  {method {point-coords i:int, top?:bool}:(uv:FloatFraction2d, xyz:FloatDistance3d)
+    def v = {if top? then 0f else 1f}
+    {if i < 0 then
+        {assert i == -1}
+        || Here we should return the coordinates for the right-hand edge
+        || of the not yet turned portion of the page.
+        def y = {if top? then self.top-y else self.top-y - self.page-height} asa FloatDistance
+        {return
+            {FloatFraction2d 1f, v},
+            {FloatDistance3d (self.left-x + self.page-width) asa FloatDistance, y, 0f(m)}
+        }
+    }
+    
+    def (alpha, d) = {self.get-effective-alpha}
+    
+    || Texture coordinates are (u, v) which fit into a unit square from 0 to 1, with v
+    || increasing downward.  But the page may not be square, so for computational purposes
+    || we will use "w" as a "texture coordinate" that equals u scaled by the aspect
+    || ratio of the page, so w = (page-width / page-height) * u.
+    
+    {if i > 0 then
+        {assert i == 1}
+        || This case computes the position of the left-hand edge of the page,
+        || which is the first part to turn.
+        def (uv-top, xyz-top) = {self.point-coords i - 1, true}
+        def (uv-bot, xyz-bot) = {self.point-coords i - 1, false}
+        def xyz-vec = xyz-top - xyz-bot
+        def plane-vec = {cross-product xyz-vec, {FloatFraction3d 0f, 0f, 1f}}
+        def plane-vec-size = {sqrt {dot-product plane-vec, plane-vec}}
+        def unit-plane-vec = ((self.page-height / plane-vec-size) asa float) * plane-vec
+        def unit-w-vec =
+            ({cos alpha} asa float) * unit-plane-vec + ({sin alpha} asa float) * xyz-vec
+        def uv-nsteps = {if top? then uv-top else uv-bot}
+        def dw = uv-nsteps.u * ((self.page-width / self.page-height) asa float)
+        def dxyz = dw * unit-w-vec
+        {return
+            {FloatFraction2d 0f, v},
+            {if top? then xyz-top else xyz-bot} + dxyz
+        }
+    }
+    
+    {assert i == 0}
+    || Here we return the coordinates of the line where the turning page is folded over.
+    def w = (self.page-width / (2.0 * self.page-height)) * d - (1.0 - v) * {tan alpha}
+    def y = {if top? then self.top-y else self.top-y - self.page-height} asa FloatDistance
+    def xyz = {FloatDistance3d (self.left-x + w * self.page-height) asa FloatDistance, y, 0f(m)}
+    def u = (w * self.page-height / self.page-width) asa float
+    
+    {return
+        {FloatFraction2d u, v},
+        xyz
+    }
+  }
+  
+  {method {line-coords i:int
+          }:(uv-top:FloatFraction2d, xyz-top:FloatDistance3d,
+             uv-bottom:FloatFraction2d, xyz-bottom:FloatDistance3d
+            )
+    def (uv-top, xyz-top) = {self.point-coords i, true}
+    def (uv-bot, xyz-bot) = {self.point-coords i, false}
+    {return uv-top, xyz-top, uv-bot, xyz-bot}
+  }
+  
+  || Auxiliary method for add-quad, below.
+  {method private {trim-quad start-index:int, from:FloatFraction2d, to:FloatFraction2d}:void
+    let i:int = start-index
+    {while i < self.texture-coords.size do
+        def qs = {QuadSpec self.texture-coords, self.vertex-list, i}
+        set i = {qs.clip-at-texture-line from, to}
+    }
+  }
+  
+  {method {add-quad
+              uv-top-right:FloatFraction2d, xyz-top-right:FloatDistance3d,
+              uv-bot-right:FloatFraction2d, xyz-bot-right:FloatDistance3d,
+              uv-top-left:FloatFraction2d, xyz-top-left:FloatDistance3d,
+              uv-bot-left:FloatFraction2d, xyz-bot-left:FloatDistance3d
+          }:void
+    def start-index = self.texture-coords.size
+    {self.texture-coords.append uv-top-left}
+    {self.texture-coords.append uv-bot-left}
+    {self.texture-coords.append uv-bot-right}
+    {self.texture-coords.append uv-top-right}
+    {self.vertex-list.append xyz-top-left}
+    {self.vertex-list.append xyz-bot-left}
+    {self.vertex-list.append xyz-bot-right}
+    {self.vertex-list.append xyz-top-right}
+    {self.trim-quad start-index, {FloatFraction2d 1f, 1f}, {FloatFraction2d 1f, 0f}}
+    {self.trim-quad start-index, {FloatFraction2d 1f, 0f}, {FloatFraction2d 0f, 0f}}
+    {self.trim-quad start-index, {FloatFraction2d 0f, 0f}, {FloatFraction2d 0f, 1f}}
+    {self.trim-quad start-index, {FloatFraction2d 0f, 1f}, {FloatFraction2d 1f, 1f}}
+  }
+  
+  {method {update-out-page-quads}:void
+    {self.texture-coords.clear}
+    {self.vertex-list.clear}
+    def (uv-topm1, xyz-topm1, uv-botm1, xyz-botm1) =
+        {self.line-coords -1}
+    def (uv-top0, xyz-top0, uv-bot0, xyz-bot0) =
+        {self.line-coords 0}
+    def (uv-top1, xyz-top1, uv-bot1, xyz-bot1) =
+        {self.line-coords 1}
+    
+    || Add the not yet turned part of the page:
+    {self.add-quad uv-topm1, xyz-topm1, uv-botm1, xyz-botm1, uv-top0, xyz-top0, uv-bot0, xyz-bot0}
+  }
+  
+  {method {update-in-page-quads}:void
+    {self.texture-coords.clear}
+    {self.vertex-list.clear}
+    def (uv-topm1, xyz-topm1, uv-botm1, xyz-botm1) =
+        {self.line-coords -1}
+    def (uv-top0, xyz-top0, uv-bot0, xyz-bot0) =
+        {self.line-coords 0}
+    def (uv-top1, xyz-top1, uv-bot1, xyz-bot1) =
+        {self.line-coords 1}
+    
+    def dz = {FloatDistance3d 0f(m), 0f(m), 0.5f(mm)}
+    
+    || Add the "turned" part of the page:
+    || The following two calculations avoid creating a "bowtie" shaped
+    || quad that crosses itself.
+    def uv-top1a =
+        {if uv-top0.u >= 0f then
+            uv-top1
+         else
+            uv-top0
+        }
+    def xyz-top1a =
+        {if uv-top0.u >= 0f then
+            xyz-top1
+         else
+            xyz-top0
+        }
+    {self.add-quad {urefl uv-top0}, xyz-top0 + dz, {urefl uv-bot0}, xyz-bot0 + dz, {urefl uv-top1a}, xyz-top1a + dz, {urefl uv-bot1}, xyz-bot1 + dz}
+    
+    || Add a page below the page that is turning:
+    def pw = {FloatDistance3d self.page-width asa FloatDistance, 0f(m), 0f(m)}
+    {self.add-quad
+        uv-topm1, xyz-topm1 - dz, uv-botm1, xyz-botm1 - dz,
+        {Float2d 0f, 0f}, xyz-topm1 - pw - dz,
+        {Float2d 0f, 1f}, xyz-botm1 - pw - dz
+    }
+  }
+}
+
+{doc-next
+    {purpose
+        A {docref PolygonSet} that can contain translucent material that will
+        be alpha-blended with objects that it covers.
+    }
+}
+{define-class public BlendPolygonSet {inherits PolygonSet}
+  {constructor public {default ...}
+    {with-compiler-directives allow-slow-spliced-arguments? = true do
+        {construct-super ...}
+    }
+  }
+  
+  {method open public {paint renderer:Renderer3d, viewport-width:Distance, viewport-height:Distance}:void
+    || The rendering of the objects in the BlendPolygonSet is done with renderer
+    || modes that permit alpha-blending.
+    {with
+        renderer.blend-enabled? = true,
+        renderer.blend-src-function = Blend.src-alpha,
+        renderer.blend-dst-function = Blend.one-minus-src-alpha
+     do
+        {super.paint renderer, viewport-width, viewport-height}
+    }
+  }
+}
+
+{doc-next
+    {purpose
+        A {docref TransitionOverlay} that implements
+        an effect that looks like a stiff page is being turned in a book,
+        revealing the new screen as the next double-page spread in the book.
+    }
+    {notes
+        This class is used by {docref PageTurnTransitionEffect}.
+    }
+}
+{define-class public PageTurnPixmap {inherits Pixmap3dTransitionOverlay}
+  
+  field in-pixmap:#Pixmap = null
+  
+  field private out-ptg:PageTurn2DGeometry
+  field private in-ptg:PageTurn2DGeometry
+  
+  field private constant shadow-band-pixmap-aspect-ratio:int = 6
+  
+  field private shadow-band-pixmap:Pixmap
+  field private turn-shadow-texture-coords:{Array-of FloatFraction2d} = {new {Array-of FloatFraction2d}}
+  field private turn-shadow-vertex-list:{Array-of FloatDistance3d} = {new {Array-of FloatDistance3d}}
+  field private turn-shadow-pset:BlendPolygonSet
+  
+  field private edge-shadow-pixmap:Pixmap
+  field private edge-shadow-texture-coords:{Array-of FloatFraction2d} = {new {Array-of FloatFraction2d}}
+  field private edge-shadow-vertex-list:{Array-of FloatDistance3d} = {new {Array-of FloatDistance3d}}
+  field private edge-shadow-pset:BlendPolygonSet
+  
+  {doc-next
+    {purpose
+        Construct an object of this type.
+    }
+    {notes
+        See {docref Pixmap3dTransitionOverlay.default} for further information.
+    }
+  }
+  {constructor public {default pixmap:Pixmap, alpha:Angle = 10deg}
+    {construct-super pixmap}
+    def aspect-ratio = pixmap.width / pixmap.height
+    
+    set self.out-ptg =
+        {PageTurn2DGeometry
+            page-width = 1m * aspect-ratio,
+            page-height = 1m,
+            alpha = alpha
+        }
+    set self.in-ptg =
+        {PageTurn2DGeometry
+            page-width = 1m * aspect-ratio,
+            page-height = 1m,
+            alpha = alpha
+        }
+    
+||++def shadow-band-pixmap-height = 600
+    def shadow-band-pixmap-height = 360
+    def shadow-band-pixmap-width = shadow-band-pixmap-height div self.shadow-band-pixmap-aspect-ratio
+    set self.shadow-band-pixmap = {Pixmap shadow-band-pixmap-width, shadow-band-pixmap-height}
+    
+    set self.turn-shadow-pset =
+        {BlendPolygonSet
+            texture-coords = self.turn-shadow-texture-coords,
+            vertices = self.turn-shadow-vertex-list,
+            primitive-type = "quads"
+        }
+    {self.set-shadow-pixmap 0.5}
+    
+    set self.edge-shadow-pixmap = {self.shadow-band-pixmap.clone}
+    set self.edge-shadow-pset =
+        {BlendPolygonSet
+            texture-coords = self.edge-shadow-texture-coords,
+            vertices = self.edge-shadow-vertex-list,
+            fill-pattern = self.edge-shadow-pixmap,
+            primitive-type = "quads"
+        }
+  }
+  
+  {method private {set-shadow-pixmap max-alpha:double}:void
+    def shadow-band-pixmap = self.shadow-band-pixmap
+    def shadow-band-pixmap-width = shadow-band-pixmap.width
+    def shadow-band-pixmap-height = shadow-band-pixmap.height
+    {for-pixel p:Pixel at x:int, y:int no-read in shadow-band-pixmap do
+        def x-side-dist = {min x, shadow-band-pixmap-width - x - 1}
+        def y-side-dist = {min y, shadow-band-pixmap-height - y - 1}
+        def xnorm = {min 1.0, 2.0 * x-side-dist / shadow-band-pixmap-width}
+        def ynorm = {min 1.0, 2.0 * y-side-dist / shadow-band-pixmap-width}
+        def dnorm = xnorm * ynorm
+        def alpha = max-alpha * dnorm * dnorm * (3 - 2 * dnorm)
+        set p = {Pixel.create 0, 0, 0, alpha = alpha}
+    }
+    set self.turn-shadow-pset.fill-pattern = shadow-band-pixmap
+  }
+  
+  {method public {set-in-pixmap pmap:Pixmap}:void
+    set self.in-pixmap = pmap
+    {if self.scene-graphic == null then
+        || Create the SceneGraphic if necessary.
+        set self.completion = 0.0
+    }
+  }
+  
+  field private out-pset:PolygonSet = {uninitialized-value-for-type PolygonSet}
+  field private in-pset:#PolygonSet = null
+  
+  {setter public {completion c:double}:void
+    {if self.scene-graphic == null then
+        def (scene, scene-graphic) = {self.make-scene}
+        set self.out-pset =
+            {PolygonSet
+                vertices = self.out-ptg.vertex-list,
+                texture-coords = self.out-ptg.texture-coords,
+                fill-pattern = {FillPattern.from-pixmap self.pixmap},
+                primitive-type = "quads"
+            }
+        {scene.add-object self.out-pset}
+    }
+    
+    {if self.in-pset == null and self.in-pixmap != null then
+        set self.in-pset =
+            {PolygonSet
+                vertices = self.in-ptg.vertex-list,
+                texture-coords = self.in-ptg.texture-coords,
+                fill-pattern = {FillPattern.from-pixmap {non-null self.in-pixmap}},
+                primitive-type = "quads"
+            }
+        {self.scene.add-object {non-null self.in-pset}}
+        {self.scene.add-object self.turn-shadow-pset}
+        {self.scene.add-object self.edge-shadow-pset}
+    }
+    
+    set self.out-ptg.d = c * (1.0 + self.out-ptg.alpha / 1radian)
+    {self.out-ptg.update-out-page-quads}
+    set self.in-ptg.d = self.out-ptg.d
+    {self.in-ptg.update-in-page-quads}
+    
+    {self.turn-shadow-texture-coords.clear}
+    {self.turn-shadow-vertex-list.clear}
+    {self.edge-shadow-texture-coords.clear}
+    {self.edge-shadow-vertex-list.clear}
+    
+    def ealpha = {self.out-ptg.get-effective-alpha}
+    {if ealpha < self.out-ptg.alpha then
+        def ratio = 1.0 - ealpha / self.out-ptg.alpha
+        def new-alpha = 0.5 * (1.0 - ratio * ratio)
+        {self.set-shadow-pixmap new-alpha}
+    }
+    
+    || Make the shadow that's on top of the turning page:
+    
+    def top-shadow-index = self.turn-shadow-texture-coords.size
+    {self.turn-shadow-texture-coords.append {FloatFraction2d 0f, 0.2f}}
+    {self.turn-shadow-texture-coords.append {FloatFraction2d 0f, 0.8f}}
+    {self.turn-shadow-texture-coords.append {FloatFraction2d 1f, 0.8f}}
+    {self.turn-shadow-texture-coords.append {FloatFraction2d 1f, 0.2f}}
+    
+    || Coordinates of the line that marks the fold in the turning page:
+    def (uv-top0, xyz-top0, uv-bot0, xyz-bot0) =
+        {self.out-ptg.line-coords 0}
+    def turn-shadow-width = self.out-ptg.page-width / 10.0
+    || dw is a delta that moves to the right by the width of the shadow pattern.
+    def dw = {FloatDistance3d turn-shadow-width asa FloatDistance, 0f(m), 0f(m)}
+    || dd makes the shadows float just a bit closer to the camera than the page.
+    def dd = {FloatDistance3d 0f(m), 0f(m), 1f(mm)}
+    {self.turn-shadow-vertex-list.append xyz-top0 + dd}
+    {self.turn-shadow-vertex-list.append xyz-bot0 + dd}
+    {self.turn-shadow-vertex-list.append xyz-bot0 + dd + dw}
+    {self.turn-shadow-vertex-list.append xyz-top0 + dd + dw}
+    
+    def top-shadow-quad = {QuadSpec self.turn-shadow-texture-coords, self.turn-shadow-vertex-list, top-shadow-index}
+    def xyz-pbot0 = xyz-bot0
+    || Coordinates of the point that marks the edge of the turning page:
+    def (uv-ignoret1, xyz-ptop1, uv-ignoreb1, xyz-pbot1) = {self.out-ptg.line-coords 1}
+    def uv-pbot0 = {top-shadow-quad.xyz-to-uv xyz-pbot0}
+    def uv-pbot1 = {top-shadow-quad.xyz-to-uv xyz-pbot1}
+    def top-shadow-end = {top-shadow-quad.clip-at-texture-line uv-pbot0, uv-pbot1}
+    {if top-shadow-end > top-shadow-index then
+        {assert top-shadow-end == top-shadow-index + 4}
+        def uv-ptop1 = {top-shadow-quad.xyz-to-uv xyz-ptop1}
+        def top-shadow-nend = {top-shadow-quad.clip-at-texture-line uv-pbot1, uv-ptop1}
+    }
+    
+    || Make the shadow that's on the page that's being revealed:
+    
+    {self.turn-shadow-texture-coords.append {FloatFraction2d 0f, 0.2f}}
+    {self.turn-shadow-texture-coords.append {FloatFraction2d 0f, 0.8f}}
+    {self.turn-shadow-texture-coords.append {FloatFraction2d .5f, 0.8f}}
+    {self.turn-shadow-texture-coords.append {FloatFraction2d .5f, 0.2f}}
+    def pdw = 0.7f * dw
+    {self.turn-shadow-vertex-list.append xyz-top0 + dd - pdw}
+    {self.turn-shadow-vertex-list.append xyz-bot0 + dd - pdw}
+    {self.turn-shadow-vertex-list.append xyz-bot0 + dd}
+    {self.turn-shadow-vertex-list.append xyz-top0 + dd}
+    
+    || Make the shadow on the page that's being covered up:
+    
+    def x-pbot1 = xyz-pbot1.x
+    def y-pbot1 = xyz-pbot1.y
+    def alpha = {self.out-ptg.get-effective-alpha}
+    def tan-alpha = {tan alpha}
+    def turned-width-fraction = 1 - (1 - tan-alpha * tan-alpha) / 2
+    def turned-width-bot1 = (x-pbot1 - self.out-ptg.left-x) * turned-width-fraction
+    def alpha2 = 2.0 * alpha
+    def dtw-dy = {tan alpha2} * turned-width-fraction
+    def full-turn-width = 0.85 * turn-shadow-width
+    def y-turned-top = y-pbot1 + (turned-width-bot1 - full-turn-width) / dtw-dy
+    def cdw =
+        {FloatDistance3d
+            (turn-shadow-width * {cos alpha2}) asa FloatDistance,
+            (turn-shadow-width * {sin alpha2}) asa FloatDistance,
+            0f(m)
+        }
+    def cdh =
+        {FloatDistance3d
+            (turn-shadow-width * {sin alpha2}) asa FloatDistance,
+            (-turn-shadow-width * {cos alpha2}) asa FloatDistance,
+            0f(m)
+        }
+    def dz = {FloatDistance3d 0f(m), 0f(m), 0.1f(mm)}
+    
+    || turn-t describes the position along the edge of the turning page
+    || of the boundary between the portion of the turning page that is
+    || wide enough to cast a full-width shadow on the part of the page
+    || that has not yet turned, and the portion of the turning page that
+    || should only cast a partial-width shadow.  If turn-t >= 1, then
+    || the entire turning page should cast a full-width shadow.  If
+    || turn-t <= 0, then none of the turning page should cast a full-width
+    || shadow.
+    def turn-t = ((y-turned-top - y-pbot1) / (xyz-ptop1.y - y-pbot1)) asa float
+    def xyz-turn-top =
+        {if turn-t >= 1.0 then
+            xyz-ptop1
+         else
+            xyz-pbot1 + turn-t * (xyz-ptop1 - xyz-pbot1)
+        }
+    {if turn-t > 0.0 then
+        || Add a quad for the full-width portion of the shadow that's cast
+        || toward the right of the edge of the turning page.
+        {self.edge-shadow-texture-coords.append {FloatFraction2d 0.5f, 0.2f}}
+        {self.edge-shadow-texture-coords.append {FloatFraction2d 0.5f, 0.8f}}
+        {self.edge-shadow-texture-coords.append {FloatFraction2d 1f, 0.8f}}
+        {self.edge-shadow-texture-coords.append {FloatFraction2d 1f, 0.2f}}
+        {self.edge-shadow-vertex-list.append xyz-turn-top + dz}
+        {self.edge-shadow-vertex-list.append xyz-pbot1 + dz}
+        {self.edge-shadow-vertex-list.append xyz-pbot1 + dz + cdw}
+        {self.edge-shadow-vertex-list.append xyz-turn-top + dz + cdw}
+    }
+    
+    def y-zero-top = y-turned-top + full-turn-width / dtw-dy
+    || zero-t describes the position along the edge of the turning page
+    || of the top of the tapered portion of the shadow that is cast on
+    || the part of the page not yet turned.  If zero-t <= 0, then no
+    || shadow is cast.  If zero-t >= 1, then the top of the tapered
+    || portion is above the top of the page.
+    def zero-t = ((y-zero-top - y-pbot1) / (xyz-ptop1.y - y-pbot1)) asa float
+    let taper-base-index:int = -1
+    let taper-edge-index:int = -1
+    {if turn-t < 1.0 and zero-t > 0.0 then
+        def xyz-trunc-top =
+            {if zero-t >= 1.0 then
+                xyz-ptop1
+             else
+                xyz-pbot1 + zero-t * (xyz-ptop1 - xyz-pbot1)
+            }
+        def turned-width-trunc-top = (xyz-trunc-top.x - self.out-ptg.left-x) * turned-width-fraction
+        def turned-width-trunc-ratio = {max 0.3f, (turned-width-trunc-top / full-turn-width) asa float}
+        def taper-index = self.edge-shadow-texture-coords.size
+        
+        || Add a quad for the tapered portion of the shadow that's cast
+        || toward the right of the edge of the turning page.
+        {self.edge-shadow-texture-coords.append {FloatFraction2d 0.5f * (2f - turned-width-trunc-ratio), 0.2f}}
+        {self.edge-shadow-texture-coords.append {FloatFraction2d 0.5f, 0.8f}}
+        {self.edge-shadow-texture-coords.append {FloatFraction2d 1f, 0.8f}}
+        {self.edge-shadow-texture-coords.append {FloatFraction2d 1f, 0.2f}}
+        {self.edge-shadow-vertex-list.append xyz-trunc-top + dz}
+        {self.edge-shadow-vertex-list.append xyz-turn-top + dz}
+        {self.edge-shadow-vertex-list.append xyz-turn-top + dz + cdw}
+        {self.edge-shadow-vertex-list.append xyz-trunc-top + dz + turned-width-trunc-ratio * cdw}
+        
+        || Now clip the tapered shadow at the bottom, if necessary.
+        {if turn-t < 0.0 then
+            def taper-quad = {QuadSpec self.edge-shadow-texture-coords, self.edge-shadow-vertex-list, taper-index}
+            def bot-uv = {taper-quad.xyz-to-uv xyz-pbot1 + dz}
+            def bot-uv-to = bot-uv + {FloatFraction2d 0.5f, 0f}
+            def taper-clip-index = {taper-quad.clip-at-texture-line bot-uv, bot-uv-to}
+            {assert taper-clip-index == taper-index + 4}
+            || NOTE: The following calculations depend on details of the quad-clipping methods in QuadSpec.
+            set taper-base-index = taper-index + 3
+            set taper-edge-index = taper-index
+        }
+    }
+    
+    def taper-start-u =
+        {if taper-base-index < 0 then
+            0.5f
+         else
+            self.edge-shadow-texture-coords[taper-base-index].u
+        }
+    def taper-edge-xyz =
+        {if taper-edge-index < 0 then
+            xyz-pbot1 + dz + cdw
+         else
+            self.edge-shadow-vertex-list[taper-edge-index]
+        }
+    def taper-fraction = (1f - taper-start-u) / 0.5f
+    || Add a quad for the corner of the shadow that's below and to the
+    || right of the bottom right corner of the turning page.
+    def v-corner-top = 1f - 0.5f / self.shadow-band-pixmap-aspect-ratio
+    {self.edge-shadow-texture-coords.append {FloatFraction2d taper-start-u, v-corner-top}}
+    {self.edge-shadow-texture-coords.append {FloatFraction2d taper-start-u, 1f}}
+    {self.edge-shadow-texture-coords.append {FloatFraction2d 1f, 1f}}
+    {self.edge-shadow-texture-coords.append {FloatFraction2d 1f, v-corner-top}}
+    {self.edge-shadow-vertex-list.append xyz-pbot1 + dz}
+    {self.edge-shadow-vertex-list.append xyz-pbot1 + dz + taper-fraction * cdh}
+    {self.edge-shadow-vertex-list.append taper-edge-xyz + taper-fraction * cdh}
+    {self.edge-shadow-vertex-list.append taper-edge-xyz}
+    
+    || Add a quad for the portion of the shadow that's below the bottom
+    || edge of the turning page.
+    {self.edge-shadow-texture-coords.append {FloatFraction2d taper-start-u, 0.2f}}
+    {self.edge-shadow-texture-coords.append {FloatFraction2d taper-start-u, 0.8f}}
+    {self.edge-shadow-texture-coords.append {FloatFraction2d 1f, 0.8f}}
+    {self.edge-shadow-texture-coords.append {FloatFraction2d 1f, 0.2f}}
+    {self.edge-shadow-vertex-list.append xyz-pbot1 + dz}
+    {self.edge-shadow-vertex-list.append xyz-pbot0 + dz}
+    {self.edge-shadow-vertex-list.append xyz-pbot0 + dz + taper-fraction * cdh}
+    {self.edge-shadow-vertex-list.append xyz-pbot1 + dz + taper-fraction * cdh}
+    
+    {self.scene-graphic.update-drawable}
+    {self.request-draw}
+  }
+}
+
+{doc-next
+    {purpose
+        An effect that looks like a stiff page is being turned in a book,
+        revealing the new screen as the next double-page spread in the book.
+    }
+    {details
+        The {quote spine} of the book is a vertical line in the middle
+        of the screen.
+        The page turn looks like a 180-degree turn of a stiff page anchored
+        at that spine.
+    }
+}
+{define-class public PageTurnTransitionEffect {inherits StandardTransitionEffect}
+  
+  field private angle:Angle
+  
+  {doc-next
+    {purpose
+        Construct a new {docref PageTurnTransitionEffect} object.
+    }
+    {parameter duration,
+        The duration of the transition effect.
+    }
+    {parameter pacing,
+        A procedure that can be used to warp the time scale of a transition.
+        See {docref TransitionEffect.pacing} for additional information.
+    }
+  }
+  {constructor public {default
+                          duration:Time = 0.5s,
+                          pacing:#{proc-type {double}:double} = null,
+                          angle:Angle = 7degrees
+                      }
+    set self.angle = angle
+    {construct-super duration = duration, pacing = pacing}
+  }
+  
+  {method public {make-out-transition-overlay out-pmap:Pixmap}:TransitionOverlay
+    {return {PageTurnPixmap out-pmap, alpha = self.angle}}
   }
 }
 
