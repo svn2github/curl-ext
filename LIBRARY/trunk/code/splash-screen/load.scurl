@@ -1,0 +1,1434 @@
+||| Copyright (C) 1998-2011, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An Open Curl project.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+{curl 7.0 package}
+{curl-file-attributes character-encoding = "windows-latin-1"}
+{package COM.CURL.EXT.SPLASH-SCREEN,
+    {compiler-directives careful? = true}
+}
+
+
+||| This package contains the standard Curl SplashScreen implementation,
+||| augmented to enable a window opacity to be specified for the splash screen
+||| window.  Sections of the implementation below are labeled with the
+||| names of the original Curl source files that they came from.
+
+
+{import * from CURL.GUI.STANDARD}
+{import * from CURL.REMOTE}
+{import AppletData from CURL.ENGINE.BROWSER}
+{import get-the-applet from CURL.ENGINE.APPLET}
+
+
+||| From engine/browser/SplashScreen.scurl:
+
+{doc-next
+    {purpose
+        Provides a splash screen for use when an applet is loading.
+    }
+    {notes
+        There can be only one splash screen per applet at any given
+        point of time. 
+        
+        Call {docref TranslucentSplashScreen.setup} to initialize the splash
+        screen object. When done one should call {docref
+        TranslucentSplashScreen.destroy}. Once destroyed, a splash screen object
+        can be reinitialized by calling the {ctext TranslucentSplashScreen.setup}
+        proc.
+        
+        The UI of the {ctext TranslucentSplashScreen} is in a sub-applet. To
+        communicate with it the {ctext TranslucentSplashScreen} uses
+        {docref TranslucentSplashScreen.send-message} procedure.
+        
+        You can customize the way your splash screen looks. See
+        {docref TranslucentSplashScreenSubApplet.create-main-body}
+    }
+    {for-example
+        The following code shows how you can use the splash
+        screen.
+        
+        {example
+            {import * from COM.CURL.EXT.SPLASH-SCREEN}
+            
+            {CommandButton
+                label = "Custom Splash Screen",
+                {on Action do
+                    {TranslucentSplashScreen.setup
+                        title = "Loading Applet ...",
+                        footer = "Test Example ..."
+                    }
+                    || Show indeterminate progress bar.
+                    {TranslucentSplashScreen.set-progress-bar-indeterminate}
+                    || Assume we take 2s to find how much time we will need to
+                    || finish the work.
+                    {sleep 2s}
+                    {TranslucentSplashScreen.set-progress-bar  max = 10.0}
+                    {sleep 1s}
+                    
+                    || We will now be in a loop and sleep in the loop to fake
+                    || some work..
+                    let val:double = 0
+                    {for i = 0 below 50 do
+                        set val = val + 0.2
+                        {TranslucentSplashScreen.set-progress-bar-value val}    
+                        {sleep 0.1s}
+                    }
+                    || We are done. Destroy the Splash Screen.
+                    {TranslucentSplashScreen.destroy}
+                }
+            }
+        }
+    }
+    {since 7.0}
+}
+{define-class public final TranslucentSplashScreen
+  let private proxy:#TranslucentSplashScreenRemoteInterfaceProxy
+  let private applet-data:#AppletData
+  
+  {constructor private {default
+                           title:String = "",
+                           footer:String = "",
+                           image-url:#Url = null,
+                           width:Distance = 0m,
+                           height:Distance = 0m,
+                           splash-applet-url:#Url = null,
+                           opacity:double = 1.0,
+                           delay:Time = .5s
+                       }
+    || Make a subapplet and listen to it.
+    def applet-data =
+        {if-non-null splash-applet-url then
+            {AppletData.inherit-parent-url
+                null,
+                splash-applet-url,
+                grant-privilege? = {process-privileged?}
+            }
+         else
+            {AppletData.inherit-parent-url
+                null,
+                {string-url
+                    ||""((
+                    |"{curl "| & curl-version-number-2 & |" applet}
+                        {applet manifest = "manifest.mcurl"}
+                        {import * from COM.CURL.SPLASH-APPLET}
+                        {after 0s do {TranslucentSplashScreenSubApplet}}
+                    "|
+                    ||""))
+                }
+                ,
+                grant-privilege? = {process-privileged?}
+            }
+        }
+    set TranslucentSplashScreen.applet-data = applet-data
+    {while applet-data.loading? do
+        {dispatch-events true}
+    }
+    
+    let rc:RemoteConnection = applet-data.inline-remote-connection
+    {TranslucentSplashScreenRemoteInterface.prepare-connection rc}
+    def proxy = {TranslucentSplashScreenRemoteInterfaceProxy rc, 0}
+    set TranslucentSplashScreen.proxy = proxy
+    def ht:{HashTable-of String, any} =
+        {{HashTable-of String, any}
+            "title", {Array title, "center", "", 0m, null, ""}, ||""
+            "footer", {Array footer, "left", "", 0m, null, ""}, ||""
+            "image", {Array image-url, width, height}, ||""
+            "opacity", opacity, ||""
+            "delay", delay ||""
+        }
+    {remote-invoke-async
+        {proxy.handle-message ht}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Prepare to show the splash screen.
+    }
+    {parameter title,
+        The title of the splash screen.
+    }
+    {parameter footer,
+        The footer of the splash screen.
+        
+        If no footer is specified the splash screen UI will not have
+        any status bar.
+    }
+    {parameter image-url,
+        The {docref Url} of an image that would be shown as part of
+        the splash screen UI.
+        
+        If no {param image-url} is specified the splash screen UI
+        could use a default image.
+    }
+    {parameter (width, height),
+        The width and height of the image.
+        
+        If {param width} or {param height} is {ctext 0m} then the
+        default width and height of the image will be used.
+    }
+    {parameter splash-applet-url,
+        The {docref Url} of the splash screen UI.
+        
+        If no {param splash-aplet-url} is specified then a default
+        splash screen UI will be shown.
+        
+        See also: {docref TranslucentSplashScreenSubApplet.create-main-body}.
+    }
+    {parameter opacity,
+        The opacity for the window that will be created to display
+        the splash screen.
+        In an unprivileged applet,
+        the actual opacity of the window will never be less than 50%,
+        no matter what value is specified for this parameter.
+    }
+    {parameter delay,
+        The time delay after which the splash screen UI should be shown.
+        
+        The default is {ctext 0.5s}.
+    }
+    {notes
+        This procedure should be called before any other calls to the
+        splash screen. 
+    }
+  }
+  {define-proc public {setup
+                          title:String = "",
+                          footer:String = "",
+                          image-url:#Url = null,
+                          width:Distance = 0m,
+                          height:Distance = 0m,
+                          splash-applet-url:#Url = null,
+                          opacity:double = 1.0,
+                          delay:Time = .5s
+                      }:void
+    {if TranslucentSplashScreen.proxy != null then
+        {error
+            {hlmessage
+                The TranslucentSplashScreen object was already initialized.
+            }
+        }
+    }
+    
+    {TranslucentSplashScreen
+        title = title,
+        footer = footer,
+        image-url = image-url,
+        width = width,
+        height = height,
+        splash-applet-url = splash-applet-url,
+        opacity = opacity,
+        delay = delay
+    }
+  }
+  
+  {define-proc private {check-initialized}:void
+    {if TranslucentSplashScreen.proxy == null then
+        {error
+            {hlmessage
+                The TranslucentSplashScreen object is not initialized. Call
+                TranslucentSplashScreen.setup procedure to initialize it.
+            }
+        }
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Display the splash screen immediately.
+    }
+    {details
+        It isn't usually necessary to call this method directly. You
+        must call {docref TranslucentSplashScreen.setup} first, and {ctext setup}
+        calls this procedure after a time delay. Use this method if
+        you need to show the splash screen before the delay has
+        elapsed.
+    }
+    {notes
+        The splash screen must be initialized before this procedure
+        can be called.
+    }
+  }
+  {define-proc public {show}:void
+    {TranslucentSplashScreen.send-message
+        {{HashTable-of String, any} "show", true} ||""
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Hide and destroy the splash screen UI.
+    }
+    {notes
+        The splash screen must be initialized before this procedure
+        can be called.
+        
+        Once this procedure is called, it is illegal to make any calls
+        to the {docref TranslucentSplashScreen} unless {docref
+        TranslucentSplashScreen.setup} is called again.
+    }
+  }
+  {define-proc public {destroy}:void
+    {TranslucentSplashScreen.check-initialized}
+    {TranslucentSplashScreen.send-message
+        {{HashTable-of String, any} "show", false} ||""
+    }
+    {TranslucentSplashScreen.applet-data.destroy}
+    set TranslucentSplashScreen.applet-data = null
+    set TranslucentSplashScreen.proxy = null
+  }
+  
+  {doc-next
+    {purpose
+        Sets the image used on the splash screen.
+    }
+    {parameter image-url,
+        The {docref Url} of the image.
+        
+        If {ctext null} then a default image will be used.
+    }
+    {parameter (width, height),
+        The width and height of the image.
+        
+        If {param width} or {param height} is {ctext 0m} then the
+        default width and height of the image will be used.
+    }
+    {notes 
+        This procedure must be called after {docref
+        TranslucentSplashScreen.setup} and before {docref TranslucentSplashScreen.destroy}
+        or it will throw an error.
+    }
+  }
+  {define-proc public {set-image 
+                          image-url:#Url = null,
+                          width:Distance = 0m,
+                          height:Distance = 0m
+                      }:void
+    {TranslucentSplashScreen.send-message
+        {{HashTable-of String, any} 
+            "image", {Array image-url, width, height} ||""
+        }
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Sets the title of the splash screen.
+    }
+    {parameter title,
+        The title of the splash screen.
+        
+        If {param title} is empty then the splash screen UI will not
+        have a title bar.
+    }
+    {parameter halign,
+        The horizontal alignment of {param title} in the title bar.
+        
+        By default it is the center of the title bar. 
+        
+        See also {docref Frame.halign}. 
+    }
+    {parameter font-family,
+        The font family for the text of the title. 
+        
+        If {param font-family} is empty, it will be ignored. 
+        
+        By default it is empty.
+    }
+    {parameter font-size,
+        Specifies the size of the title text.
+        
+        If {param font-size} is {ctext 0m}, it will be ignored.
+    }
+    {parameter font-weight,
+        If {ctext null} then it is ignored. Otherwise it specifies the
+        {docref FontWeight} of the title text.
+        
+        By defualt it is {ctext null}.
+    }
+    {parameter color,
+        Specifies the color of the title text.
+        
+        If {param color} is empty then it is ignored. By default it is
+        empty.
+    }
+    {notes
+        This procedure must be called after {docref
+        TranslucentSplashScreen.setup} and before {docref TranslucentSplashScreen.destroy}
+        or it will throw an error.
+    }
+  }
+  {define-proc public {set-title 
+                          title:String, 
+                          halign:any = "center", ||""
+                          font-family:String = "",
+                          font-size:Distance = 0m,
+                          font-weight:any = null,
+                          color:String = ""
+                      }:void
+    {try
+        {verify-any-is-keyword-or-fraction "halign", halign} ||""
+        {TranslucentSplashScreen.verify-font-weight font-weight}
+        {TranslucentSplashScreen.verify-color color}
+        {TranslucentSplashScreen.send-message
+            {{HashTable-of String, any} 
+                "title",  ||""
+                {Array title, halign, font-family, font-size, font-weight, color}
+            }
+        }
+     catch e:Exception do
+        || We do not need to bring this dialog in a different process
+        || as it does not pose any security issue. All that it is
+        || trying to say that the setting of the title
+        || failed. --kbhatt
+        {popup-message || secure-audited
+            title = {hlmessage Failed to set title.},
+            e.message
+        }
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Sets the footer of the splash screen.
+    }
+    {parameter footer,
+        The footer of the splash screen.
+        
+        If {param footer} is empty then the splash screen UI will not
+        have a status bar.
+    }
+    {parameter halign,
+        The horizontal alignment of {param footer} in the title bar.
+        
+        By default it is the left of the status bar. 
+        
+        See also {docref Frame.halign}.
+    }
+    {parameter font-family,
+        The font family for the text of the footer. 
+        
+        If {param font-family} is empty, it will be ignored. 
+        
+        By default it is empty.
+    }
+    {parameter font-size,
+        Specifies the size of the footer text.
+        
+        If {param font-size} is {ctext 0m}, it will be ignored.
+    }
+    {parameter font-weight,
+        If {ctext null} then it is ignored. Otherwise it specifies the
+        {docref FontWeight} of the footer text.
+        
+        By defualt it is{ctext null}.
+    }
+    {parameter color,
+        Specifies the color of the footer text.
+        
+        If {param color} is empty then it is ignored. By default it is
+        empty.
+    }
+    {notes
+        This procedure must be called after {docref
+        TranslucentSplashScreen.setup} and before {docref TranslucentSplashScreen.destroy}
+        or it will throw an error.
+    }
+  }
+  {define-proc public {set-footer 
+                          footer:String, 
+                          halign:any = "left", ||""
+                          font-family:String = "",
+                          font-size:Distance = 0m,
+                          font-weight:any = null,
+                          color:String = ""
+                      }:void
+    {try
+        {verify-any-is-keyword-or-fraction "halign", halign} ||""
+        {TranslucentSplashScreen.verify-font-weight font-weight}
+        {TranslucentSplashScreen.verify-color color}
+        {TranslucentSplashScreen.send-message
+            {{HashTable-of String, any} 
+                "footer",  ||""
+                {Array footer, halign, font-family, font-size, font-weight, color}
+            }
+        }
+     catch e:Exception do
+        || We do not need to bring this dialog in a different process
+        || as it does not pose any security issue. All that it is
+        || trying to say is that setting of the footer
+        || failed. --kbhatt
+        {popup-message || secure-audited
+            title = {hlmessage Failed to set footer.},
+            e.message
+        }
+    }
+  }
+  
+  {define-proc private {verify-font-weight font-weight:any}:void
+    let error?:bool = false
+    {if-non-null font-weight then
+        {try
+            let ft:FontWeight = font-weight asa FontWeight
+         catch e:Error do
+            set error? = true
+        }
+    }
+    {if error? then
+        {error
+            {hlmessage 
+                Invalid value '{value font-weight}' specified for
+                font-weight.
+            }
+        }
+    }
+  }
+  
+  {define-proc private {verify-color color:String}:void
+    let error?:bool = false
+    {if not color.empty? then
+        {try
+            {FillPattern.from-string color}
+         catch e:Error do
+            set error? = true
+        }
+    }
+    
+    {if error? then
+        {error
+            {hlmessage 
+                Invalid value '{value color}' specified for color.
+            }
+        }
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Place an indeterminate progress bar on the splash screen.
+    }
+    {details
+        If The splash screen UI does not have a progress bar, one is
+        added. The {docref ProgressBar.indeterminate?} property is set
+        to {ctext true}.
+    }
+    {notes
+        This procedure must be called after {docref
+        TranslucentSplashScreen.setup} and before {docref TranslucentSplashScreen.destroy}
+        or it will throw an error.
+    }
+  }
+  {define-proc public {set-progress-bar-indeterminate}:void
+    {TranslucentSplashScreen.send-message
+        {{HashTable-of String, any} "indeterminate",  true} ||""
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Place an determinate progress bar on the splash screen.
+    }
+    {parameter (min, max),
+        Determines the rannge of the progress bar.
+    }
+    {parameter value,
+        The current value of the progress bar.
+    }
+    {details
+        If The splash screen UI does not have a progress bar, one is
+        added. The {docref ProgressBar.indeterminate?} property is set
+        to {ctext false}.
+    }
+    {notes
+        This procedure must be called after {docref
+        TranslucentSplashScreen.setup} and before {docref TranslucentSplashScreen.destroy}
+        or it will throw an error.
+    }
+  }
+  {define-proc public {set-progress-bar
+                          min:double = 0.0, 
+                          max:double = 100.0, 
+                          value:double = min
+                      }:void
+    {TranslucentSplashScreen.send-message
+        {{HashTable-of String, any} 
+            "progress-bar",  ||""
+            {{Array-of double}  min, max, value}
+        }
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Sets the value of the progress bar in the splash screen UI.
+    }
+    {details
+        Calling this method will be a no-op if it is called before
+        calling either {docref TranslucentSplashScreen.set-progress-bar} or
+        {docref TranslucentSplashScreen.set-progress-bar-indeterminate}
+        procedures. Calling this procedure will not change the state
+        of the progress bar from indeterminate to determinate.
+    }
+    {notes
+        This procedure must be called after {docref
+        TranslucentSplashScreen.setup} and before {docref TranslucentSplashScreen.destroy}
+        or it will throw an error.
+    }
+  }
+  {define-proc public {set-progress-bar-value value:double}:void
+    {TranslucentSplashScreen.send-message
+        {{HashTable-of String, any} "progress-bar-value",  value} ||""
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Sets the opacity value of the window that displays the splash screen.
+    }
+    {parameter value,
+        The opacity value that should be set.
+    }
+    {notes
+        This procedure must be called after {docref
+        TranslucentSplashScreen.setup} and before {docref TranslucentSplashScreen.destroy}
+        or it will throw an error.
+        
+        If used in an unprivileged applet, this method will never result
+        in a splash-screen opacity value less than 50%.
+    }
+  }
+  {define-proc public {set-opacity value:double}:void
+    {TranslucentSplashScreen.send-message
+        {{HashTable-of String, any} "opacity",  value} ||""
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Send an asynchronous message to the splash screen sub-applet.
+    }
+    {parameter message,
+        It is a {docref HashTable} whose key is a {docref String} that
+        represents the name of the message. The value associated with
+        the key is of type {ctext any}. The type of the value must be
+        serializable, otherwise it will result in an error.
+    }
+    {details
+        Call this method to send custom messages to the splash screen
+        sub-applet. The {docref TranslucentSplashScreen} object has predefined
+        some of the messages that it uses. These are:
+        
+        {itemize
+            {item title, 
+                The value expected with this message is an {docref
+                Array} with six elements. The first element must be a
+                {docref String} representing the text of the title, the
+                second element must be a {ctext String} or a fraction,
+                the third element is a {ctext String} representing a
+                font family, the fourth element is a {docref Distance}
+                representing a font size, the fifth element is {ctext
+                                                                   null} or a {docref FontWeight} and the sixth element
+                is {ctext String} representing a {docref Color}.
+            }
+            {item footer, 
+                The value expected with this message is an {docref
+                Array} with six elements. The first element must be a
+                {docref String} representing the text of the footer, the
+                second element must be a {ctext String} or a fraction,
+                the third element is a {ctext String} representing a
+                font family, the fourth element is a {docref Distance}
+                representing a font size, the fifth element is null or
+                a {docref FontWeight} and the sixth element is {ctext
+                                                                   String} representing a {docref Color}.
+            }
+            {item image,
+                The value expected with this message is an {docref
+                Array} with three elements. The first element must be a
+                {docref Url} of the image and the second and third element
+                must be {docref Distance}s representing the width and
+                height of the image.
+            }
+            {item delay,
+                The value expected is a {docref Time}.
+            }
+            {item show,
+                The value expected is a {docref bool}.
+            }
+            {item indeterminate,
+                The value expected is a {docref bool}.
+            }
+            {item progress-bar,
+                The value expected is an array of double with three
+                elements representing the minimum, the maximum and the
+                value of the progress bar.
+            }
+            {item progress-bar-value,
+                A double representing the value of the progress bar.
+            }
+            {item opacity,
+                The opacity of the window that displays the splash screen.
+            }
+        }
+    }
+    {notes
+        This procedure must be called after {docref
+        TranslucentSplashScreen.setup} and before {docref TranslucentSplashScreen.destroy}
+        or it will throw an error.
+    }
+  }
+  {define-proc public {send-message 
+                          message:{HashTable-of String, any}
+                      }:void
+    {TranslucentSplashScreen.check-initialized}
+    {remote-invoke-async
+        {TranslucentSplashScreen.proxy.handle-message message}
+    }
+  }
+}
+
+
+||| From SplashScreenRemoteInterface.scurl
+
+{doc-next
+    {purpose
+        The remote interface of a splash screen object.
+    }
+    {since 7.0}
+}
+{define-remote-class public open TranslucentSplashScreenRemoteInterface
+  
+  {define-remote-proxy-class public open TranslucentSplashScreenRemoteInterfaceProxy}
+  {define-remote-yxorp-class public open TranslucentSplashScreenRemoteInterfaceYxorp}
+  
+  {doc-next
+    {purpose
+        Constructs this object.
+    }
+  }
+  {constructor public {default}}
+  
+  {doc-next
+    {purpose
+        Handle a message from the main applet.
+    }
+    {details
+        The message is a {docref HashTable}. The key to the hash table
+        is a {docref String}, which represents a code of the message
+        and the corresponding is of type {code any} representing the
+        value associated with the code. The type of {code any} must be
+        serializable, otherwise it will result in an error.
+    }
+  }  
+  {remote-method public open {handle-message 
+                                 message:{HashTable-of String, any}
+                             }:void
+  }
+  
+  {doc-next
+    {purpose
+        Sets the remote connection to allow serialized objects to be
+        sent via this connection.
+    }
+  }
+  {define-proc public {prepare-connection connection:RemoteConnection}:void
+    {connection.use-simple-serialization}
+  } || prepare-connection
+}
+
+
+||| From SplashScreenSubApplet.scurl:
+
+{doc-next
+    {purpose
+        Implements the UI of {docref TranslucentSplashScreen}.
+    }
+    {since 7.0}
+}
+{define-class public open TranslucentSplashScreenSubApplet 
+  {inherits TranslucentSplashScreenRemoteInterface}
+  
+  def private default-image-url:Url =
+      {url "curl://install/curl-resources/default/images/default-splash.jpg"}
+  
+  {doc-next
+    {purpose
+        The {docref Frame} that contains the title of the splash
+        screen.
+    }
+  } 
+  field protected title-frame:Frame
+  
+  {doc-next
+    {purpose
+        The {docref Frame} that contains the footer of the splash
+        screen.
+    }
+  } 
+  field protected footer-frame:Frame
+  
+  {doc-next
+    {purpose
+        The {docref Frame} that contains the {docref ProgressBar} of
+        the splash screen.
+    }
+  } 
+  field protected progress-bar-frame:Frame
+  
+  {doc-next
+    {purpose
+        The {docref Frame} that contains the image of the splash screen.
+    }
+  } 
+  field protected image-frame:Frame
+  
+  
+  {doc-next
+    {purpose
+        The {docref ProgressBar} associated with the splash screen, if
+        any.
+    }
+  } 
+  field protected progress-bar:#ProgressBar
+  
+  {doc-next
+    {purpose
+        The opacity that has been requested for the window that displays the splash screen.
+    }
+  }
+  field protected opacity:double = 1.0
+  
+  {doc-next
+    {purpose
+        The splash screen {docref View}, if any.
+    }
+    {notes
+        This is set by {docref TranslucentSplashScreenSubApplet.show} method.
+    }
+  }
+  field protected view:#View
+  
+  {doc-next
+    {purpose
+        Constructs the {docref TranslucentSplashScreenSubApplet} object.
+    }
+  }
+  {constructor public {default}
+    set self.title-frame = 
+        {ClipFrame 
+            margin = 2px,
+            font-weight = "bold", ||""
+            text-breakable? = true, horigin = 0.0, 
+            halign = 0.5, valign = 0.5, margin = 1pt, 
+            width = .1in
+        }
+    
+    set self.footer-frame =
+        {ClipFrame 
+            margin = 2px,
+            font-size = 8pt,
+            text-breakable? = true, 
+            horigin = 0, halign = 0, valign = 0.5, 
+            margin = 1pt, width = .1in
+        }
+    
+    set self.progress-bar-frame = 
+        {Frame hstretch? = true, vstretch? = true}
+    
+    set self.image-frame = {Frame}
+    
+    let rc:RemoteConnection = {get-the-applet}.inline-remote-connection
+    {TranslucentSplashScreenRemoteInterface.prepare-connection rc}
+    {TranslucentSplashScreenRemoteInterfaceYxorp rc, 0, self}
+  }
+  
+  {doc-next
+    {purpose
+        Handle a message from the {docref TranslucentSplashScreen} object.
+    }
+    {details
+        The message is a {docref HashTable}. The key to the hash table
+        is a {docref String}, which represents a code of the message
+        and the corresponding is of type {code any} representing the
+        value associated with the code. The type of {code any} must be
+        serializable, otherwise it will result in an error.
+        
+        When this message is called, 
+        {docref TranslucentSplashScreenSubApplet.handle-parameter} is
+        called for each keyword and value pair in {param message}.
+    }
+  }  
+  {method public open {handle-message message:{HashTable-of String, any}}:void
+    {for v key k in message do
+        {self.handle-parameter k, v}
+    }
+  }
+  
+  
+  {doc-next
+    {purpose
+        Reperesents a single message component.
+    }
+    {details
+        This is called from {docref
+        TranslucentSplashScreenSubApplet.handle-message} method.  
+    }
+    {override
+        Override this message to handle custom messages. 
+        
+        The overriding method should call {ctext super.handle-message}
+        so that the predefined messages can be handled.
+    }
+  }
+  {method public open {handle-parameter name:String, value:any}:void
+    {switch name
+     case "show" do ||""
+        {if value asa bool then
+            || Shows the splash screen sub applet which is never shown
+            || in the user process. --kbhatt
+            {self.show} || secure-audited
+         else
+            {if-non-null view = self.view then
+                {view.hide}
+            }
+        }
+     case "title" do ||""
+        def array:Array = value asa Array
+        {assert array.size == 6}
+        {self.set-title 
+            array[0] asa String, array[1], array[2] asa String, 
+            array[3] asa Distance, array[4],
+            array[5] asa String
+        }
+     case "footer" do ||""
+        def array:Array = value asa Array
+        {assert array.size == 6}
+        {self.set-footer 
+            array[0] asa String, array[1], array[2] asa String, 
+            array[3] asa Distance, array[4],
+            array[5] asa String
+        }
+     case "indeterminate" do ||""
+        {self.set-progress-bar-indeterminate value asa bool}
+     case "progress-bar" do ||""
+        def array:{Array-of double} = value asa {Array-of double}
+        {assert array.size == 3}
+        {self.set-progress-bar array[0], array[1], array[2]}
+     case "progress-bar-value" do ||""
+        {self.set-progress-bar-value value asa double}
+     case "opacity" do ||""
+        {self.set-opacity value asa double}
+     case "image" do ||""
+        def array:Array = value asa Array
+        {assert array.size == 3}
+        {self.set-image 
+            array[0] asa #Url, 
+            array[1] asa Distance,
+            array[2] asa Distance
+        }
+     case "delay" do ||""
+        || Shows the splash screen sub applet which is never shown
+        || in the user process. --kbhatt
+        {self.show-after value asa Time} || secure-audited
+    }
+  }
+  
+  
+  {doc-next
+    {purpose
+        Shows the splash screen {docref View}.
+    }
+    {notes
+        This method calls {docref
+        TranslucentSplashScreenSubApplet.create-main-body} method to get the user
+        interface graphic and then showns that graphic in a {docref
+        View} that does not take focus and has no decorations. It also
+        makes this {ctext View} the topmost {ctext View}.
+        
+        This method is called by {docref
+        TranslucentSplashScreenSubApplet.handle-parameter} method.
+    }
+  }
+  {method public open {show}:void
+    {if-non-null view = self.view then
+        || Shows the splash screen sub applet which is never shown in
+        || the user process. --kbhatt
+        {view.show center? = true} || secure-audited
+        {return}
+    }
+    
+    let constant view:View = 
+        {View
+            center? = true, 
+            takes-focus? = false,
+            decorations? = false,
+            resizable? = false,
+            {Dialog
+                {self.create-main-body}
+            }
+        }
+    {view.set-opacity self.opacity}
+    {view.show center? = true}
+    {view.set-topmost true}
+    set self.view = view
+  }
+  
+  {doc-next
+    {purpose
+        Creates the {docref Graphic} that is shown in the splash
+        screen {docref View}.
+    }
+    {return-vals
+        This method arranges various components of the splash screen and
+        returns it as a {docref Graphic}.
+    }
+    {notes
+        This method is called by {docref TranslucentSplashScreenSubApplet.show}
+        method.
+    }
+    {override
+        Override it to show a custom {docref Graphic}.
+    }
+    {for-example
+        The following code shows how you can customize the splash
+        screen user interface.
+        
+        {example
+            {import * from COM.CURL.EXT.SPLASH-SCREEN}
+            {def applet-source:String =
+                {stringify
+                    {curl 7.0 applet}
+                    {import * from COM.CURL.EXT.SPLASH-SCREEN}
+                    
+                    
+                    {define-class public CustomSplashScreenSubApplet
+                      {inherits TranslucentSplashScreenSubApplet}
+                      
+                      {constructor public {default}
+                        {construct-super}
+                      }
+                      
+                      {method public open {create-main-body}:Graphic
+                        {return
+                            {VBox
+                                hstretch? = true,
+                                framelike-stretch? = true,
+                                self.title-frame,
+                                {hrule},
+                                self.image-frame,
+                                self.progress-bar-frame,
+                                {hrule},
+                                self.footer-frame
+                            }
+                        }
+                      }
+                    }
+                    
+                    {after 0s do
+                        {CustomSplashScreenSubApplet}
+                    }
+                }
+            }
+            
+            {CommandButton
+                label = "Custom Splash Screen",
+                {on Action do
+                    {TranslucentSplashScreen.setup
+                        splash-applet-url = {string-url applet-source},
+                        title = "Loading Applet ...",
+                        footer = "Test Example ..."
+                    }
+                    || Show indeterminate progress bar.
+                    {TranslucentSplashScreen.set-progress-bar-indeterminate}
+                    || Assume we take 2s to find how much time we will need to
+                    || finish the work.
+                    {sleep 2s}
+                    {TranslucentSplashScreen.set-progress-bar  max = 10.0}
+                    {sleep 1s}
+                    
+                    || We will now be in a loop and sleep in the loop to fake
+                    || some work..
+                    let val:double = 0
+                    {for i = 0 below 50 do
+                        set val = val + 0.2
+                        {TranslucentSplashScreen.set-progress-bar-value val}    
+                        {sleep 0.1s}
+                    }
+                    || We are done. Destroy the Splash Screen.
+                    {TranslucentSplashScreen.destroy}
+                }
+            }
+        }
+    }
+  }
+  {method public open {create-main-body}:Graphic
+    def g:Grid = {Grid}
+    
+    {g.add
+        self.image-frame,
+        left = {g.left},
+        right = {g.right},
+        top = {g.top},
+        bottom = {g.bottom}
+    }
+    
+    {g.add
+        self.title-frame,
+        left = {g.left},
+        right = {g.right},
+        top = {g.top}
+    }
+    
+    def fid-h = 
+        {g.make-fiducial orientation = Orientation.horizontal}
+    
+    {g.add
+        {HBox
+            {Fill width = .5in},
+            self.progress-bar-frame,
+            {Fill width = .5in}
+        },
+        left = {g.left},
+        right = {g.right},
+        bottom = fid-h
+    } 
+    
+    {g.add
+        self.footer-frame,
+        left = {g.left},
+        right = {g.right},
+        top = fid-h,
+        bottom = {g.bottom}
+    }
+    
+    {return g}
+  }
+  
+  {doc-next
+    {purpose
+        Sets up the {docref TranslucentSplashScreenSubApplet} object to show the
+        splash screen {docref View} after a specific amount of {docref
+        Time} has expired.
+    }
+    {parameter delay,
+        The delay after which to call the {docref TranslucentSplashScreenSubApplet.show}
+        method.
+    }
+    {notes
+        This method is called by {docref
+        TranslucentSplashScreenSubApplet.handle-parameter} method.
+    }
+  }
+  {method public open {show-after delay:Time}:void
+    {after delay do
+        || Shows the splash screen sub applet which is never shown in
+        || the user process. --kbhatt
+        {self.show}
+    }
+  }
+  
+  {method private {set-frame-properties
+                      frame:Frame,
+                      halign:any,
+                      font-family:String,
+                      font-size:Distance,
+                      font-weight:any,
+                      color:String
+                  }:void
+    
+    {if-non-null halign then
+        set frame.halign = halign
+    }
+    {if not font-family.empty? then
+        set frame.font-family = font-family
+    }
+    {if not font-size == 0m then
+        set frame.font-size = font-size
+    }
+    {if-non-null font-weight then
+        set frame.font-weight = font-weight asa FontWeight
+    }
+    {if not color.empty? then
+        set frame.color = color
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Sets the title of the splash scren.
+    }
+    {parameter title,
+        The title of the splash screen.
+    }
+    {parameter halign,
+        If {ctext null} then it is ignored. Otherwise it should be one
+        of the values as described in {docref Frame.halign}.
+    }
+    {parameter font-family,
+        If empty, then it is ignored. Otherwise it set as the font family
+        for the title text.
+        
+        See also {docref font-family}.
+    }
+    {parameter font-size,
+        If {ctext 0m} then it is ignored. Otherwise it is used as the
+        size of the font.
+        
+        See also: {docref font-size}
+    }
+    {parameter font-weight,
+        If {ctext null} it is ignored. Otherwise it must be one of the
+        supported {docref FontWeight}s.
+    }
+    {parameter color,
+        If empty, then it is ignored. Otherwise it must be a {docref
+        String} representing a {docref Color}.
+    }
+    {notes
+        This method is called by {docref
+        TranslucentSplashScreenSubApplet.handle-parameter} method.
+    }
+  }
+  {method public open {set-title 
+                          title:String, 
+                          halign:any,
+                          font-family:String,
+                          font-size:Distance,
+                          font-weight:any,
+                          color:String
+                      }:void
+    def frame:Frame = self.title-frame
+    {frame.add title, replace? = true}
+    {self.set-frame-properties
+        frame, halign, font-family, font-size, font-weight, color
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Sets the footer of the splash scren.
+    }
+    {parameter footer,
+        The footer of the splash screen.
+    }
+    {parameter halign,
+        If {ctext null} then it is ignored. Otherwise it should be one
+        of the values as described in {docref Frame.halign}.
+    }
+    {parameter font-family,
+        If empty, then it is ignored. Otherwise it set as the font family
+        for the footer text.
+        
+        See also {docref font-family}.
+    }
+    {parameter font-size,
+        If {ctext 0m} then it is ignored. Otherwise it is used as the
+        size of the footer font.
+        
+        See also: {docref font-size}
+    }
+    {parameter font-weight,
+        If {ctext null} it is ignored. Otherwise it must be one of the
+        supported {docref FontWeight}s.
+    }
+    {parameter color,
+        If empty, then it is ignored. Otherwise it must be a {docref
+        String} representing a {docref Color}.
+    }
+    {notes
+        This method is called by {docref
+        TranslucentSplashScreenSubApplet.handle-parameter} method.
+    }
+  }
+  {method public open {set-footer 
+                          footer:String, 
+                          halign:any,
+                          font-family:String,
+                          font-size:Distance,
+                          font-weight:any,
+                          color:String
+                      }:void
+    def frame = self.footer-frame
+    {frame.add footer, replace? = true}
+    {self.set-frame-properties
+        frame, halign, font-family, font-size, font-weight, color
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Sets the {docref ProgressBar}s indeterminate state.
+    }
+    {parameter indeterminate?,
+        If {ctext true}, the {ctext ProgressBar} gets into an
+        indeterminate state. Else it gets into a determinate state.
+    }
+    {notes
+        This method will add a {ctext ProgressBar} in the {docref
+        TranslucentSplashScreenSubApplet.progress-bar-frame} if there is not one
+        already added.
+        
+        This method is called by {docref
+        TranslucentSplashScreenSubApplet.handle-parameter} method.
+    }
+  }
+  {method public open {set-progress-bar-indeterminate
+                          indeterminate?:bool
+                      }:void
+    {if-non-null pb = self.progress-bar then
+        set pb.indeterminate? = indeterminate?
+     else
+        set self.progress-bar = {ProgressBar indeterminate? = indeterminate?}
+        {self.progress-bar-frame.add self.progress-bar}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Sets the {docref ProgressBar} to be in the determinate state.
+    }
+    {parameter (min, max),
+        The range of the {ctext ProgressBar}.
+    }
+    {parameter value,
+        The current value of the {ctext ProgressBar}.
+    }
+    {notes
+        This method will add a {ctext ProgressBar} in the {docref
+        TranslucentSplashScreenSubApplet.progress-bar-frame} if there is not one
+        aready added.
+        
+        This method is called by {docref
+        TranslucentSplashScreenSubApplet.handle-parameter} method.
+    }
+  }
+  {method public open {set-progress-bar
+                          min:double, max:double, value:double
+                      }:void
+    {if-non-null pb = self.progress-bar then
+        set pb.min-value = min
+        set pb.max-value = max
+        set pb.indeterminate? = false
+        {pb.set-value-with-events value}
+     else
+        set self.progress-bar =
+            {ProgressBar
+                min-value = min, max-value = max, value = value,
+                indeterminate? = false
+            }
+        {self.progress-bar-frame.add self.progress-bar}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Sets the value of a {docref ProgressBar}, if any.
+    }
+    {notes
+        This method will be a no-op if it is called before calling
+        either {docref TranslucentSplashScreenSubApplet.set-progress-bar} or
+        {docref TranslucentSplashScreenSubApplet.set-progress-bar-indeterminate}
+        methods.
+        
+        This method is called by {docref
+        TranslucentSplashScreenSubApplet.handle-parameter} method.
+    }
+  }
+  {method public open {set-progress-bar-value value:double}:void
+    {if-non-null pb = self.progress-bar then
+        {pb.set-value-with-events value}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Sets the opacity value for the window that displays the splash screen.
+    }
+    {parameter value,
+        The opacity value that should be set.
+    }
+    {notes
+        {param value} is stored into the {docref-abbr TranslucentSplashScreenSubApplet.opacity}
+        field of this class.
+        If the window has already been created, the opacity value is also set directly
+        on that window.
+        Otherwise, the value saved in the {docref-abbr TranslucentSplashScreenSubApplet.opacity}
+        field will be used to set the window's opacity when it is created.
+        
+        If used in an unprivileged applet, this method will never result
+        in a splash-screen opacity value less than 50%.
+    }
+  }
+  {method public open {set-opacity value:double}:void
+    set self.opacity = value
+    {if-non-null view = self.view then
+        {view.set-opacity value}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Sets the image associated with the splash screen UI.
+    }
+    {parameter image-url,
+        The {docref Url} of the image.
+        
+        If {ctext null} then a default image will be used.
+    }
+    {parameter (width, height),
+        The width and height of the image.
+        
+        If {param width} or {param height} is {ctext 0m} then the
+        default width and height of the image will be used.
+    }
+    {notes
+        This method adds the image in the {docref
+        TranslucentSplashScreenSubApplet.image-frame}.
+        
+        This method is called by
+        {docref TranslucentSplashScreenSubApplet.handle-parameter} method.
+    }
+  }
+  {method public open {set-image 
+                          u:#Url, width:Distance, height:Distance
+                      }:void
+    def graphic =
+        {image
+            blocking? = true,
+            source =
+                {if-non-null u then
+                    u
+                 else
+                    TranslucentSplashScreenSubApplet.default-image-url
+                }
+        }
+    {if width != 0m then
+        set graphic.width = width
+    }
+    {if height != 0m then
+        set graphic.height = height
+    }
+    {self.image-frame.add graphic, replace? = true}
+    || This should not be necessary. For some reason, even when
+    || blocking? is true, we need this after 0s.
+    {after 0s do
+        {if-non-null view = self.view then
+            {if not view.destroyed? then
+                {view.set-size-from-child}
+            }
+        }
+    }
+  }
+}

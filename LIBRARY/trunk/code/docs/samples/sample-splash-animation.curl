@@ -1,0 +1,288 @@
+||| Copyright (C) 1998-2011, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An Open Curl project.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+{curl 7.0 applet}
+{curl-file-attributes character-encoding = "windows-latin-1"}
+{applet manifest = "../../manifest.mcurl",
+    {compiler-directives careful? = true}
+}
+
+
+||| This is a sample applet that demonstrates the functions of the
+||| COM.CURL.EXT.SPLASH-SCREEN and COM.CURL.EXT.SPLASH-ANIMATION packages.
+||| The applet displays a series of controls that can be used to
+||| change the configuration of a TranslucentSplashScreen and then
+||| has a "View Splash Screen" button that can be used to display a
+||| splash screen using the selected parameters.
+
+
+{import TranslucentSplashScreen from COM.CURL.EXT.SPLASH-SCREEN}
+{import CircleAnimation from COM.CURL.EXT.SPLASH-ANIMATION}
+{import * from CURL.GUI.EXTRAS}
+
+
+||| MySlider and MySliderDomain are subclasses of Slider and
+||| StandardIntDomain, respectively, that combine to make a slider
+||| with nice-looking labels that yields values that are quantized
+||| according to a programmed step size.
+|||
+||| The procedures points-slider, milliseconds-slider, and
+||| percent-slider, below, create slider controls that are configured
+||| conveniently to choose values of those respective types.
+
+{define-class package MySliderDomain {inherits StandardIntDomain}
+  
+  field private slider:MySlider
+  
+  {constructor package {default
+                           slider:MySlider
+                       }
+    set self.slider = slider
+    {construct-super min-allowable = 0, max-allowable = slider.nsteps}
+  }
+  
+  {method public {format x:any}:String
+    {return {{value self.slider.format-proc} {self.slider.int-to-value x asa int}}}
+  }
+}
+
+{define-class public MySlider {inherits BaseFrame}
+  
+  {local-option public label:#Visual = null
+    {if-non-null label then
+        {self.label-holder.add label, replace? = true}
+     else
+        {self.label-holder.clear}
+    }
+  }
+  
+  {local-option public format-proc:{proc-type {any}:String} =
+      {proc {v:any}:String
+          {return {format "%s", v}}
+      }
+  }
+  
+  {local-option public min-value:any = 0
+    
+  }
+  
+  {local-option public max-value:any = 100
+    
+  }
+  
+  {local-option public nsteps:int = 100
+    
+  }
+  
+  field private label-holder:Frame = {Frame}
+  
+  field private slider:Slider
+  
+  {constructor public {default value:any = null, ...}
+    {with-compiler-directives allow-slow-spliced-arguments? = true do
+        {construct-super width = 6in, ...}
+    }
+    def domain = {MySliderDomain self} 
+    set self.slider =
+        {Slider
+            domain = domain,
+            {on e:ValueChanged do
+                {self.handle-event e}
+            },
+            {on e:ValueFinished do
+                {self.handle-event e}
+            }
+        }
+    def vb =
+        {VBox halign = "center",
+            self.label-holder,
+            self.slider
+        }
+    {self.add-internal vb}
+    {if-non-null value then
+        set self.value = value
+    }
+  }
+  
+  {getter public {value}:any
+    def sv = self.slider.value asa int
+    {return {self.int-to-value sv}}
+  }
+  
+  {setter public {value v:any}:void
+    {with-compiler-directives allow-any-calls? = true do
+        def step = {round (v - self.min-value) * self.nsteps, self.max-value - self.min-value} asa int 
+        set self.slider.value = step
+    }
+  }
+  
+  {method package {int-to-value x:int}:any
+    {with-compiler-directives allow-any-calls? = true do
+        {return self.min-value + ((self.max-value - self.min-value) * x) / self.nsteps}
+    }
+  }
+  
+}
+
+{define-proc public {points-slider ...}:MySlider
+    {with-compiler-directives allow-slow-spliced-arguments? = true do
+        {return
+            {MySlider
+                format-proc = {proc {d:any}:String {return {format "%gpt", (d asa Distance) / 1pt}}},
+                ...
+            }
+        }
+    }
+}
+
+{define-proc public {milliseconds-slider ...}:MySlider
+    {with-compiler-directives allow-slow-spliced-arguments? = true do
+        {return
+            {MySlider
+                format-proc = {proc {d:any}:String {return {format "%gms", (d asa Time) / 1ms}}},
+                ...
+            }
+        }
+    }
+}
+
+{define-proc public {percent-slider ...}:MySlider
+    {with-compiler-directives allow-slow-spliced-arguments? = true do
+        {return
+            {MySlider
+                format-proc = {proc {d:any}:String {return {format "%g%%", (d asa Fraction) * 100}}},
+                ...
+            }
+        }
+    }
+}
+
+{value
+    def opacity-slider = {percent-slider label = "Splash Screen Opacity", min-value = 0%, max-value = 100%, value = 100%}
+    
+    let circle-color:FillPattern = "blue"
+    let background:FillPattern = "silver"
+    let item-type:String = "rectangle-animation-item-maker"
+    let item-length:Distance = 16pt
+    let item-width:Distance = 0.35 * item-length
+    let radius:Distance = item-length
+    let count:int = 12
+    let interval:Time = 100ms
+    let min-opacity:Fraction = 25%
+    
+    def item-length-slider = {points-slider label = "Item Length", min-value = 0pt, max-value = 50pt, value = item-length} 
+    def item-width-slider = {points-slider label = "Item Width", min-value = 0pt, max-value = 20pt, value = item-width} 
+    def radius-slider = {points-slider label = "Radius", min-value = 0pt, max-value = 50pt, value = radius} 
+    def count-slider = {MySlider label = "Number of Items", max-value = 50, value = count}
+    def interval-slider = {milliseconds-slider label = "Update Interval", min-value = 0s, max-value = 200ms, value = interval}
+    def min-opacity-slider = {percent-slider label = "Minimum Item Opacity", min-value = 0%, max-value = 100%, value = min-opacity}
+    
+    {VBox spacing = 8pt,
+        opacity-slider,
+        {HBox spacing = 16pt,
+            {CommandButton
+                label = "Set circle color",
+                {on Action do
+                    {if-non-null fp:FillPattern = 
+                        {choose-color 
+                            prompt = "Select a color for the animated circle",
+                            initial-color = circle-color
+                        }
+                     then
+                        set circle-color = fp
+                    }
+                }
+            },
+            {CommandButton
+                label = "Set background color",
+                {on Action do
+                    {if-non-null fp:FillPattern = 
+                        {choose-color 
+                            prompt = "Select a splash screen background color",
+                            initial-color = background
+                        }
+                     then
+                        set background = fp
+                    }
+                }
+            }
+        },
+        {HBox
+            {GroupBox label = "Animated item shape",
+                {RadioFrame
+                    {HBox spacing = 8pt,
+                        {RadioButton label = "Rectangles",
+                            value = true,
+                            radio-value = "rectangle-animation-item-maker"
+                        },
+                        {RadioButton label = "Ellipses",
+                            radio-value = "ellipse-animation-item-maker"
+                        },
+                        {RadioButton label = "Circles",
+                            radio-value = "circle-animation-item-maker"
+                        }
+                    },
+                    {on ValueChanged at rf:RadioFrame do
+                        set item-type = rf.value asa String
+                    }
+                }
+            },
+            {Fill}
+        },
+        item-length-slider,
+        item-width-slider,
+        radius-slider,
+        count-slider,
+        interval-slider,
+        min-opacity-slider,
+        {Fill height = 10pt},
+        {CommandButton
+            label = "View Splash Screen",
+            {on Action do
+                {TranslucentSplashScreen.setup
+                    splash-applet-url =
+                        {string-url
+                            {CircleAnimation.make-splash-subapplet-source
+                                circle-color = circle-color,
+                                background = background,
+                                item-maker-proc-name = item-type,
+                                item-length = item-length-slider.value asa Distance,
+                                item-width = item-width-slider.value asa Distance,
+                                radius = radius-slider.value asa Distance,
+                                count = count-slider.value asa int,
+                                interval = interval-slider.value asa Time,
+                                min-opacity = min-opacity-slider.value asa Fraction
+                            }
+                        },
+                    opacity = opacity-slider.value asa Fraction
+                }
+                {TranslucentSplashScreen.set-title "Loading data...", color = "#0000c0", font-size = 14pt}
+                || Show indeterminate progress bar.
+                {TranslucentSplashScreen.set-progress-bar max = 49}
+                
+                || We will now be in a loop and sleep in the loop to fake
+                || some work..
+                {for i = 0 below 50 do
+                    {sleep 60ms}
+                    {TranslucentSplashScreen.set-progress-bar-value i}
+                    {dispatch-events false}
+                }
+                || We are done. Destroy the Splash Screen.
+                {TranslucentSplashScreen.destroy}
+            }
+        }
+    }
+}
