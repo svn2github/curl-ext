@@ -2995,7 +2995,7 @@
 
 {doc-next
     {purpose
-        Reflect a (u, v) texture coordinate about the line {no-break u = 0.5}.
+        Reflect a (u, v) texture coordinate about the line {no-break \\u = 0.5}.
     }
     {parameter uv,
         The texture coordinate to be reflected.

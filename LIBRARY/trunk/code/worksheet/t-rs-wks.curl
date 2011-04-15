@@ -43,10 +43,10 @@
                 modifiable? = false,
                 index-type = RecordFieldIndexType.unique
             },
-            {RecordField "a", domain = WorksheetModel.double-domain},
-            {RecordField "b", domain =  WorksheetModel.double-domain},
-            {RecordField "c", domain =  WorksheetModel.double-domain},
-            {RecordField "sum", domain =  WorksheetModel.double-domain}
+            {RecordField "a", domain = DataSource.double-domain},
+            {RecordField "b", domain =  DataSource.double-domain},
+            {RecordField "c", domain =  DataSource.double-domain},
+            {RecordField "sum", domain =  DataSource.double-domain}
         }
     }
 }
@@ -72,16 +72,16 @@
     {proc {dest:DataRef, src:DataRef}:void
         let sum:double = 0.0
         {for v in src do
-            {inc sum, v}
+            {inc sum, v.as-double}
         }
-        {dest.set-value sum}
+        set dest.value = sum
     }
 }
 
 || proc to multiply two arguments
 {def compute-product =
     {proc {dest:DataRef, p:DataRef, q:DataRef}:void
-        {dest.set-value {p.get-double} * {q.get-double}}
+        set dest.value = p.as-double * q.as-double
     }
 }
 
@@ -90,7 +90,7 @@
 {def a-ref = {rds.get-ref "a"}}
 {def b-ref = {rds.get-ref "b"}}
 {def c-ref = {rds.get-ref "c"}}
-{def abc-ref = {rds.get-ref "a/b/c"}}
+{def abc-ref = {rds.get-ref "a,b,c"}}
 {def sum-ref = {rds.get-ref "sum"}}
 
 {def worksheet =
@@ -100,9 +100,9 @@
         {widths 1.3in, 1.0in, 1.0in, 1.0in, 1.5in, 1.0in, .25in},
 
         row = 0, col = 0, "Sample Data",
-        col = 6, {cell-spec {DateTime.date}},
+        col = 6, {value-cell {DateTime.date}},
 
-        row = 1, col = 1, "multiplier", {editable-cell 20},
+        row = 1, col = 1, "multiplier", {input-cell 20},
         colspan = 2, "Affects column C below",
         row = 2, col = 1, 
         "a = cos(i * 20deg)", "b = i x 5", "c = i * C2", "sum = a + b + c",
@@ -115,7 +115,7 @@
         {formula-cell compute-sum, sum-ref},
 
         row = 10, col = 0, 
-        {cell-spec color = "red", halign = "right",
+        {value-cell color = "red", halign = "right",
 ||--            hstretch? = false, vstretch? = false,
             valign = "center",
             colspan = 2, 
@@ -126,7 +126,7 @@
 
         || Add a RecordGrid
         row = 3, col = 1,
-        {cell-spec
+        {value-cell
             rowspan = 6, colspan = 5,
             hstretch? = true, vstretch? = true,
             {EmbeddedRecordGrid
@@ -143,7 +143,7 @@
         },
         || Add a LayeredChart
         row = 11, col = 1, row-height = 3.5in,
-        {cell-spec
+        {value-cell
             colspan = 5,
             vstretch? = true, hstretch? = true,
             {LayeredChart
@@ -169,12 +169,12 @@
 {value
 
     || Recompute column c of the RecordSet from $C$2 in the worksheet
-    {rds.make-formula {rds.get-ref "c"}, WorksheetModel.double-domain, compute-product,
+    {rds.make-formula {rds.get-ref "c"}, DataSource.double-domain, compute-product,
         {worksheet.model.get-ref "$C$2"}, {rds.get-ref "a"}
     }
 
     || Add a formula to sum columns a, b, and c in the RecordSet
-    {rds.make-formula sum-ref, WorksheetModel.double-domain, compute-sum, abc-ref}
+    {rds.make-formula sum-ref, DataSource.double-domain, compute-sum, abc-ref}
 
     worksheet || display the worksheet
 }

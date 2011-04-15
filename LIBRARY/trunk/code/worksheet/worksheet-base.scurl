@@ -15,8 +15,6 @@
 ||| limitations under the License.
 ||| ----------------------------------------------------------------------------
 
-|| -----------------------------------------------------------------------------
-
 ||FIXME: move to EXT.DATA-ACCESS
 {doc-next
     {purpose
@@ -63,7 +61,7 @@
     {construct-super rows, cols}
     {if-non-null init-proc then
         {for r = 0 below rows do
-            {for c = 0 below rows do
+            {for c = 0 below cols do
                 set self[r, c] = {init-proc r, c}
             }
         }
@@ -318,41 +316,61 @@
 
 || -----------------------------------------------------------------------------
 
-{doc-next
-    {purpose Map from String to any.}
-}
-{def public Dictionary = {HashTable-of String, any}}
+||--{doc-next
+||--    {purpose Map from String to any.}
+||--}
+||--{def public Dictionary = {HashTable-of String, any}}
 
 
 || Proc type used to represent a formula
 || Return a new value for target
-{def CalcProc = any}
-||--{def CalcProcN =
-||--    {proc-type {target:DataRef, ...:DataRef}:any}
-||--}
-{def CalcProc1 =
-    {proc-type {target:DataRef, a:DataRef}:any}
-}
-{def CalcProc2 =
-    {proc-type {target:DataRef, a:DataRef, b:DataRef}:any}
-}
-{def CalcProc3 =
-    {proc-type {target:DataRef, a:DataRef, b:DataRef, c:DataRef}:any}
-}
-{def CalcProc4 =
-    {proc-type {target:DataRef,
-                a:DataRef, b:DataRef, c:DataRef, d:DataRef
-               }:any
+{doc-next
+    {purpose
+        A procedure used to compute a value in a {docref DataSource}
     }
-}
-{def CalcProc5 =
-    {proc-type {target:DataRef,
-                a:DataRef, b:DataRef, c:DataRef, d:DataRef, e:DataRef
-               }:any
-    }
-}
+    {details
+        The arguments to a calculation procedure must all be {docref
+        DataRef}s.  The first argument is the output value. A
+        correctly written procedure will store a computed value there,
+        and nowhere else.
 
-{define-proc package {any-to-double v:any}:double
+        Additional arguments are {docref DataRef}s for the inputs to
+        the procedure.
+    }
+}
+{def public CalcProc = any}
+||--{def CalcProcN =
+||--    {proc-type {target:DataRef, ...:DataRef}:void}
+||--}
+||--{def CalcProc1 =
+||--    {proc-type {target:DataRef, a:DataRef}:any}
+||--}
+||--{def CalcProc2 =
+||--    {proc-type {target:DataRef, a:DataRef, b:DataRef}:any}
+||--}
+||--{def CalcProc3 =
+||--    {proc-type {target:DataRef, a:DataRef, b:DataRef, c:DataRef}:any}
+||--}
+||--{def CalcProc4 =
+||--    {proc-type {target:DataRef,
+||--                a:DataRef, b:DataRef, c:DataRef, d:DataRef
+||--               }:any
+||--    }
+||--}
+||--{def CalcProc5 =
+||--    {proc-type {target:DataRef,
+||--                a:DataRef, b:DataRef, c:DataRef, d:DataRef, e:DataRef
+||--               }:any
+||--    }
+||--}
+
+{doc-next
+    {purpose
+        Convert any type of value into a number. If it is a string,
+        attempt to parse it as a number. If conversion fails, return 0.0.
+    }
+}
+{define-proc public {any-to-double v:any}:double
     {return
         {type-switch v
          case s:String do
@@ -377,6 +395,131 @@
 }
 {define-class abstract public open DataSource {inherits Observer, Observable}
 
+  let private constant np:NumberParser =
+      {NumberParser
+        allow-grouping? = true,
+        allow-exponent? = false,
+        whitespace-char-class = {CharClass " $,\t"}
+      }
+
+
+  {doc-next
+    {purpose Given a value, choose the a domain to use for it.}
+    {details
+        If the value is a string, an attempt is made to parse it
+        as a number, a date, or a {docref DateTime} in order to find the
+        best domain to use.
+    }
+  }
+  {define-proc public {get-default-domain v:any}:Domain
+    let domain:Domain = DataSource.any-domain
+    {if {number? v} then
+        set domain = DataSource.double-domain
+     else
+        {type-switch v
+||--         case i:int do
+||--            set domain = DataSource.int-domain
+         case dt:DateTime do
+            set domain = 
+                {if dt.zone == DateTimeZone.utc
+                    and dt.info.hour == 0
+                    and dt.info.minute == 0
+                    and dt.info.second == 0
+                    and dt.info.partial-second == 0
+                 then
+                    DataSource.date-domain
+                 else
+                    DateTime asa Domain
+                }
+         case s:StringInterface do
+            set domain = DataSource.string-domain
+            let num?:bool = false
+            {try
+                def s = v asa String
+                def (ret, end, underflow?, overflow?) =
+                    {DataSource.np.parse-double s}
+                {if end == s.size then
+                    set domain = DataSource.double-domain
+                    set num? = true
+                }
+             catch e:Exception do
+                || Ignored - no change to domain
+            }
+            {if not num? and s != "" then
+                {try
+                    def dt = {DateTime v}
+                    {if dt.info.hour == 0
+                        and dt.info.minute == 0
+                        and dt.info.second == 0
+                     then
+                        set domain = DataSource.date-domain
+                     else
+                        set domain = DateTime asa Domain
+                    }
+                 catch e:Exception do
+                    || Ignored - no change to domain
+                }
+            }
+         case b:bool do
+            set domain = bool asa Domain
+         case t:Time do
+            set domain = Time asa Domain
+        }
+    }
+    {return domain}
+  }
+
+  {doc-next
+    {purpose
+        A constant {docref Domain} object for values of any type.
+    }
+  }
+  def public any-domain:Domain = {StandardAnyDomain}
+
+  {doc-next
+    {purpose
+        A constant {docref Domain} object for values of {ctext int} type.
+    }
+  }
+  def public int-domain:Domain = {StandardIntDomain}
+
+  {doc-next
+    {purpose
+        A constant {docref Domain} object for values of type {ctext double}.
+        Values will be formatted with 3 digits after the decimal point.
+    }
+  }
+  def public double-domain:Domain = d3-domain
+
+  {doc-next
+    {purpose
+        A constant {docref Domain} object for values that represent
+        an amount of currency (see {docref CurrencyDomain}).
+    }
+
+  }
+  def public currency-domain:Domain = {CurrencyDomain}
+
+  {doc-next
+    {purpose
+        A constant {docref Domain} object for values that are calendar dates.
+    }
+  }
+  def public date-domain:Domain =
+      {LocaleDateDomain default-value = {DateTime.date}}
+
+  {doc-next
+    {purpose
+        A constant {docref Domain} object for values of {docref String} type.
+    }
+  }
+  def public string-domain:Domain = {StandardStringDomain}
+
+  {doc-next
+    {purpose An empty iterator instance to be used as needed.}
+  }
+  def public empty-iterator:EmptyIterator = {EmptyIterator}
+
   {doc-next
     {purpose
         Return a reference to some element within this DataSource.
@@ -386,22 +529,6 @@
                                    ...
                                }:DataRef
   }
-
-  || Request a notification if the value identified by name is changed.
-  || The notification is the name. If name is the empty string, all
-  || changes are notified, with the name of the thing changed.
-  {method abstract public open {request-notification
-                                   ref:DataRef, obs:Observer
-                               }:void
-  }
-
-  || Stop notifications for ref. If ref is null, stop all notifications to obs
-  {method abstract public open {suspend-notification
-                                   ref:#DataRef, obs:Observer
-                               }:void
-  }
-
-  ||FIXME: load and save
 }
 
 
@@ -449,19 +576,28 @@
         Get the value that this reference points to.
     }
   }
-  {method abstract public open {get-value}:any
+  {getter abstract public open {value}:any
+  }
+
+  {doc-next
+    {purpose
+        Get the {docref Domain} for values produced by theis {docref DataRef}.
+    }
+  }
+  {getter public open {domain}:Domain
+    {return {DataSource.get-default-domain self.value}}
   }
 
   {doc-next
     {purpose Update the value that is the target of this reference.}
   }
-  {method abstract public open {set-value val:any}:void
+  {setter abstract public open {value val:any}:void
   }
 
   {doc-next
     {purpose Get the value that this reference points to as a String.}
   }
-  {method abstract public open {get-String}:String
+  {getter abstract public open {as-String}:String
   }
 
   {doc-next
@@ -469,7 +605,7 @@
         Get the value that this reference points to asa double.
     }
   }
-  {method abstract public open {get-double}:double
+  {getter abstract public open {as-double}:double
   }
 
   {doc-next
@@ -478,34 +614,15 @@
   {getter abstract public open {composite?}:bool
   }
 
-||--  {getter public open {array?}:bool
-||--    {return false}
-||--  }
-||--
-||--  {getter public open {dictionary?}:bool
-||--    {return false}
-||--  }
-
   {doc-next
     {purpose
         If this is a composite reference, return an iterator for all of
         the values. Otherwise return an iterator for the single value.
     }
   }
-  {method public open {to-Iterator}:{Iterator-of any}
+  {method public open {to-Iterator}:{Iterator-of DataRef}
     {return {SingleIterator self}}
   }
-
-  ||FIXME: implement this (or drop it)
-||--  {method public open {get-array}:#Array
-||--    {return null}
-||--  }
-||--  
-||--  ||FIXME: implement this (or drop it)
-||--  {method public open {get-dictionary}:#Dictionary
-||--    {return null}
-||--  }
-
 }
 
 {doc-next
@@ -521,27 +638,21 @@
 {define-class public open ValueDataSource {inherits DataSource}
 
   {doc-next
-    {purpose Return a {docref ValueRef} constructed from the value
+    {purpose
+        Return a {docref ValueRef} constructed from the value
         passed in the rest args.
     }
+    {details
+        This override of {docref DataSource.get-ref} takes one
+        positional argument {param value} and one optional keyword
+        argument, {param domain}. These are simply passed directly
+        to the {docref ValueRef.default} constructor.
+    }
   }
-  ||FIXME: could make an array out of ... document it either way.
   {method public open {get-ref
                           ...
                       }:DataRef
     {return {ValueRef {splice ...}}}
-  }
-
-  {method public open {request-notification
-                          ref:DataRef, obs:Observer
-                      }:void
-    || Don't do anything
-  }
-
-  {method public open {suspend-notification
-                          ref:#DataRef, obs:Observer
-                      }:void
-    || Don't do anything
   }
 }
 
@@ -564,68 +675,111 @@
   {doc-next
     {purpose The literal value that this object represents.}
   }
-  field protected value:any
+  field protected _value:any
   
-  {constructor public {default value:any}
+  {doc-next
+    {purpose The {docref Domain} associated with this value, if any.}
+  }
+  field protected _domain:#Domain = null
+
+  {constructor public {default
+                          value:any,
+                          domain:#Domain = null
+                      }
     {construct-super value-source}
-    set self.value = value
+    set self._value = value
+    set self._domain = domain
+  }
+
+  {method public open {init
+                          value:any,
+                          domain:#Domain = null
+                      }:void
+    set self._value = value
+    set self._domain = domain
   }
 
   {method public open {resolve target:DataRef}:DataRef
     {return self}
   }
 
-  {method public open {get-value}:any
-    {return self.value}
+  {getter public open {value}:any
+    {return self._value}
   }
 
-  {method public open {set-value val:any}:void
+  {setter public open {value val:any}:void
     ||FIXME: notify observers
-    set self.value = val
+    set self._value = val
+  }
+
+  {getter public open {domain}:Domain
+    {if-non-null d = self._domain then
+        {return d}
+     else
+        {return super.domain}
+    }
   }
 
   || Get the value that this reference points to as a String
-  {method public open {get-String}:String
+  {getter public open {as-String}:String
     {type-switch self.value
      case s:String do
         {return s}
      else
-        {return {String self.value}}
+        {if-non-null self._domain then
+            {return {self.domain.format self.value}}
+         else
+            {return {String self.value}}
+        }
     }
   }
 
   || Get the value that this reference points to asa double
-  {method public open {get-double}:double
+  {getter public open {as-double}:double
     {return {any-to-double self.value}}
   }
 
   || Return true if this object references several values
   {getter public open {composite?}:bool
-    ||FIXME: this can be improved... use introspection?
-    {type-switch self.value
-     case a:Array do
-        {return true}
-     else
-        {return false}
-    }
+    {return false}
   }
 
   || If this is a composite reference, return an iterator for all of
   || the values.
-  {method public open {to-Iterator}:{Iterator-of any}
-    ||FIXME: this can be improved... use introspection?
-    {type-switch self.value
-     case a:Array do
-        {return {a.to-Iterator}}
-    }
+  {method public open {to-Iterator}:{Iterator-of DataRef}
     {return {SingleIterator self}}
   }
 }
 
+
+{doc-next
+    {purpose
+        Iterator returned when there is no value available. It always
+        reports that there are no more values.
+    }
+}
+{define-class public final EmptyIterator {inherits {Iterator-of DataRef}}
+
+  {doc-next
+    {purpose Initialize this object.}
+  }
+  {constructor public {default}
+    {self.reset}
+  }
+
+  {method public {reset}:void
+  }
+  
+  {method public {read-one}:(v:DataRef, eof?:bool)
+    {return ({uninitialized-value-for-type DataRef}, true)}
+  }
+}
+
+
 {doc-next
     {purpose Iterator for a single value {docref DataRef}.}
 }
-{define-class public final SingleIterator {inherits {Iterator-of any}}
+{define-class public final SingleIterator {inherits {Iterator-of DataRef}}
 
   field private ref:DataRef
   field private done?:bool
@@ -645,34 +799,77 @@
     set self.done? = false
   }
   
-  {method public {read-one}:(v:any, eof?:bool)
+  {method public {read-one}:(v:DataRef, eof?:bool)
 
     {if self.done? then
-        {return (null, true)}
+        {return ({uninitialized-value-for-type DataRef}, true)}
     }
 
     set self.done? = true
-    {return ({self.ref.get-value}, false)}
+    {return (self.ref, false)}
   }
 }
 
+
 {define-proc package {bad-ref s:String}:void
-    {error {hlformat "Bad cell reference: %s", s}}
+    {error {hlformat "Unrecognized DataRef: %s", s}}
 }
+
 
 {doc-next
     {purpose A reference temporarily represented by a string.}
 }
-{define-class public open Ref {inherits ValueRef}
+||FIXME: change name to LazyRef or DelayedRef or TempRef?
+{define-class public open StringRef {inherits ValueRef}
   {constructor public {default ref:String}
     {construct-super ref}
   }
 
   {method public open {resolve target:DataRef}:DataRef
-    {return {target.source.get-ref self.value}}
+    {return {{target.source.get-ref self.value}.resolve target}}
   }
 
 }
+
+{doc-next
+    {purpose
+        A mixin used to maintain the current value as a
+        {docref DataRef} for various iterator classes.
+    }
+}
+{define-class public open DataRefIteratorMixin
+
+  {doc-next
+    {purpose The current value, as a {docref ValueRef}.}
+  }
+  field protected _value-ref:#ValueRef
+
+  {doc-next
+    {purpose Initialize the object.}
+  }
+  {constructor public {default
+                      }
+  }
+
+  {doc-next
+    {purpose Set the value and domain.}
+  }
+  {method public open {set-ref v:any, domain:#Domain}:void
+    {if-non-null ref = self._value-ref then
+        {ref.init v, domain = domain}
+     else
+        set self._value-ref = {ValueRef v, domain = domain}
+    }
+  }
+
+  {doc-next
+    {purpose Return the current value as a {docref ValueRef}.}
+  }
+  {getter public open {value-ref}:ValueRef
+    {return {non-null self._value-ref}}
+  }
+}
+
 
 || -----------------------------------------------------------------------------
 
@@ -683,13 +880,216 @@
     }
 }
 {define-class public final Formula
-  ||FIXME: missing doc
-  field public constant target:DataRef
-  field public constant domain:Domain
-  field public constant formula:CalcProc
-  field public constant args:Arguments
 
-  ||FIXME: missing doc
+  {doc-next
+    {purpose
+        A formula procedure that copies the value at {param src} to {param dest}.
+    }
+  }
+  def public copy =
+      {proc {dest:DataRef, src:DataRef}:void
+        set dest.value = src.value
+      }
+
+  {doc-next
+    {purpose
+        A formula procedure that adds two inputs {param a} and {param b} to
+        compute the result stored at {param dest}.
+    }
+  }
+  def public add =
+      {proc {dest:DataRef, a:DataRef, b:DataRef}:void
+        set dest.value = a.as-double + b.as-double
+      }
+
+  {doc-next
+    {purpose
+        A formula procedure that subtracts input {param a} from {param a} to
+        compute the result stored at {param dest}.
+    }
+  }
+  def public subtract =
+      {proc {dest:DataRef, a:DataRef, b:DataRef}:void
+        set dest.value  = a.as-double - b.as-double
+      }
+
+  {doc-next
+    {purpose
+        A formula procedure that multiplies two inputs {param a} and {param b} to
+        compute the result stored at {param dest}.
+    }
+  }
+  def public multiply =
+      {proc {dest:DataRef, a:DataRef, b:DataRef}:void
+        set dest.value = a.as-double * b.as-double
+      }
+
+  {doc-next
+    {purpose
+        A formula procedure that divides input {param a} by {param b} to
+        compute the result stored at {param dest}.
+    }
+  }
+  def public divide =
+      {proc {dest:DataRef, a:DataRef, b:DataRef}:void
+        set dest.value = a.as-double / b.as-double
+      }
+
+  {doc-next
+    {purpose
+        A formula procedure that takes any number of input data references,
+        adds them up, and stores the result at {param dest}.
+    }
+    {details
+        If any of the inputs are composite values, this procedure will iterate
+        over all of them while accumulating the total.
+    }
+  }
+  def public sum =
+      {proc {dest:DataRef, ...:DataRef}:void
+        let x:double = 0.0
+        {for v in ... do
+            {if v.composite? then
+                {for y in v do
+                    set x = x + y.as-double
+                }
+             else
+                set x = x + v.as-double
+            }
+        }
+        set dest.value = x
+      }
+
+  {doc-next
+    {purpose
+        A formula procedure that takes any number of input data
+        references, multiplies them together, and stores the result
+        at {param dest}.
+    }
+    {details
+        If any of the inputs are composite values, this procedure will iterate
+        over all of them while computing the result.
+    }
+  }
+  def public product =
+      {proc {dest:DataRef, ...:DataRef}:void
+        let x:double = 1.0
+        {for v in ... do
+            {if v.composite? then
+                {for y in v do
+                    set x = x * y.as-double
+                    {if x == 0.0 then
+                        {break}
+                    }
+                }
+             else
+                set x = x * v.as-double
+                {if x == 0.0 then
+                    {break}
+                }
+            }
+        }
+        set dest.value = x
+      }
+
+  {doc-next
+    {purpose
+        A formula procedure that takes any number of input data
+        references, concatenates their string representation, and
+        stores the result at {param dest}.
+    }
+    {details
+        If any of the inputs are composite values, this procedure will iterate
+        over all of them while computing the result.
+    }
+  }
+  def public concat =
+      {proc {dest:DataRef, ...:DataRef}:void
+        def buf = {StringBuf}
+        {for v in ... do
+            {if v.composite? then
+                {for y in v do
+                    {buf.concat y.as-String}
+                }
+             else
+                {buf.concat v.as-String}
+            }
+        }
+        set dest.value = {buf.to-String}
+      }
+
+
+  {doc-next
+    {purpose
+        A formula procedure that takes any number of input data
+        references and counts them.
+    }
+    {details
+        If any of the inputs are composite values, this procedure will iterate
+        over all of them while computing the result.
+    }
+  }
+  def public count =
+      {proc {dest:DataRef, ...:DataRef}:void
+        let x:double = 0.0
+        {for v in ... do
+            {if v.composite? then
+                {for y in v do
+                    {inc x}
+                }
+             else
+                {inc x}
+            }
+        }
+        set dest.value = x
+      }
+
+||--  def public hyperlink =
+||--      {proc {dest:DataRef, href:DataRef, text:DataRef}:void
+||--        {dest.set-value
+||--            {link target = "_blank", href = {url {href.get-String}},
+||--                {text.get-value}
+||--            }
+||--        }
+||--      }
+
+
+  {doc-next
+    {purpose The location where the result is stored.}
+  }
+  field public constant target:DataRef
+
+  {doc-next
+    {purpose The domain of the result.}
+  }
+  field public constant domain:Domain
+
+  {doc-next
+    {purpose The procedure that defines the computation for this formula.}
+  }
+  field public constant formula:CalcProc
+
+  {doc-next
+    {purpose The input arguments for this formula.}
+  }
+  field public constant args:{Array-of DataRef}
+
+  {doc-next
+    {purpose Initialize this {docref Formula}.}
+    {details
+        Applications code should not normally create a {docref
+        Formula} object. Instead, call {docref-abbr
+        CalcMixin.make-formula}, which will both create a formula and
+        ensure that it is called when it is necessary to recompute the
+        result.
+    }
+    {parameter target, A reference to the location where the result will be
+        stored.
+    }
+    {parameter domain, The domain of the result.}
+    {parameter formula, The procedure that defines the computation of this formula.}
+    {parameter ..., The inputs to the forumula computation.}
+  }
   {constructor public {default
                           target:DataRef,
                           domain:Domain,
@@ -699,20 +1099,42 @@
     set self.target = target
     set self.domain = domain
     set self.formula = formula
-    set self.args = {Arguments {splice ...}}
+    set self.args = {new {Array-of DataRef}, {splice ...}}
   }
 }
 
-||FIXME: Is this always mixed into DataSource? maybe it isn't really a mixin.
+|| Note: This is always mixed into DataSource, but not every DataSource
+|| supports this interface.
+{doc-next
+    {purpose Adds support for formulas to a {docref DataSource}.}
+}
 {define-class abstract public open CalcMixin {inherits RefreshMixin}
 
+  {doc-next
+    {purpose
+        A list of {docref Formula}s in the order in which they
+        should be evaluated.
+    }
+  }
   field ordered-calcs:{Array-of Formula}
 
+  {doc-next
+    {purpose Initialize this object.}
+  }
   {constructor public {default}
     {construct-super}
     set self.ordered-calcs = {new {Array-of Formula}}
   }
 
+  {doc-next
+    {purpose Create a {docref Formula} and store it for future use.}
+    {parameter target, A reference to the location where the result will be
+        stored.
+    }
+    {parameter domain, The domain of the result.}
+    {parameter formula, The procedure that defines the computation of this formula.}
+    {parameter ..., The inputs to the forumula computation.}
+  }
   {method public open {make-formula
                           target:DataRef,
                           domain:Domain,
@@ -722,15 +1144,29 @@
     def f = {Formula target, domain, formula, {splice ...}}
     {with-compiler-directives allow-any-calls? = true do
         {for arg in f.args do
-            {(self asa Observer).observe (arg asa DataRef).source}
+            {if arg.source != self then
+                {(self asa Observer).observe arg.source}
+            }
         }
     }
     {self.ordered-calcs.append f}
     {return f}
   }
 
-  || Calculate formula and update target. Return true iff target changed.
-  || All args are resolved for target before the formula proc is invoked
+  {doc-next
+    {purpose
+        Evaluate {param formula} and store the result in {param target}.
+        The rest args are inputs to the formula.
+    }
+    {details
+        The rest args are resolved with respect to the target (via
+        {ctext {{param arg}.resolve target}}) and the formula procedure
+        is invoked with {param target} as the first argument and the
+        resolved input arguments as the remaining arguments. It is
+        assumed that the formula procedure will assign a value to
+        the target.
+    }
+  }
   {method public open {eval
                           formula:CalcProc,
                           target:DataRef,

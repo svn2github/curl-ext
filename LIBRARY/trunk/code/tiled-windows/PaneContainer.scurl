@@ -659,9 +659,11 @@
         A description of the current pane layout as a {docref String}
         containing a Curl source expression.
     }
-    {exception UnknownPaneNameException,
-        Thrown from the {docref-abbr StandardPaneContainer.pane-layout} setter when
-        the layout specification contains a pane name that is not recognized.
+    {throws
+        {exception UnknownPaneNameException,
+            Thrown from the {docref-abbr StandardPaneContainer.pane-layout} setter when
+            the layout specification contains a pane name that is not recognized.
+        }
     }
   }
   {getter public {pane-layout}:String

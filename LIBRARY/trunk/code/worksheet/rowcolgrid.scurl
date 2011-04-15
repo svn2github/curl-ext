@@ -330,9 +330,9 @@
   }        
   {method public open {add-cell
                           row:int, col:int,
+                          g:Graphic,
                           rowspan:int = 1,
-                          colspan:int = 1,
-                          g:Graphic
+                          colspan:int = 1
                       }:Graphic
     || Allow expansion by one row or column at a time
     {if row == self.cells.rows then

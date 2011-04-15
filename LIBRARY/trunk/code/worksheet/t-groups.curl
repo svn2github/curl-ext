@@ -31,33 +31,33 @@
 || ------------------------------------
 
 || Small example
-{value
-    {def model = {WorksheetModel 3, 6}}
-    {def worksheet =
-        {Worksheet
-            model,
-            font-size = 9pt,
-            default-column-width = .6in, 
-            {widths .75in},
-            row = 0, col = 0,
-            {cell-spec {bold Small Data}},
-            col = 5, "ABC",
-            row = 0, col = 1, "Group BC",
-            row = 0, col = 1, {col-group 2},
-            row = 0, col = 3, "Group DE",
-            row = 0, col = 3, {col-group 2},
-            
-            row = 1, col = 0, "A", "B", "C", "D", "E", "F",
-            row = 2, col = 0, "A", "B", "C", "D", "E", "F"
-        }
-    }
-        
-    worksheet || display the worksheet
-}
+||--{value
+||--    {def model = {WorksheetModel 3, 6}}
+||--    {def worksheet =
+||--        {Worksheet
+||--            model,
+||--            font-size = 9pt,
+||--            default-column-width = .6in, 
+||--            {widths .75in},
+||--            row = 0, col = 0,
+||--            {value-cell {bold Small Data}},
+||--            col = 5, "ABC",
+||--            row = 0, col = 1, "Group BC",
+||--            row = 0, col = 1, {col-group 2},
+||--            row = 0, col = 3, "Group DE",
+||--            row = 0, col = 3, {col-group 2},
+||--            
+||--            row = 1, col = 0, "A", "B", "C", "D", "E", "F",
+||--            row = 2, col = 0, "A", "B", "C", "D", "E", "F"
+||--        }
+||--    }
+||--        
+||--    worksheet || display the worksheet
+||--}
 
 || Larger example
 
-{def rows = 50}
+{def rows = 500} ||20
 {def cols = 12}
 {def model = {WorksheetModel rows, cols}}
 
@@ -68,8 +68,8 @@
         default-column-width = .6in,
         {widths 0.25in, 0.25in},
         row = 0, col = 0,
-        {cell-spec colspan = 2, {bold Sample Data}},
-        col = 8, {cell-spec {DateTime.date}},
+        {value-cell colspan = 2, {bold Sample Data}},
+        col = 8, {value-cell {DateTime.date}},
 
         row = 0, col = 2, "Group CDE",
         row = 0, col = 2, {col-group 3},
@@ -87,7 +87,8 @@
 }
 {define-proc {insert-row-group row:int, rows:int, col:int, cols:int}:void
     {worksheet.insert-group row, 0, 
-        {GroupProto true, rows, expanded? = row > 15}
+        {GroupProto true, rows}
+||--        {GroupProto true, rows, expanded? = row > 5}
     }
     {if row < 20 then
         {worksheet.insert-group row, 1, {GroupProto true, rows - 3}}
@@ -96,8 +97,10 @@
     {for ri = 0 below rows do
         {for ci = 0 below cols do
             {worksheet.init-cell
-                row + ri, col + ci, 
-                {format "$%c$%s", 'C' + ci, ri}
+                {ValueCell
+                    {format "$%c$%s", 'C' + ci, ri}
+                },
+                row = row + ri, col = col + ci
             }
         }
     }

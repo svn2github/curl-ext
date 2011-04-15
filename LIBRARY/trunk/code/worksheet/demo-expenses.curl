@@ -27,9 +27,9 @@
     font-size = 10pt
 }
 
-|| -------------------------------------------------------------------------
-
 {title heading? = false, Expense Report Sample}
+
+|| -------------------------------------------------------------------------
 
 {define-proc public {get-new-id rs:RecordSet}:int
     || Find the highest ID currently in use
@@ -43,33 +43,32 @@
     {return last-id + 1}
 }
 
-
 {def compute-sum =
     {proc {dest:DataRef, src:DataRef}:void
         let sum:double = 0.0
         {for v in src do
-            {inc sum, v}
+            {inc sum, v.as-double}
         }
-        {dest.set-value sum}
+        set dest.value = sum
     }
 }
 
 {def compute-diff =
     {proc {dest:DataRef, v:DataRef, ...:DataRef}:void
-        let diff:double = {v.get-double}
+        let diff:double = v.as-double
         {for dr in ... do
-            {dec diff, {dr.get-double}}
+            {dec diff, dr.as-double}
         }
-        {dest.set-value diff}
+        set dest.value = diff
     }
 }
 
 {def expense-fields =
     {RecordFields
         {RecordField "id", domain = int},
-        {RecordField "date", domain = WorksheetModel.date-domain},
+        {RecordField "date", domain = DataSource.date-domain},
         {RecordField "description", domain = String},
-        {RecordField "amount", domain = WorksheetModel.currency-domain},
+        {RecordField "amount", domain = DataSource.currency-domain},
         {RecordField "purpose", domain = String}
     }
 }
@@ -78,7 +77,7 @@
     {RecordFields
         {RecordField "id", domain = String},
         {RecordField "description", domain = String},
-        {RecordField "amount", domain = WorksheetModel.currency-domain}
+        {RecordField "amount", domain = DataSource.currency-domain}
     }
 }
 
@@ -123,15 +122,15 @@
         default-row-height = 18pt,
         {widths 24pt, 24pt, 72pt, 2.5in, 60pt, 1.5in, 30pt},
         row = 0, col = 0, row-height = 22pt,
-        {cell-spec colspan = 4, margin = 3pt, {big Expense Report}},
+        {value-cell colspan = 4, margin = 3pt, {big Expense Report}},
 
         row = 2, col = 0, rowspan = 2, colspan = 2, "Employee Info",
 
-        {cell-spec halign = "right", "Name:"},
-        {editable-cell ""},
+        {value-cell halign = "right", "Name:"},
+        {input-cell ""},
 
         row = 3, col = 2,
-        {cell-spec halign = "right", "Department:"}, {editable-cell ""},
+        {value-cell halign = "right", "Department:"}, {input-cell ""},
 
         row = 5, col = 1,
         "Item", "Date", "Description", "Amount", "Purpose",
@@ -140,31 +139,29 @@
         row = 6, col = 0,
         {row-group 1},
         col = 1,
-        {cell-spec
-            {EmbeddedRecordForm
-                expenses-ds, id-field = "id",
+        {EmbeddedRecordForm
+            expenses-ds, id-field = "id",
 
-                {cell-spec "id"},
-                {editable-cell "date"},
-                {editable-cell "description"},
-                {editable-cell halign = "right", "amount"},
-                {editable-cell "purpose"},
-                {cell-spec
-                    halign = "center", valign = "center", margin = 0pt,
-                    {proc {r:#Record}:any
-                        {return
-                            {CommandButton
-                                label = {bold color = "crimson", x},
-                                takes-focus? = false,
-                                height = 13pt,
-                                {on Action at cb:CommandButton do
-                                    {type-switch cb.data-binding-context
-                                     case rf:RecordForm do
-                                        {if rf.records.size > 0 then
-                                            {if-non-null cr = rf.current-record then
-                                                {cr.delete}
-                                            }
-                                        }
+            {FieldSpec "id"},
+            {FieldSpec editable? = true, "date"},
+            {FieldSpec editable? = true, "description"},
+            {FieldSpec editable? = true, halign = "right", "amount"},
+            {FieldSpec editable? = true, "purpose"},
+            {value-cell
+                halign = "center", valign = "center", margin = 0pt,
+                "button",
+                ui-spec =
+                {proc {r:#Record, cv:CellValue}:Visual
+                    {return
+                        {CommandButton
+                            label = {bold color = "crimson", x},
+                            takes-focus? = false,
+                            height = 13pt,
+                            {on Action at cb:CommandButton do
+                                {type-switch cb.data-binding-context
+                                 case rf:RecordForm do
+                                    {if-non-null cr = rf.current-record then
+                                        {cr.delete}
                                     }
                                 }
                             }
@@ -175,7 +172,7 @@
         },
 
         row = 8, col = 1,
-        {cell-spec
+        {value-cell
             halign = "center", valign = "center", margin = 0pt,
             {CommandButton
                 label = {bold font-size = 10pt, font-family = "Arial", +},
@@ -190,22 +187,22 @@
             }
         },
 
-        col = 3, {cell-spec halign = "right", valign = "center", {text Total:}},
+        col = 3, {value-cell halign = "right", "Total:"},
 
         || Formula to compute the total of all amounts
         col = 4, {formula-cell
                      halign = "right", font-weight = "bold",
-                     domain = WorksheetModel.currency-domain,
+                     domain = DataSource.currency-domain,
                      compute-sum, amount-ref
                  },
 
-        row = 9, col = 3, {cell-spec halign = "right", {text Prepaid:}},
+        row = 9, col = 3, {value-cell halign = "right", "Prepaid:"},
         {currency-cell editable? = true, 0},
 
         || Show net at the bottom (total expenses less prepaid amount)
-        row = 12, col = 0, colspan = 2, "Total",
+        row = 12, col = 0, colspan = 2, "Total----",
         {formula-cell
-            domain = WorksheetModel.currency-domain, font-weight = "bold",
+            domain = DataSource.currency-domain, font-weight = "bold",
             compute-diff, total-ref, prepaid-ref
         },
 
@@ -214,12 +211,12 @@
         || Signature area at the bottom
         row = 14,
         col = 2,
-        {cell-spec colspan = 2, font-size = 16pt, "____________________"}, 
-        {cell-spec font-size = 6pt, "__________"},
+        {value-cell colspan = 2, font-size = 16pt, "____________________"}, 
+        {value-cell font-size = 16pt, "__________"},
 
         row = 15, 
-        col = 0, {cell-spec colspan = 2, "Signed"},
-        col = 2, {cell-spec colspan = 2, employee-ref}, "Date"
+        col = 0, {value-cell colspan = 2, "Signed"},
+        col = 2, {ref-cell colspan = 2, employee-ref}, "Date"
     }
 }
 
@@ -257,9 +254,53 @@
     },
  "$D$2":"Richard Thompson",
  "$D$3":"Marketing",
+
+ "v-ruler-spec":
+    {
+     "orientation":"vertical",
+     "split-count":0,
+     "specs":
+        [
+         "30pt",
+         "18pt",
+         "18pt",
+         "18pt",
+         "18pt",
+         "18pt",
+         "18pt",
+         "18pt",
+         "24pt"
+        ]
+    },
+ "h-ruler-spec":
+    {
+     "orientation":"horizontal",
+     "split-count":0,
+     "specs":
+        [
+         "24pt",
+         "24pt",
+         "72pt",
+         "180pt",
+         "60pt",
+         "72pt",
+         "30pt",
+        ]
+    }
 }
 "|
                         }
         }
     }
 }
+{CommandButton
+    label = "Show Json",
+    {on Action at cb:CommandButton do
+        def data = {JsonValue-to-String
+                       {model.get-data},
+                       prettify? = true
+                   }
+        {dump data}
+    }
+}
+

@@ -82,7 +82,7 @@
                 def cv = wm.vals[ri, ci]
                 def v = {format "R%sC%s", ri, ci}
                 set cv.value = v
-                set cv.domain = WorksheetModel.string-domain
+||--                set cv.domain = DataSource.string-domain
             }
         }
     }
@@ -207,25 +207,24 @@
             {proc {dest:DataRef, src:DataRef}:void
                 let sum:double = 0.0
                 {for v in src do
-                    {inc sum, {if-non-null v then v asa double else 0.0}}
+                    {inc sum, v.as-double}
                 }
-                {dest.set-value sum}
+                set dest.value = sum
             }
         }
 
         || A procedure to compute the next day from a cell containing a date
         {def next-day =
             {proc {dest:DataRef, src:DataRef}:void
-                {dest.set-value {src.get-value} + 1d}
+                set dest.value = src.value + 1d
             }
         }
 
         || A procedure to compute the day name from a cell containing a date
         {def day-name =
             {proc {dest:DataRef, src:DataRef}:void
-                {dest.set-value
-                    ({src.get-value} asa DateTime).info.locale-weekday
-                }
+                set dest.value =
+                    (src.value asa DateTime).info.locale-weekday
             }
         }
 
@@ -234,16 +233,16 @@
             {proc {dest:DataRef, ...:DataRef}:void
                 def buf = {StringBuf}
                 {for r in ... do
-                    {buf.concat {r.get-String}}
+                    {buf.concat r.as-String}
                 }
-                {dest.set-value {buf.to-String}}
+                set dest.value = {buf.to-String}
             }
         }
 
         || A cell with a formula to compute the next day from the cell above
         {def next-date-cell =
             {formula-cell
-                domain = WorksheetModel.date-domain, next-day, {RelativeCellRef -1, 0}
+                domain = DataSource.date-domain, next-day, {RelativeCellRef -1, 0}
             }
         }
 
@@ -266,31 +265,31 @@
 
             row = 2, col = 1,
             {formula-cell domain = String, day-name, {RelativeCellRef 0, 1}},
-            {editable-cell {DateTime.date "2010-10-11"}},
-            {editable-cell halign = "right", 7},
+            {input-cell {DateTime.date "2010-10-11"}},
+            {input-cell halign = "right", 7},
 
             row = 3,
             col = 2, next-date-cell,
             col = 1, day-cell,
-            col = 3, {editable-cell halign = "right", 9},
+            col = 3, {input-cell halign = "right", 9},
 
             row = 4,
             col = 2, next-date-cell,
             col = 1, day-cell,
-            col = 3, {editable-cell halign = "right", 8},
+            col = 3, {input-cell halign = "right", 8},
 
             row = 5, 
             col = 2, next-date-cell,
             col = 1, day-cell,
-            col = 3, {editable-cell halign = "right", 9},
+            col = 3, {input-cell halign = "right", 9},
 
             row = 6,
             col = 2, next-date-cell,
             col = 1, day-cell,
-            col = 3, {editable-cell halign = "right", 4},
+            col = 3, {input-cell halign = "right", 4},
 
             row = 7, col = 2,
-            "Total:", {formula-cell halign = "right", sum, {Ref "D3:D7"}},
+            "Total:", {formula-cell halign = "right", sum, {StringRef "D3:D7"}},
 
             row = 9, col = 0,
             {CommandButton

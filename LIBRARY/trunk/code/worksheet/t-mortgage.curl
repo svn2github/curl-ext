@@ -19,8 +19,10 @@
 
 {applet manifest = "../manifest.mcurl", locale = "en"}
 
-{import * from COM.CURL.EXT.WORKSHEET}
 {import * from CURL.GUI.CHARTS}
+{import * from CURL.IO.JSON}
+
+{import * from COM.CURL.EXT.WORKSHEET}
 
 {set-document-properties
     font-family = "Arial, Calibri, Cordia",
@@ -30,13 +32,6 @@
 || -------------------------------------------------------------------------
 
 {title heading? = false, Mortgage Calculator}
-
-{HBox
-    border-color = "black", border-width = 1px,
-    background = "orange",
-    {TextField}, {DateField}
-}
-
 
 {def model = {WorksheetModel 40, 7}}
 
@@ -55,12 +50,9 @@
                 modifiable? = false,
                 index-type = RecordFieldIndexType.unique
             },
-            {RecordField "interest", domain = WorksheetModel.currency-domain},
-            {RecordField "principal", domain = WorksheetModel.currency-domain},
-            {RecordField "balance", domain = WorksheetModel.currency-domain}
-||--            {RecordField "interest", domain = double-domain},
-||--            {RecordField "principal", domain = double-domain},
-||--            {RecordField "balance", domain = double-domain}
+            {RecordField "interest", domain = DataSource.currency-domain},
+            {RecordField "principal", domain = DataSource.currency-domain},
+            {RecordField "balance", domain = DataSource.currency-domain}
         }
     }
 }
@@ -73,7 +65,7 @@
     {with rs.batch-events? = true do
         {rs.delete-all}
         {rs.commit}
-        {for i = 1 to {term-ref.get-double} * 12 do
+        {for i = 1 to term-ref.as-double * 12 do
             {rs.append {RecordData n = i}}
         }
     }
@@ -87,12 +79,12 @@
 || M = P * (i*(1 + i)^n) / ((1 + i)^n - 1)
 {def compute-payment =
     {proc {dest:DataRef, a-ref:DataRef, i-ref:DataRef, y-ref:DataRef}:void
-        def amount = {a-ref.get-double}
-        def ir = {i-ref.get-double}/(100.0 * 12)
-        def n = {y-ref.get-double} * 12
-        {dest.set-value
+        def amount = a-ref.as-double
+        def ir = i-ref.as-double/(100.0 * 12)
+        def n = y-ref.as-double * 12
+        set dest.value =
             amount * (ir * {pow (1.0 + ir), n})/({pow (1.0 + ir), n} - 1)
-        }
+        
     }
 }
 
@@ -101,15 +93,14 @@
     {proc {dest:DataRef, 
            a-ref:DataRef, i-ref:DataRef, y-ref:DataRef, m-ref:DataRef
           }:void
-        def amount = {a-ref.get-double}
-        def ir = {i-ref.get-double}/(100.0 * 12)
-        def n = {y-ref.get-double} * 12
-        def m = {m-ref.get-double}
-        {dest.set-value
+        def amount = a-ref.as-double
+        def ir = i-ref.as-double/(100.0 * 12)
+        def n = y-ref.as-double * 12
+        def m = m-ref.as-double
+        set dest.value =
             (amount * ({pow (1.0 + ir), n} - {pow 1 + ir, m}))
             /
             ({pow (1.0 + ir), n} - 1)
-        }
     }
 }
 
@@ -118,9 +109,9 @@
     {proc {dest:DataRef, src:DataRef}:void
         let sum:double = 0.0
         {for v in src do
-            {inc sum, v}
+            {inc sum, v.as-double}
         }
-        {dest.set-value sum}
+        set dest.value = sum
     }
 }
 
@@ -129,16 +120,16 @@
     {proc {dest:DataRef, ...:DataRef}:void
         let a:double = 1.0
         {for dr:DataRef in ... do
-            set a = a * {dr.get-double}
+            set a = a * dr.as-double
         }
-        {dest.set-value a}
+        set dest.value = a
     }
 }
 
 || proc to subtract two arguments
 {def compute-difference =
     {proc {dest:DataRef, p:DataRef, q:DataRef}:void
-        {dest.set-value {p.get-double} - {q.get-double}}
+        set dest.value = p.as-double - q.as-double
     }
 }
 
@@ -147,9 +138,9 @@
     {proc {dest:DataRef, 
            n-ref:DataRef, payment-ref:DataRef, ppaid-ref:DataRef
           }:void
-        def tot-paid = {n-ref.get-double} * {payment-ref.get-double}
-        def ppaid = {ppaid-ref.get-double}
-        {dest.set-value tot-paid - ppaid}
+        def tot-paid = n-ref.as-double * payment-ref.as-double
+        def ppaid = ppaid-ref.as-double
+        set dest.value = tot-paid - ppaid
     }
 }
 
@@ -161,62 +152,65 @@
         font-size = 9pt,
         default-row-height = 18pt,
         {widths 0.25in, 1.25in, 1.0in, 1.0in, 1.1in, 0.25in},
-        row = 0, col = 1,
-        {cell-spec colspan = 2, {bold Mortgage Calculator}},
-        col = 3, {cell-spec halign = "right", "Date"},
-        {editable-cell {DateTime.date}},
+
+        row = 0,
+        col = 1,
+        {value-cell colspan = 2, {bold Mortgage Calculator}},
+        col = 3, {value-cell halign = "right", "Date"},
+        {input-cell {DateTime.date}},
 
         row = 2, col = 1,
         "Term", 
+
         row = 2, col = 2, {DropdownList 5, 10, 15, 30,
                               value = 30,
                               {on e:ValueFinished at ddl:DropdownList do
                                   {rebuild-rs}
-                                  {term-ref.set-value ddl.value}
+                                  set term-ref.value = ddl.value
                               }
                           }, "(years)",
 
         row = 3, col = 1, "Amount Borrowed", 
         {currency-cell editable? = true, 100000},
-        row = 4, col = 1, "Interest Rate", {editable-cell halign = "right",  4.0},
+
+        row = 4, col = 1, "Interest Rate", {input-cell halign = "right",  4.0},
                           "(percent)",
+
         row = 5, col = 1, "Payment", 
         {formula-cell halign = "right", 
-            domain = WorksheetModel.currency-domain,
+            domain = DataSource.currency-domain,
             compute-payment, amount-ref, rate-ref, term-ref
         }, "(monthly)",
 
         row = 6, col = 1, "Total of all Payments",
         {formula-cell
-            domain = WorksheetModel.currency-domain,
+            domain = DataSource.currency-domain,
             halign = "right",
             compute-product,
             term-ref, payment-ref, {ValueRef 12.0}
         },
 
         row = 8, col = 1, "Month", "Interest", "Principal", "Balance",
+
         row = 9, col = 0, rowspan = 12, {text},
-        row = 9, col = 1
-        ,
-        {cell-spec
-            rowspan = 12, colspan = 5,
-            {EmbeddedRecordGrid
-                takes-focus? = true,
-                width = 6in, 
-                height = 2.3in,
-                record-source = rs,
-                region-selection-enabled? = true,
-                automatic-columns? = false,
-                {RecordGridColumn halign = "right", "n"},
-                {RecordGridColumn halign = "right", "interest"},
-                {RecordGridColumn halign = "right", "principal"},
-                {RecordGridColumn halign = "right", "balance"}
-            }
-        }
-        ,
+        row = 9, col = 1,
+        rowspan = 12, colspan = 5,
+        {EmbeddedRecordGrid
+            takes-focus? = true,
+            width = 6in, 
+            height = 2.3in,
+            record-source = rs,
+            region-selection-enabled? = true,
+            automatic-columns? = false,
+            {RecordGridColumn halign = "right", "n"},
+            {RecordGridColumn halign = "right", "interest"},
+            {RecordGridColumn halign = "right", "principal"},
+            {RecordGridColumn halign = "right", "balance"}
+        },
+
         || Add a LayeredChart
         row = 22, col = 1,
-        {cell-spec
+        {value-cell
             rowspan = 15,
             colspan = 6,
             vstretch? = true, hstretch? = true,
@@ -240,19 +234,23 @@
     {def principal-ref = {rds.get-ref "principal"}}
     {def interest-ref = {rds.get-ref "interest"}}
     {def balance-ref = {rds.get-ref "balance"}}
-    {rds.make-formula balance-ref, WorksheetModel.currency-domain, compute-balance,
+    {rds.make-formula balance-ref, DataSource.currency-domain, compute-balance,
         amount-ref, rate-ref, term-ref, n-ref
     }
-    {rds.make-formula principal-ref, WorksheetModel.currency-domain, compute-difference, 
+    {rds.make-formula principal-ref, DataSource.currency-domain, compute-difference, 
         amount-ref, balance-ref
     }
-    {rds.make-formula interest-ref, WorksheetModel.double-domain, compute-interest-paid,
+    {rds.make-formula interest-ref, DataSource.double-domain, compute-interest-paid,
         n-ref, payment-ref, principal-ref
     }
 
+    {rebuild-rs}
     {after 0s do
-        {rebuild-rs}
-||--        {dump {model.get-data}}
+        def model-data =
+            {JsonValue-to-String 
+                {model.get-data}, prettify? = true
+            }
+        {dump model-data}
     }
     worksheet || display the worksheet
 }

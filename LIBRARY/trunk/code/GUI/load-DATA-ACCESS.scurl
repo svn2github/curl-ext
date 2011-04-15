@@ -256,15 +256,25 @@
 
 || ------------------------------------------------------------------------
 
-{define-class public open LocaleDateDomain {inherits StandardDateDomain}
+{define-class public open LocaleDateDomain
+  {inherits {StandardDomain-of #DateTime}}
+
+||--  {doc-next
+||--    {purpose
+||--        A place to store the default value, since the {docref
+||--        StandardDomain} cannot have a null default value,
+||--    }
+||--  }
+||--  field protected _local-default-value:any = null
+
+||--  {getter public open {default-value}:any
+||--    {return self._local-default-value}
+||--  }
 
   {doc-next
     {purpose Construct this object.}
     {parameter
-        default-value, A default value for this domain or {ctext null}.
-        If {ctext null}, the default value of this domain will be
-        a proc which dynamically generates the current date.
-        See {docref Domain.default-value} for more information.
+        default-value, A default value for this domain, which can be null.
     }
     {parameter
         allowable-values, See {docref Domain.allowable-values}.
@@ -274,20 +284,102 @@
                           default-value:any = null,
                           min-allowable:any = null,
                           max-allowable:any = null,
-                          allowable-values:#{Array-of DateTime} = null
+                          allowable-values:#{Array-of #DateTime} = null
                       }
     {construct-super 
-        default-value = default-value,
-        min-allowable = min-allowable,
-        max-allowable = max-allowable, 
-        allowable-values = allowable-values
+        default-value,
+        min-allowable,
+        max-allowable,
+        allowable-values
     }
+||--    set self._local-default-value = default-value
+  }
+  
+  {method package {_wrong-type-exception x:any}:ValidationException
+    {return
+        {ValidationException 
+            {hlformat
+                "Wrong type '%1!s!' for '%2!s!'",
+                {type-of x},
+                {type-of self}
+            }
+        }
+    }
+  }
+
+  || Override to normalize the converted value
+  {method public open {convert val:any}:any
+    let ret:any = null
+    {if-non-null val then
+        {type-switch val 
+         case str:String do
+            set ret = {self.parse str}
+         case v:Object do
+            {try 
+                set ret = {DateTime.date v}
+             catch ce:CastException do
+                {throw {self._wrong-type-exception val}}
+            }
+         else
+            {throw {self._wrong-type-exception val}}
+        }
+    }
+    {return ret}
+  }
+
+  
+  {method public open {parse x:String}:any
+    
+    let dt:#DateTime = null
+    {if not x.empty? then
+        {try
+            set dt = {DateTime.date x}
+         catch e:Exception do
+        }
+    }
+    {if dt == null then
+        {throw
+            {ValidationException
+                {hlmessage 
+                    {value {type-of self}} failed to parse String:
+                    '{value x}'.
+                }
+            }
+        }
+    }
+    {return {unchecked-non-null dt}}
   }
   
   {method public open {format x:any}:String 
-    {return (x asa DateTime).info.locale-date}
+    {if-non-null x then
+        {return (x asa DateTime).info.locale-date}
+     else
+        {return ""}
+    }
   }
   
+  
+  {method public open {compare x:any, y:any}:int
+    let xdt:DateTime = x asa DateTime
+    let ydt:DateTime = y asa DateTime
+    
+    {return
+        {if xdt.info.year == ydt.info.year and
+            xdt.info.day-of-year == ydt.info.day-of-year
+         then
+            0
+         else
+            {xdt.compare ydt}
+        }
+    }
+  }
+
+
+  {method public open {hash x:any}:int
+    let xdt:DateTime = x asa DateTime
+    {return xdt.info.year + xdt.info.day-of-year}
+  }
+
 }
 
 {let public constant locale-date-domain:LocaleDateDomain = {LocaleDateDomain}}
@@ -3737,9 +3829,22 @@ How this evolved:
         A collection that can be used as both an array and a set.
     }
 }
-{define-class public open {OrderedSet-of t:Type}
+{define-class public open {OrderedSet-of
+                            t:Type,
+                            key-hash-proc:any = value-hash,
+                            key-equality-proc:any = equal?
+                          }
  
-  field private constant _set:{Set-of t} = {{Set-of t}}
+  field private constant _set:{Set-of t,
+                                key-hash-proc = key-hash-proc,
+                                key-equality-proc = key-equality-proc
+                              } = {new {Set-of
+                                           t,
+                                           key-hash-proc = key-hash-proc,
+                                           key-equality-proc = key-equality-proc
+                                       }
+                                  }
+
   field private constant _array:{Array-of t} = {{Array-of t}}
   
   {constructor public {default}}
@@ -3791,6 +3896,23 @@ How this evolved:
             {proc {v:t}:bool {return {self._set.member? v}}}
         }
     }
+  }
+
+  {doc-next
+    {purpose Return this collection as a {docref Set-of} t.}
+  }
+  {method public open {as-Set}:{Set-of t,
+                                   key-hash-proc = key-hash-proc,
+                                   key-equality-proc = key-equality-proc
+                               }
+    {return self._set}
+  }
+
+  {doc-next
+    {purpose Return this collection as an {docref Array-of} t.}
+  }
+  {method public open {as-Array}:{Array-of t}
+    {return self._array}
   }
 }
 

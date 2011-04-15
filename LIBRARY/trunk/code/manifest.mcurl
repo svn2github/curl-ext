@@ -1,10 +1,9 @@
 {curl 7.0 manifest}
 {curl-file-attributes character-encoding = "windows-latin-1"}
 {manifest COM.CURL.EXT}
-{component file sample-splash-animation.curl,
-    location = "docs/samples/sample-splash-animation.curl"
-}
-
+||--{component file sample-splash-animation.curl,
+||--    location = "docs/samples/sample-splash-animation.curl"
+||--}
 
 {component package COM.CURL.EXT.SPLASH-SCREEN,
     location = "splash-screen/load.scurl"
@@ -13,14 +12,19 @@
 {component package COM.CURL.EXT.SPLASH-ANIMATION,
     location = "splash-animation/load.scurl"
 }
-{component file sample-transition-frame.curl,
-    location = "docs/samples/sample-transition-frame.curl"
-}
 
+||--{component file sample-transition-frame.curl,
+||--    location = "docs/samples/sample-transition-frame.curl"
+||--}
 
 {component package COM.CURL.EXT.TRANSITION-LIBRARY,
     location = "transition-library/load.scurl"
 }
+
+{component file t-custom-cells.curl,
+    location = "worksheet/t-custom-cells.curl"
+}
+
 
 {component file start.curl,
     location = "start.curl"
@@ -95,7 +99,7 @@
 }
 
 {component package COM.CURL.EXT.GEOGRAPHIC,
-    location = "geographic/load.scurl",
+    location = "GEOGRAPHIC/load.scurl",
     version = "1.0"
 }
 
@@ -124,8 +128,3 @@
 {component directory resources,
     location = "resources"
 }
-
-
-
-
-

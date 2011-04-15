@@ -80,7 +80,7 @@
                 def cv = wm.vals[ri, ci]
                 def v = {format "R%sC%s", ri, ci}
                 set cv.value = v
-                set cv.domain = WorksheetModel.string-domain
+||--                set cv.domain = DataSource.string-domain
             }
         }
     }
@@ -178,20 +178,20 @@
     def rows = 3
     def cols = 3
     def wm = {WorksheetModel rows, cols}
-    {assert {WorksheetModel.get-default-domain null} == WorksheetModel.any-domain}
-    {assert {WorksheetModel.get-default-domain ""} == WorksheetModel.string-domain}
-    {assert {WorksheetModel.get-default-domain "abc"} == WorksheetModel.string-domain}
-    {assert {WorksheetModel.get-default-domain "123"} == WorksheetModel.double-domain}
-    {assert {WorksheetModel.get-default-domain "1/1/1981"} == WorksheetModel.date-domain}
-    {assert {WorksheetModel.get-default-domain "1/1/1981 12:00"} == DateTime asa Domain}
-    {assert {WorksheetModel.get-default-domain 123} == WorksheetModel.double-domain}
-    {assert {WorksheetModel.get-default-domain 123.001} == WorksheetModel.double-domain}
-    {assert {WorksheetModel.get-default-domain 123} == WorksheetModel.double-domain}
-    {assert {WorksheetModel.get-default-domain {DateTime}} == WorksheetModel.date-domain}
-    {assert {WorksheetModel.get-default-domain true} == bool asa Domain}
-    {assert {WorksheetModel.get-default-domain 99s} == Time asa Domain}
-    {assert {WorksheetModel.get-default-domain {text 99}} == WorksheetModel.any-domain}
-    {assert {WorksheetModel.get-default-domain {CommandButton}} == WorksheetModel.any-domain}
+    {assert {DataSource.get-default-domain null} == DataSource.any-domain}
+    {assert {DataSource.get-default-domain ""} == DataSource.string-domain}
+    {assert {DataSource.get-default-domain "abc"} == DataSource.string-domain}
+    {assert {DataSource.get-default-domain "123"} == DataSource.double-domain}
+    {assert {DataSource.get-default-domain "1/1/1981"} == DataSource.date-domain}
+    {assert {DataSource.get-default-domain "1/1/1981 12:00"} == DateTime asa Domain}
+    {assert {DataSource.get-default-domain 123} == DataSource.double-domain}
+    {assert {DataSource.get-default-domain 123.001} == DataSource.double-domain}
+    {assert {DataSource.get-default-domain 123} == DataSource.double-domain}
+    {assert {DataSource.get-default-domain {DateTime}} == DateTime asa Domain}
+    {assert {DataSource.get-default-domain true} == bool asa Domain}
+    {assert {DataSource.get-default-domain 99s} == Time asa Domain}
+    {assert {DataSource.get-default-domain {text 99}} == DataSource.any-domain}
+    {assert {DataSource.get-default-domain {CommandButton}} == DataSource.any-domain}
 
     {wm.insert-rows 0, 1}
     {assert wm.rows == rows + 1}

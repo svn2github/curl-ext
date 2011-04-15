@@ -36,5 +36,9 @@
     {node
         |"AutocompleteTextField"|,
         {url "autocomplete-fields.curl"}
+    },
+    {node
+        |"Using the Worksheet"|,
+        {url "using-worksheet.curl"}
     }
 }

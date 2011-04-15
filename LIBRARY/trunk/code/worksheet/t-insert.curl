@@ -103,7 +103,7 @@
 
 {value
     def wks =
-        {Worksheet 3, 4,
+        {Worksheet 4, 5,
             frozen-cols = 2,
             row-selector-width = 3mm,
             name = "left-grid",||DEBUG
@@ -123,7 +123,7 @@
                     background = "yellow",
                     {format "R%sC%s/%s", row, col, op}
                 }
-            {wks.init-cell row, col, g}
+            {wks.init-cell row = row, col = col, {wks.make-cell-spec g}}
         }
     {add-cell 0, 0}
     {add-cell 0, 1}

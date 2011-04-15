@@ -35,87 +35,158 @@
 || Note that there is no DataSource for a single record. We have the
 || record here. This kind of ref is only used internally for binding
 || args for a RecordSet formula.
-{define-class package RecordRef {inherits DataRef}
-  field public-get protected-set record:Record
-  field public-get protected-set fields:StringArray
+{define-class public open RecordRef {inherits DataRef}
 
+  {doc-next
+    {purpose The {docref Record} that this {docref DataRef} refers to.}
+  }
+  field public-get protected-set record:#Record
 
-  || Convenience getter
+  {doc-next
+    {purpose One or more names of fields in the current record.}
+  }
+  field public-get protected-set field-names:StringArray
+
+  {doc-next
+    {purpose A getter for the data source as a {docref RecordSetDataSource}.}
+  }
   {getter public open {record-source}:RecordSetDataSource
     {return self.source asa RecordSetDataSource}
   }
 
-  {constructor package {default
-                           source:RecordSetDataSource, record:Record, field:String
-                       }
+  {doc-next
+    {purpose
+        A {docref DataRef} that contains one or more values from a single
+        record in a {docref RecordSetDataSource}.
+    }
+    {parameter source, The container for this data}
+    {parameter record, The specific {docref Record} containing the data}
+    {parameter field-names, A string with the field name for the data
+        value, or several field names separated by commas (such as
+        "a,b,c").
+    }
+  }
+  {constructor public {default
+                          source:RecordSetDataSource,
+                          record:#Record,
+                          field-names:String
+                      }
     {construct-super source}
     set self.record = record
-    set self.fields = {field.split split-chars = {CharClass "/"}}
+    set self.field-names =
+        {field-names.split split-chars = RecordSetDataSource.field-name-separator}
+    {for fn in self.field-names do
+        || Throw an error if any field names are unknown
+        def f = self.record-source.record-set.fields[fn]
+    }
   }
 
   {method public open {resolve target:DataRef}:DataRef
+    {if target.source != self.source then
+        {error
+            {hlmessage Cannot resolve when target is in a different RecordSet.}
+        }
+    }
     {type-switch target
      case trsr:RecordSetRef do
-        set self.record = trsr.current-records[trsr.current-record-index]
+        set self.record = trsr.current-record
      case trr:RecordRef do
         set self.record = trr.record
     }
     {return self}
   }
 
-  {method public open {get-value}:any
-    {return self.record[self.fields[0]]}
+  {doc-next
+    {purpose
+        Return the value that this reference points to.
+    }
+    {details
+        This type of reference can denote several fields in a single record.
+        This method returns only the first value. You can call
+        {docref DataRef.composite?} to find out if there are several values,
+        and use {ctext self.to-Iterator} to iterate through all of them.
+    }
+  }
+  {getter public open {value}:any
+    {if-non-null r = self.record then
+        {return r[self.field-names[0]]}
+     else
+        {return null}
+    }
   }
 
-  {method public open {set-value val:any}:void
+  {setter public open {value val:any}:void
     ||FIXME: notify observers
-    set self.record[self.fields[0]] = val
+    {if-non-null r = self.record then
+        || Note that a Record will call Domain.convert for this assignment
+        set r[self.field-names[0]] = val
+    }
   }
 
-  {method private {get-rf i:int}:RecordField
-    {return self.record-source.record-set.fields[self.fields[i]]}
+  {getter public open {domain}:Domain
+    {return {self.get-field 0}.domain}
+  }
+
+  {method public open {get-field i:int}:RecordField
+    {return self.record-source.record-set.fields[self.field-names[i]]}
   }
 
   || Get the value that this reference points to as a String
-  {method public open {get-String}:String
-    def rf = {self.get-rf 0}
-    {return {rf.domain.format {self.get-value}}}
+  {getter public open {as-String}:String
+    {return {self.domain.format self.value}}
   }
 
   || Get the value that this reference points to asa double
-  {method public open {get-double}:double
-    {return {any-to-double {self.get-value}}}
+  {getter public open {as-double}:double
+    {return {any-to-double self.value}}
   }
 
   || Return true if this object references several values
   {getter public open {composite?}:bool
-    {return self.fields.size > 1}
+    {return self.field-names.size > 1}
   }
 
   || If this is a composite reference, return an iterator for all of
   || the values.
-  {method public open {to-Iterator}:{Iterator-of any}
-    {if self.fields.size > 1 then
+  {method public open {to-Iterator}:{Iterator-of DataRef}
+    {if self.record == null then
+        {return DataSource.empty-iterator}
+     elseif self.field-names.size > 1 then
         {return {RecordValueIterator self}}
      else
         {return {SingleIterator self}}
     }
   }
-
 }
 
-|| Iterate through values in a single record
-{define-class public final RecordValueIterator {inherits {Iterator-of any}}
+{doc-next
+    {purpose Iterate through values in a single record.}
+}
+{define-class public final RecordValueIterator
+  {inherits {Iterator-of DataRef}, DataRefIteratorMixin}
 
+  {doc-next
+    {purpose The record containing the values to be iterated over.}
+  }
   field protected ref:RecordRef
-  field protected fi:int
-  field protected fields:RecordFields
 
+  {doc-next
+    {purpose The index of the field to be returned next.}
+  }
+  field protected fi:int
+
+  {doc-next
+    {purpose
+        Create a new {docref RecordValueIterator} for values specified
+        by {param ref}.
+    }
+  }
   {constructor public {default
                           ref:RecordRef
                       }
+    {construct-super.{Iterator-of DataRef}}
+    {construct-super.DataRefIteratorMixin}
     set self.ref = ref
-    set self.fields = ref.record-source.record-set.fields
     {self.reset}
   }
 
@@ -123,37 +194,56 @@
     set self.fi = 0
   }
   
-  {method public {read-one}:(v:any, eof?:bool)
+  {method public {read-one}:(v:DataRef, eof?:bool)
 
     || At the end?
-    {if self.fi >= self.ref.fields.size then
-        {return (null, true)}
+    {if self.fi >= self.ref.field-names.size then
+        {return ({uninitialized-value-for-type DataRef}, true)}
     }
 
     || current value
-    def f = self.fields[self.ref.fields[self.fi]]
+    def f = {self.ref.get-field self.fi}
     def v = self.ref.record[f.name]
+    {self.set-ref v, f.domain}
 
     {inc self.fi, 1}
-    {return (v, false)}
+    {return (self.value-ref, false)}
   }
 }
 
 
 || Reference to one or more columns in one or more records
-|| Filter is defined by path of the form "a=1,b=2[d/e/f]"
+|| Filter is defined by path of the form "a=1,b=2[d,e,f]"
 {define-class public open RecordSetRef {inherits DataRef}
 
+  {doc-next
+    {purpose Specifies the records and fields to be covered by this reference.
+    }
+  }
   field public-get protected-set path:String
+
   ||FIXME: change field to field-names array
-  field public-get protected-set field:String || something like "a" or "a/b/c"
+  field public-get protected-set field:String || something like "a" or "a,b,c"
+
   field public-get protected-set filter:RecordFilter
 
   || For resolving a RecordRef
   field public-get protected-set current-record-index:int
   field public-get protected-set current-records:#{Array-of Record}
 
-  || Convenience getter
+  {getter public open {current-record}:#Record
+    {if-non-null recs = self.current-records then
+        def cri = self.current-record-index
+        {if cri >= 0 and cri < recs.size then
+            {return self.current-records[cri]}
+        }
+    }
+    {return null}
+  }
+
+  {doc-next
+    {purpose A getter for the data source as a {docref RecordSetDataSource}.}
+  }
   {getter public open {record-source}:RecordSetDataSource
     {return self.source asa RecordSetDataSource}
   }
@@ -177,7 +267,9 @@
      case rsr:RecordSetRef do
         {return
             {RecordRef
-                rsr.record-source, rsr.current-records[rsr.current-record-index], self.field
+                rsr.record-source,
+                rsr.current-record,
+                self.field
             }
         }
      else
@@ -186,7 +278,8 @@
     }
   }
 
-  {method private {get-rf}:RecordField
+  ||FIXME: doesn't handle multiple fields "a,b,c"
+  {method private {get-field}:RecordField
     {if self.field == "" then
         {error {hlmessage No field was specified in this RecordSetRef}}
      else
@@ -225,7 +318,7 @@
   }
 
   || Get the value that this reference points to
-  {method public open {get-value}:any
+  {getter public open {value}:any
     {if-non-null r = 
         {self.record-source.record-set.select-one filter = self.filter}
      then
@@ -240,9 +333,9 @@
   }
 
   || Update the value that is the target of this reference
-  {method public open {set-value val:any}:void
+  {setter public open {value val:any}:void
     ||FIXME: notify observers
-    def rf = {self.get-rf} || Error if no field specified
+    def rf = {self.get-field} || Error if no field specified
     {if-non-null
         r = {self.record-source.record-set.select-one filter = self.filter}
      then
@@ -257,14 +350,14 @@
   }
 
   || Get the value that this reference points to as a String
-  {method public open {get-String}:String
-    def rf = {self.get-rf} || Error if no field specified
-    {return {rf.domain.format {self.get-value}}}
+  {getter public open {as-String}:String
+    def rf = {self.get-field} || Error if no field specified
+    {return {rf.domain.format self.value}}
   }
 
   || Get the value that this reference points to asa double
-  {method public open {get-double}:double
-    {return {any-to-double {self.get-value}}}
+  {getter public open {as-double}:double
+    {return {any-to-double self.value}}
   }
 
   || Return true if this object references several values
@@ -274,7 +367,7 @@
 
   || If this is a composite reference, return an iterator for all of
   || the values.
-  {method public open {to-Iterator}:{Iterator-of any}
+  {method public open {to-Iterator}:{Iterator-of DataRef}
     def rv = {RecordView self.record-source.record-set, filter = self.filter}
     {return {RecordSetValueIterator rv, self.field}}
   }
@@ -283,9 +376,10 @@
 
 ||FIXME: perhaps the field-names should be stored in a central place
 || and passed to the iterator to save computation
-{define-class public final RecordSetValueIterator {inherits {Iterator-of any}}
+{define-class public final RecordSetValueIterator
+  {inherits {Iterator-of DataRef}, DataRefIteratorMixin}
 
-  field protected rv:RecordView
+  field protected rv:RecordSet
   field protected field-names:StringArray
   field protected ri:int
   field protected fi:int
@@ -293,17 +387,22 @@
       {uninitialized-value-for-type {Array-of Record}}
 
   {constructor public {default
-                          rv:RecordView,
-                          field:String
+                          rv:RecordSet,
+                          field-names:String
                       }
+    {construct-super.{Iterator-of DataRef}}
+    {construct-super.DataRefIteratorMixin}
     set self.rv = rv
-    {if field == "" then
+    {if field-names == "" then
         set self.field-names = {StringArray}
         {for fn in self.rv.fields do
             {self.field-names.append fn.name}
         }
      else
-        set self.field-names = {field.split split-chars = {CharClass "/"}}
+        set self.field-names =
+            {field-names.split
+                split-chars = RecordSetDataSource.field-name-separator
+            }
     }
     {self.reset}
   }
@@ -314,7 +413,7 @@
     set self.fi = 0
   }
 
-  {method public {read-one}:(v:any, eof?:bool)
+  {method public {read-one}:(v:DataRef, eof?:bool)
 
     || At the end?
     {if self.ri >= self.records.size
@@ -322,31 +421,47 @@
             and (self.fi >= self.field-names.size)
            )
      then
-        {return (null, true)}
+        {return ({uninitialized-value-for-type DataRef}, true)}
     }
 
     || current value
-    def v = self.records[self.ri][self.field-names[self.fi]]
+    def f = self.rv.fields[self.field-names[self.fi]]
+    def v = self.records[self.ri][f.name]
+    {self.set-ref v, f.domain}
 
     || Increment for next time
     {inc self.fi, 1}
     {if self.fi >= self.field-names.size then
         {inc self.ri}
         set self.fi = 0
-     else
-        {inc self.ri}
     }
-    {return (v, false)}
+    {return (self.value-ref, false)}
   }
 }
 
-
-|| DataSource bound to a RecordSet (or RecordView)
+{doc-next
+    {purpose
+        A class to make a a {docref RecordSet} (or {docref
+        RecordView}) available as a {docref DataSource}.
+    }
+}
 {define-class public open RecordSetDataSource {inherits DataSource, CalcMixin}
 
+  def public field-name-separator = ","
+
   ||FIXME: Better to call it record-source, as on other classes?
+  {doc-next
+    {purpose
+        The {docref RecordSet} that contains the data for this
+        {ctext RecordSetDataSource}.
+    }
+  }
   field public-get protected-set record-set:RecordSet
 
+  {doc-next
+    {purpose Create and initialize a new {docref RecordSetDataSource}.}
+    {parameter record-set, The data for this data source.}
+  }
   {constructor public {default
                           record-set:RecordSet
                       }
@@ -386,24 +501,7 @@
     {return {RecordSetRef self, {non-null ref}}}
   }
 
-  {method public open {request-notification
-                          ref:DataRef, obs:Observer
-                      }:void
-    ||FIXME: NYI request-notification
-  }
 
-  || Stop notifications for ref. If ref is null, stop all notifications to obs
-  {method public open {suspend-notification
-                          ref:#DataRef, obs:Observer
-                      }:void
-    ||FIXME: NYI
-  }
-
-  ||FIXME: (design issue) WorksheetModel has this method too, and other
-  || DataSources do not. Where does it belong? The good news is that a
-  || formula works no matter where you put it, so maybe this is good enough.
-  || Or maybe all formulas really should be added to the WorksheetModel
-  || and it would delegate to some other method here (based on the target?)
   {method public open {make-formula
                           target:DataRef,
                           domain:Domain,
@@ -419,6 +517,7 @@
     || {assert target.field-names.size == 1}
     
     def f = {super.make-formula target, domain, formula, ...}
+    {self.update}
     {return f}
   }
 
@@ -433,13 +532,9 @@
   {method public open {refresh}:void
     {self.recalc}
     {self.notify-observers}
-    {if not self._refresh-requested? then
-    }
   }
 
-  ||FIXME: foreign formulas to work, need some kind of method to resolve
-  || a target so that the recalc methods can all be moved to CalcMixin
-  {method protected open {recalc}:void
+  {method public open {recalc}:void
     ||FIXME: if args come from other recordsets, how does iteration work?
     ||FIXME: what about nested batch-events?
     {for f:Formula in self.ordered-calcs do

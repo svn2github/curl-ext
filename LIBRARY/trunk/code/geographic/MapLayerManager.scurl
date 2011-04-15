@@ -40,8 +40,8 @@
     
   {doc-next
     {purpose Remove a {ctext SingleMapLayer}.}
-    {details The displayed figure is deleted. },
-    {parameter {ctext SingleMapLayer} to be removed.}
+    {details The displayed figure is deleted. }
+    {parameter layer, SingleMapLayer to be removed.}
   }
   {method public {remove-layer layer:SingleMapLayer}:void
     || 1) remove SingleMapLayer
@@ -55,8 +55,8 @@
   
   {doc-next
     {purpose Append a {ctext SingleMapLayer}.}
-    {details The figure to be displayed is added.},
-    {parameter {ctext SingleMapLayer} to be appended.}
+    {details The figure to be displayed is added.}
+    {parameter layer, SingleMapLayer to be appended.}
   }
   {method public {append-layer layer:SingleMapLayer}:void
     || 1) append layer to layers

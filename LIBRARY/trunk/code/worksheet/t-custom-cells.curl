@@ -34,6 +34,7 @@
 {define-proc {make-color-selector}:ValueControl
     {return
         {RadioFrame
+            value = {FillPattern.get-white},
             {HBox
                 {RadioButton
                     label =
@@ -52,7 +53,7 @@
                             width = 10px,
                             height = 10px
                         },
-                    radio-value = {FillPattern.get-white},
+                    radio-value = {FillPattern.get-yellow},
                     style = "command-button-standard"
                 },
                 {RadioButton
@@ -127,24 +128,27 @@
         row = 0, col = 0, {bold Control}, {bold Value},
 
         row = 1, col = 0, row-height = 1in,
-        {cell-spec "test", height = {add-stretch}, ui-spec = TextArea},
-        {cell-spec a2},
+        {value-cell "test", editable? = true, height = {add-stretch}, ui-spec = TextArea},
+||--        {value-cell a2},
+        {ref-cell a2},
 
         row = 2, col = 0, row-height = 48pt,
-        {cell-spec 20, ui-spec = Slider},
-        a3,
+        {value-cell 20, editable? = true, ui-spec = Slider},
+        {ref-cell domain = DataSource.double-domain, a3},
 
         row = 3, col = 0,
-        {cell-spec 4, domain = WorksheetModel.any-domain,
+        {value-cell 4, domain = DataSource.any-domain,
+            editable? = true,
             ui-spec =
             {proc {}:ValueControl
                 {return {ListBox height = 1in, 0, 1, 2, 3, 4, 5}}
             }
         },
-        {cell-spec domain = WorksheetModel.any-domain, a4},
+        {ref-cell domain = DataSource.any-domain, a4},
 
         row = 4, col = 0,
-        {cell-spec  "Tuesday", ui-spec =
+        {value-cell  "Tuesday", editable? = true,
+            ui-spec =
             {proc {}:ValueControl
                 {return {DropdownList "Monday", "Tuesday", "Wednesday"}}
             }
@@ -152,28 +156,36 @@
         a5,
         
         row = 5, col = 0,
-        {cell-spec "combo", ui-spec = ComboBox},
+        {input-cell "combo", ui-spec = ComboBox},
         a6,
 
         row = 6, col = 0,
-        {cell-spec true, ui-spec = CheckButton, domain = bool asa Domain},
+        {input-cell true, ui-spec = CheckButton, domain = bool asa Domain},
         a7,
 
         row = 7, col = 0,
-        {cell-spec {FillPattern.get-black}, ui-spec = make-color-selector},
-        a8,
+        {input-cell {FillPattern.get-black}, ui-spec = make-color-selector},
+        {ref-cell a8,
+            ui-spec = 
+                {proc {cv:CellValue}:Visual
+                    {return {Fill background = cv.value asa #FillPattern}}
+                }
+        },
   
         row = 8, col = 0,
-        {cell-spec {DateTime.date} - 1d, ui-spec = DateField},
+        {input-cell {DateTime.date} - 1d, ui-spec = DateField},
         a9,
 
         row = 9, col = 0, row-height = 1.75in,
-        {cell-spec {DateTime.date} - 7d, ui-spec = CalendarControl},
+        {input-cell {DateTime.date} - 7d, ui-spec = CalendarControl},
         a10,
 
         row = 10, col = 0,
-        {cell-spec 0, ui-spec = SpinControl},
+        {input-cell 0, ui-spec = SpinControl},
         a11,
+
+        row = 11, col = 0, row-height = 48pt, 
+        {Slider value = 4}, a12,
 
         row = 15, col = 0,
         "END"
