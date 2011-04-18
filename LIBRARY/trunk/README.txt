@@ -81,9 +81,6 @@ and thus require privilege and web access to succeed.
 
 Nested row and column groups are buggy in this release.
 
-If you delete all records from a RecordSet associated with an
-EmbeddedRecordForm the form will disappear.
-
 More tests are needed.
 
 =========
@@ -109,3 +106,13 @@ More tests are needed.
     o Pay attention to vertical-grid-line-width and horizontal-grid-line-width
     o Pay attention to alternate-row-background
   o JsonRecordSet
+
+0.6 Release (April 2011)
+  o Added package COM.CURL.EXT.SPLASH-SCREEN
+  o Added package COM.CURL.EXT.SPLASH-ANIMATION
+  o Added package COM.CURL.EXT.TRANSITION-LIBRARY
+  o Added package COM.CURL.EXT.GEOGRAPHIC
+  o Added tests, documentation, and fixed bugs in COM.CURL.EXT.WORKSHEET
+  o Refactored some of the Worksheet APIs, espcially the constructor.
+    Added CellSpec and subclasses to improve declarative worksheet
+    construction.

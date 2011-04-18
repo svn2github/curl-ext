@@ -63,13 +63,26 @@
             || packages
             {ManifestTestSuite.from-name "COM.CURL.EXT"},
             {TestSuite.import {url "domain-tests.scurl"}}
-||++        ,
+            ,
             
-||--            || dguide
-||--            {TestSuite "dguide",
-||--                {AppletTestCase {url "../code/docs/en/dguide/overview.curl"}},
-||--                {TestSuite.import
-||--                    {url "test-cases/dguide-test-cases.scurl"}}},
+            || dguide
+            {TestSuite "dguide",
+                {AppletTestCase
+                    {url "../code/docs/en/dguide/autocomplete-fields.curl"}
+                },
+                {AppletTestCase
+                    {url "../code/docs/en/dguide/curlext-overview.curl"}
+                },
+                {AppletTestCase
+                    {url "../code/docs/en/dguide/data-access-apis.curl"}
+                },
+                {AppletTestCase
+                    {url "../code/docs/en/dguide/gui-apis.curl"}
+                },
+                {AppletTestCase
+                    {url "../code/docs/en/dguide/writing-guiauto-tests.curl"}
+                }
+||--                ,
 ||--            || samples
 ||--            {TestSuite "samples"
 ||--                || TODO
@@ -423,7 +436,7 @@
 ||++                                    {single-pane pane-name = "pane3"}}
 ||++                            }}}
 ||++                }}
-||++        }
+            }
         }
     
     || presentation

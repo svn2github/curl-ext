@@ -1,0 +1,668 @@
+||| Copyright (C) 1998-2009, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+{import * from CURL.GUI.STANDARD}
+{import * from COM.CURL.EXT.WORKSHEET}
+
+|| -----------------------------------------------------------------------------
+|| Groups
+
+{define-proc public {check-group gt:GroupTree, total:int, hidden:int}:bool
+    let n:int = 0
+    let t:int = 0
+
+    def map = {gt.get-position-map total}
+    def imap = {gt.get-index-map total}
+
+    {for i = 0 below total do
+        {if imap[i] < total then
+            {TestCondition.assert map[imap[i]] == i}
+        }
+        {if map[i] >= 0 then
+            {TestCondition.assert imap[map[i]] == i}
+            {TestCondition.assert {gt.visible? i}}
+         else
+            {TestCondition.assert not {gt.visible? i}}
+        }
+    }
+
+    {for pos key i in map do
+        {if pos < 0 then {inc n}}
+    }
+
+    {for i in gt do
+        {if i >= map.size then
+            {break}
+        }
+        {TestCondition.assert map[i] >= 0}
+    }
+    {return n == hidden}
+}
+
+|| -----------------------------------------------------------------------------
+|| expandarray
+
+{def ResizableArray = {ResizableArray-of int}}
+
+|| Create a ResizableArray-of int with initial values 00 01... 10 11... etc.
+{define-proc {make-array rows:int, cols:int}:ResizableArray
+    def a = {new ResizableArray, rows, cols}
+    {return {init-rows a, 0, rows, 0}}
+}
+
+|| Initialize row for nr rows as if base rows aren't there
+{define-proc {init-rows a:ResizableArray, row:int, nr:int, base:int}:ResizableArray
+    {for ri = row below row + nr do
+        {for ci = 0 below a.cols do
+            set a[ri, ci] = (ri - base) * 10 + ci
+        }
+    }
+    {return a}
+}
+
+|| Reset a count rows at row to 0
+{define-proc {clear-rows v:ResizableArray, row:int, count:int}:ResizableArray
+    {for ri = row below row + count do
+        {for ci = 0 below v.cols do
+            set v[ri, ci] = 0
+        }
+    }
+    {return v}
+}
+
+|| Set nc columns at col to row * 10 + col as if base columns absent
+{define-proc {init-cols a:ResizableArray, col:int, nc:int, base:int}:ResizableArray
+    {for ci = col below col + nc do
+        {for ri = 0 below a.rows do
+            set a[ri, ci] = ri * 10 + (ci - base)
+        }
+    }
+    {return a}
+}
+
+|| Reset count cols at col to 0
+{define-proc {clear-cols v:ResizableArray, col:int, count:int}:ResizableArray
+    {for ci = col below col + count do
+        {for ri = 0 below v.rows do
+            set v[ri, ci] = 0
+        }
+    }
+    {return v}
+}
+
+{define-proc {dump-array a:ResizableArray, message:String = ""}:void
+}
+
+{define-proc {test-basics}:void
+    let a = {new ResizableArray, 1, 1}
+||--    {show a.rows, a.cols, a[0,0]}
+
+    {dump-array a, message = "1 x 1 array"}
+    {dump-array {make-array 3, 3}, message = "3 x 3 array"}
+
+    {dump-array {a.clone}, message = "a.clone"}
+
+    {def b = {make-array 2, 4}}
+    {def c = {make-array 2, 4}}
+    {def d = {new ResizableArray, 2, 4}}
+
+    {TestCondition.assert not {a.equal? b}}
+    {TestCondition.assert {c.equal? b}}
+    {TestCondition.assert not {c.equal? d}}
+
+    def cc = {c.clone}
+    {c.clear}
+    {TestCondition.assert {c.equal? d}}
+    {TestCondition.assert not {cc.equal? d}}
+    {TestCondition.assert {cc.equal? b}}
+}
+
+{define-proc {test-rows}:void
+    {for n = 1 to 5 do
+        def a = {make-array n, 5}
+        {a.insert-rows n - 1, n}
+        def b = {make-array n + n, 5}
+        {clear-rows b, n - 1, n}
+        {init-rows b, n + n - 1, 1, n}
+        {TestCondition.assert {a.equal? b}}
+        {TestCondition.assert {b.equal? a}}
+    }
+    {for n = 1 to 5 do
+        def a = {make-array n, 5}
+        {a.insert-rows n - 1, n}
+        {a.insert-rows n - 1, -n}
+        def b = {make-array n, 5}
+        {TestCondition.assert {a.equal? b}}
+        {TestCondition.assert {b.equal? a}}
+    }
+
+||--    {display.add "test insert-rows"}
+    {def a = {make-array 2, 4}}
+    {dump-array a, message = "original a"}
+    {a.insert-rows 2, 1}
+    {dump-array a, message = "insert 1 at 2"}
+    {a.insert-rows 2, -1}
+    {dump-array a, message = "delete 1 at 2"}
+    {a.insert-rows 1, 2}
+    {dump-array a, message = "insert 2 at 1"}
+    {a.insert-rows 1, -2}
+    {dump-array a, message = "delete 2 at 1"}
+
+    {def b = {make-array 2, 4}}
+    {dump-array b, message = "original b"}
+    {b.insert-rows 0, 1}
+    {dump-array b, message = "insert 1 at 0"}
+    {b.insert-rows 1, 1}
+    {dump-array b, message = "insert 1 at 1"}
+    {b.insert-rows 2, 2}
+    {dump-array b, message = "insert 2 at 2"}
+    {b.insert-rows 6, 3}
+    {dump-array b, message = "insert 3 at 6"}
+}
+
+{define-proc {test-cols}:void
+    {for n = 1 to 3 do
+        def a = {make-array 5, n}
+        {a.insert-cols n - 1, n}
+        def b = {make-array 5, n + n}
+        {clear-cols b, n - 1, n}
+        {init-cols b, n + n - 1, 1, n}
+        {TestCondition.assert {a.equal? b}}
+        {TestCondition.assert {b.equal? a}}
+    }
+    {for n = 1 to 3 do
+        def a = {make-array 5, n}
+        {a.insert-cols n - 1, n}
+        {a.insert-cols n - 1, -n}
+        def b = {make-array 5, n}
+        {TestCondition.assert {a.equal? b}}
+        {TestCondition.assert {b.equal? a}}
+    }
+
+||--    {display.add "test insert-cols"}
+    {def a = {make-array 2, 3}}
+||--    {dump-array a, message = "original a"}
+    {a.insert-cols 2, 1}
+    {dump-array a, message = "insert 1 at 2"}
+    {a.insert-cols 2, -1}
+    {dump-array a, message = "delete 1 at 2"}
+    {a.insert-cols 1, 2}
+    {dump-array a, message = "insert 2 at 1"}
+    {a.insert-cols 1, -2}
+    {dump-array a, message = "delete 2 at 1"}
+
+    {def b = {make-array 2, 3}}
+    {dump-array b, message = "original b"}
+    {b.insert-cols 0, 1}
+    {dump-array b, message = "insert 1 at 0"}
+    {b.insert-cols 1, 1}
+    {dump-array b, message = "insert 1 at 1"}
+    {b.insert-cols 2, 2}
+    {dump-array b, message = "insert 2 at 2"}
+    {b.insert-cols 6, 2}
+    {dump-array b, message = "insert 2 at 6"}
+}
+
+
+|| -----------------------------------------------------------------------------
+
+{define-proc {check-recordset-model}:void
+    def rs =
+        {RecordSet
+            {RecordFields
+                {RecordField "id", domain = DataSource.int-domain},
+                {RecordField "a", domain = DataSource.double-domain},
+                {RecordField "b", domain = DataSource.double-domain},
+                {RecordField "c", domain = DataSource.double-domain},
+                {RecordField "d", domain = DataSource.double-domain}
+            },
+            {RecordData id = 0, a = 0.0, b = 0.0, c = 0.0},
+            {RecordData id = 1, a = 1.0, b = 10.0, c = 0.1},
+            {RecordData id = 2, a = 2.0, b = 20.0, c = 0.2},
+            {RecordData id = 3, a = 3.0, b = 30.0, c = 0.3},
+            {RecordData id = 4, a = 4.0, b = 40.0, c = 0.4}
+        }
+
+    def rds = {RecordSetDataSource rs}
+    def r0 = {rs.select}[0]
+    def ir0a = {RecordRef rds, r0, "a"}
+    {for v in ir0a do
+        {TestCondition.assert v isa DataRef}
+        {TestCondition.assert v.value == r0["a"]}
+    }
+
+    || Iterate over all fields, all records
+    let rsvi:RecordSetValueIterator = {RecordSetValueIterator rs, "id,a,b,c,d"}
+    let n:int = 0
+    {for ref in rsvi do
+        {inc n}
+    }
+    {TestCondition.assert n == 5 * 5}
+
+    || Iterate over all fields, all records another way
+    set rsvi = {RecordSetValueIterator rs, ""}
+    set n = 0
+    {for ref in rsvi do
+        {inc n}
+    }
+    {TestCondition.assert n == 5 * 5}
+
+    || Check a couple of columns
+    set rsvi = {RecordSetValueIterator rs, "id"}
+    set n = 0
+    {for ref in rsvi do
+        {TestCondition.assert ref.as-double == n asa double}
+        {inc n}
+        {TestCondition.assert ref.domain == DataSource.int-domain}
+    }
+    {TestCondition.assert n == 5}
+
+    || Check a couple of columns
+    set rsvi = {RecordSetValueIterator rs, "c"}
+    set n = 0
+    {for ref in rsvi do
+        {TestCondition.assert ref.as-double == n/10.0}
+        {inc n}
+        {TestCondition.assert ref.domain == DataSource.double-domain}
+    }
+    {TestCondition.assert n == 5}
+
+    || Check references into a single record (RecordRef)
+    def rr0 = {RecordRef rds, r0, "a,b,c,d"}
+    def irr0 = {rr0.to-Iterator}
+    {for f in rs.fields do
+        def (v, done?) = {irr0.read-one}
+        {if not done? then
+            {TestCondition.assert v isa DataRef}
+            {TestCondition.assert v.value == r0[f.name]}
+        }
+    }
+}
+
+|| -----------------------------------------------------------------------------
+
+{TestSuite "Worksheet",
+
+    {test-case "GroupTree",
+        {do
+            let count:int = 8
+            def gt = {GroupTree}
+            def g0 = {gt.insert-group {GroupSpec true, 0, 1, 2, expanded? = true}}
+            def g1 = {gt.insert-group {GroupSpec true, 0, 4, 6, expanded? = true}}
+
+            {TestCondition.assert {check-group gt, count, 0}}
+
+            set g0.expanded? = false
+            {for i = 0 below count do
+                {TestCondition.assert {gt.visible? i} or i == 2}
+            }
+            {TestCondition.assert not {gt.visible? 2}}
+            {TestCondition.assert {check-group gt, count, 1}}
+
+            set g0.expanded? = true
+            {for i = 0 below count do
+                {TestCondition.assert {gt.visible? i}}
+            }
+            {TestCondition.assert {check-group gt, count, 0}}
+
+            set g1.expanded? = false
+            {for i = 0 below count do
+                {TestCondition.assert {gt.visible? i} or i == 5 or i == 6}
+            }
+            {TestCondition.assert not {gt.visible? 5}}
+            {TestCondition.assert not {gt.visible? 6}}
+            {TestCondition.assert {check-group gt, count, 2}}
+
+            set g1.expanded? = true
+            {for i = 0 below count do
+                {TestCondition.assert {gt.visible? i}}
+            }
+            {TestCondition.assert {check-group gt, count, 0}}
+
+
+            set g0.expanded? = false
+            {for i = 0 below count do
+                {TestCondition.assert {gt.visible? i} or i == 2}
+            }
+            {TestCondition.assert not {gt.visible? 2}}
+            {TestCondition.assert {check-group gt, count, 1}}
+
+            || Add a nested group, expand all, and check
+            def g2 = {gt.insert-group {GroupSpec true, 1, 4, 5, expanded? = true}}
+            set g0.expanded? = true
+            {TestCondition.assert {check-group gt, count, 0}}
+
+            || Collapse the nested group
+            set g2.expanded? = false
+            {TestCondition.assert {check-group gt, count, 1}}
+
+            || Collapse the first group
+            set g0.expanded? = false
+            {TestCondition.assert {check-group gt, count, 2}}
+
+            || Collapse the parent group
+            set g1.expanded? = false
+            {TestCondition.assert {check-group gt, count, 3}}
+
+            || Expanding the child group should have no visible effect
+            set g2.expanded? = true
+            {TestCondition.assert {check-group gt, count, 3}}
+
+            || Expand the parent now
+            set g1.expanded? = true
+            {TestCondition.assert {check-group gt, count, 1}}
+
+            || Expand the first group, so all are expanded now
+            set g0.expanded? = true
+            {TestCondition.assert {check-group gt, count, 0}}
+
+            || Add a singleton group
+            def g3 = {gt.insert-group {GroupSpec true, 0, 3, 3, expanded? = true}}
+            {TestCondition.assert {check-group gt, count, 0}}
+            set g3.expanded? = false
+            {TestCondition.assert {check-group gt, count, 0}}
+
+            || Repeat earlier tests:
+            || Collapse the nested group
+            set g2.expanded? = false
+            {TestCondition.assert {check-group gt, count, 1}}
+
+            || Collapse the first group
+            set g0.expanded? = false
+            {TestCondition.assert {check-group gt, count, 2}}
+
+            || Collapse the parent group
+            set g1.expanded? = false
+            {TestCondition.assert {check-group gt, count, 3}}
+
+            || Expanding the child group should have no visible effect
+            set g2.expanded? = true
+            {TestCondition.assert {check-group gt, count, 3}}
+
+            || Expand the parent now
+            set g1.expanded? = true
+            {TestCondition.assert {check-group gt, count, 1}}
+
+            || Expand the first group, so all are expanded now
+            set g0.expanded? = true
+            {TestCondition.assert {check-group gt, count, 0}}
+
+            {do
+                || Add an overlapping group at the same level
+                let error?:bool = false
+                {try
+                    {def g1x = {gt.insert-group {GroupSpec true, 0, 2, 4}}}
+                 catch e:Exception do
+                    {dump "(Expected)", e.message}
+                    set error? = true
+                }
+                {TestCondition.assert error?}
+
+                || Add at excessive depth
+                set error? = false
+                {try
+                    {def g1x = {gt.insert-group {GroupSpec true, 4, 6, 10}}}
+                 catch e:Exception do
+                    {dump "(Expected) ", e.message}
+                    set error? = true
+                }
+                {TestCondition.assert error?}
+
+                || Add with bad overlap
+                set error? = false
+                {try
+                    {def g1x = {gt.insert-group {GroupSpec true, 1, 3, 8}}}
+                 catch e:Exception do
+                    {dump "(Expected)", e.message}
+                    set error? = true
+                }
+                {TestCondition.assert error?}
+
+                || Add at too far away
+                set error? = false
+                {try
+                    {def g1x = {gt.insert-group {GroupSpec true, 1, 11, 12}}}
+                 catch e:Exception do
+                    {dump "(Expected)", e.message}
+                    set error? = true
+                }
+                {TestCondition.assert error?}
+            }
+        }
+    }
+    ,
+    {test-case "ResizableArray",
+        {do
+            {test-basics}
+            {test-rows}
+            {test-cols}
+        }
+    }
+    ,
+    {test-case "WorksheetModel",
+        {do
+            def rows = 20
+            def cols = 10
+            def model = {WorksheetModel rows, cols}
+            {TestCondition.assert model.rows == rows}
+            {TestCondition.assert model.cols == cols}
+            {for r = 0 below rows do
+                {for c = 0 below cols do
+||--                    set model.vals[r, c].domain = DataSource.double-domain
+                    set model.vals[r, c].value = r * 1000 + c
+                }
+            }
+            def c0refs = {new {Array-of CellRef}}
+            {for r = 0 below rows do
+                def rcref = {model.get-ref row = r, col = 0}
+                {c0refs.append rcref asa CellRef}
+                {TestCondition.assert rcref.value == r * 1000}
+            }
+
+            {model.insert-rows 0, 1}
+            {TestCondition.assert model.rows == rows + 1}
+            {TestCondition.assert model.cols == cols}
+            {for c = 0 below cols do
+                {TestCondition.assert model.vals[0, c].value == null}
+            }
+            {for r = 0 below rows do
+                {for c = 0 below cols do
+                    def rcref = {model.get-ref row = r + 1, col = c}
+                    {TestCondition.assert rcref.value == r * 1000 + c}
+                }
+            }
+            {for r = 0 below rows do
+                def ref = c0refs[r]
+                {TestCondition.assert ref.value == r * 1000}
+                {TestCondition.assert ref.row == r + 1}
+                {TestCondition.assert ref.col == 0}
+            }
+
+            {model.insert-rows 0, -1}
+            {TestCondition.assert model.rows == rows}
+            {TestCondition.assert model.cols == cols}
+            {for r = 0 below rows do
+                def rcref = {model.get-ref row = r, col = 0}
+                {TestCondition.assert rcref.value == r * 1000}
+            }
+            {for r = 0 below rows do
+                def ref = c0refs[r]
+                {TestCondition.assert ref.value == r * 1000}
+                {TestCondition.assert ref.row == r}
+                {TestCondition.assert ref.col == 0}
+            }
+
+            {model.insert-rows rows, 5}
+            {TestCondition.assert model.rows == rows + 5}
+            {TestCondition.assert model.cols == cols}
+            {for c = 0 below cols do
+                {TestCondition.assert model.vals[rows, c].value == null}
+            }
+            {for r = 0 below rows do
+                {for c = 0 below cols do
+                    def rcref = {model.get-ref row = r, col = c}
+                    {TestCondition.assert rcref.value == r * 1000 + c}
+                }
+            }
+            {model.insert-rows rows, -5}
+            {TestCondition.assert model.rows == rows}
+            {TestCondition.assert model.cols == cols}
+            {for r = 0 below rows do
+                {for c = 0 below cols do
+                    def rcref = {model.get-ref row = r, col = c}
+                    {TestCondition.assert rcref.value == r * 1000 + c}
+                }
+            }
+
+
+            {model.insert-cols 0, 1}
+            {TestCondition.assert model.rows == rows}
+            {TestCondition.assert model.cols == cols + 1}
+            {for r = 0 below rows do
+                {TestCondition.assert model.vals[r, 0].value == null}
+            }
+            {for r = 0 below rows do
+                {for c = 0 below cols do
+                    def rcref = {model.get-ref row = r, col = c + 1}
+                    {TestCondition.assert rcref.value == r * 1000 + c}
+                }
+            }
+            {for r = 0 below rows do
+                def ref = c0refs[r]
+                {TestCondition.assert ref.value == r * 1000}
+                {TestCondition.assert ref.row == r}
+                {TestCondition.assert ref.col == 1}
+            }
+
+            {model.insert-cols 0, -1}
+            {TestCondition.assert model.rows == rows}
+            {TestCondition.assert model.cols == cols}
+            {for r = 0 below rows do
+                def rcref = {model.get-ref row = r, col = 0}
+                {TestCondition.assert rcref.value == r * 1000}
+            }
+            {for r = 0 below rows do
+                def ref = c0refs[r]
+                {TestCondition.assert ref.value == r * 1000}
+                {TestCondition.assert ref.row == r}
+                {TestCondition.assert ref.col == 0}
+            }
+
+            {model.insert-cols cols, 5}
+            {TestCondition.assert model.rows == rows}
+            {TestCondition.assert model.cols == cols + 5}
+            {for r = 0 below rows do
+                {TestCondition.assert model.vals[r, cols + 0].value == null}
+                {TestCondition.assert model.vals[r, cols + 1].value == null}
+                {TestCondition.assert model.vals[r, cols + 2].value == null}
+                {TestCondition.assert model.vals[r, cols + 3].value == null}
+                {TestCondition.assert model.vals[r, cols + 4].value == null}
+            }
+            {for r = 0 below rows do
+                {for c = 0 below cols do
+                    def rcref = {model.get-ref row = r, col = c}
+                    {TestCondition.assert rcref.value == r * 1000 + c}
+                }
+            }
+            {model.insert-cols cols, -5}
+            {TestCondition.assert model.rows == rows}
+            {TestCondition.assert model.cols == cols}
+            {for r = 0 below rows do
+                {for c = 0 below cols do
+                    def rcref = {model.get-ref row = r, col = c}
+                    {TestCondition.assert rcref.value == r * 1000 + c}
+                }
+            }
+        }
+    }
+    ,
+    {test-case "WorksheetModel.get-ref",
+        {do
+            def rows = 20
+            def cols = 10
+            def model = {WorksheetModel rows, cols}
+
+            || Try all the ways of expressing a CelLRef
+            def cr00 = {model.get-ref "$A$1"} asa CellRef
+            def cr01 = {model.get-ref "$A$1"} asa CellRef
+            def cr02 = {model.get-ref "A1"} asa CellRef
+            def cr02a = {model.get-ref "A1", absolute? = false} asa CellRef
+            def cr03 = {model.get-ref row = 0, col = 0, absolute? = true} asa CellRef
+            def cr04 = {model.get-ref "B2", absolute? = false} asa CellRef
+            def cr05 = {model.get-ref "$B$2"} asa CellRef
+            def cr06 = {model.get-ref row = 1, col = 1, absolute? = false} asa CellRef
+            def cr07 = {model.get-ref row = 1, col = 1} asa CellRef
+            def cr08 = {model.get-ref cr00, row = 1, col = 1} asa CellRef
+            def cr09 = {cr04.resolve cr00} asa CellRef
+            def cr10 = {cr04.resolve cr05} asa CellRef
+            def cr11 = {model.get-ref row = 2, col = 2} asa CellRef
+||--            def cr12 = {model.get-ref cr00, row = 1, col = 1, absolute? = false} asa CellRef
+
+            {TestCondition.assert cr00 == cr01}
+            {TestCondition.assert cr00 == cr02} || absolute?=true by default, trumps
+            {TestCondition.assert cr00 != cr02a} || absolute?=true by default, trumps
+            {TestCondition.assert cr00 == cr03}
+            {TestCondition.assert {cr00.equal? {cr02.resolve cr00} asa CellRef}}
+            {TestCondition.assert cr04 != cr05}
+            {TestCondition.assert cr05 != cr06}
+            {TestCondition.assert cr05 == cr07}
+            {TestCondition.assert cr05 == cr08}
+            {TestCondition.assert {cr10.equal? cr11}}
+||--           {TestCondition.assert cr12 == cr07}
+
+            def A1-rel = {model.get-ref "A1", absolute? = false} asa CellRef
+            {TestCondition.assert not A1-rel.absolute?}
+
+            def A1-abs = {model.get-ref "$A$1"} asa CellRef
+            {TestCondition.assert A1-abs.absolute?}
+
+            {TestCondition.assert A1-rel.row == 0}
+            {TestCondition.assert A1-rel.col == 0}
+
+            {TestCondition.assert A1-abs.row == 0}
+            {TestCondition.assert A1-abs.col == 0}
+
+
+            def B1-rel = {model.get-ref "B1"}
+            def B1-abs = {model.get-ref "$B$1"}
+
+            def A2-rel = {model.get-ref "A2"}
+            def A2-abs = {model.get-ref "$A$2"}
+
+            def B2-rel = {model.get-ref "B2"}
+            def B2-abs = {model.get-ref "$B$2"}
+
+            def A3-rel = {model.get-ref "A3"}
+            def A3-abs = {model.get-ref "$A$3"}
+
+            def B3-rel = {model.get-ref "B3"}
+            def B3-abs = {model.get-ref "$B$3"}
+
+||--            def ZZ9999-rel = {model.get-ref "ZZ9999"} asa CellRef
+||--            def ZZ9999-abs = {model.get-ref "$ZZ$9999"} asa CellRef
+||--            
+||--            {TestCondition.assert ZZ9999-abs.row == 9999 - 1}
+||--            {TestCondition.assert ZZ9999-abs.col == 26 * 26 - 1}
+||--            {TestCondition.assert not ZZ9999-abs.all-rows?}
+||--            {TestCondition.assert not ZZ9999-abs.all-cols?}
+        }
+    },
+    {test-case "RecordSetModel",
+        {do
+            {check-recordset-model}
+        }
+    }
+}

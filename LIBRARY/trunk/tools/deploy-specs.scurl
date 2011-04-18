@@ -16,7 +16,7 @@
 
 {value
     def name = "COM.CURL.EXT"
-    def version = "0.5" || January 2011
+    def version = "0.6" || April 2011
     def dirname = name & "-V" & version
     
     {DeploySpecs
@@ -230,5 +230,35 @@
                     {target-root.concat "README.txt"},
                     error-if-exists? = false} 
             }}
+        ,
+        {DeployAction
+            caption = {lmessage copy BOILERPLATE (for distribution)},
+            {proc {self:DeployAction, source-root:Url, target-root:Url}:void
+                def files =
+                    {StringArray
+                        "LICENSE",
+                        "NOTICE",
+                        "README.txt"
+                    }
+                {for file in files do
+                    {copy 
+                        {source-root.concat file},
+                        {target-root.concat "deploy/" & dirname & "/" & file},
+                        error-if-exists? = false
+                    }
+                    {copy 
+                        {source-root.concat file},
+                        {target-root.concat "docs-install/" & dirname & "/" & file},
+                        error-if-exists? = false
+                    }
+                    {copy 
+                        {source-root.concat file},
+                        {target-root.concat "src/" & file},
+                        error-if-exists? = false
+                    }
+                }
+            }
+        }
+
     }
 }

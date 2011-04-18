@@ -28,9 +28,9 @@
     location = "../code/manifest.mcurl"
 }
 
-{component package COM.CURL.EXT.TEST-SUPPORT,
-    location = "test-support.scurl"
-}
+||--{component package COM.CURL.EXT.TEST-SUPPORT,
+||--    location = "test-support.scurl"
+||--}
 
 {component file start-tests.curl,
     location = "start-tests.curl"
@@ -71,6 +71,33 @@
 {component directory resources,
     location = "resources"
 }
+
+{component file start.curl,
+    location = "start.curl"
+}
+
+{component file t-BalloonView.curl,
+    location = "t-BalloonView.curl"
+}
+
+{component file t-worksheet.curl,
+    location = "t-worksheet.curl"
+}
+
+{component file worksheet-tests.scurl,
+    location = "worksheet-tests.scurl"
+}
+
+{component file domain-tests.scurl,
+    location = "domain-tests.scurl"
+}
+
+{component file t-autocomplete.xcurl,
+    location = "t-autocomplete.xcurl"
+}
+
+
+
 
 
 
