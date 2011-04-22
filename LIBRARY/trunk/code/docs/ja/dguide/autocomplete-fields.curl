@@ -1,0 +1,404 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0 applet}
+
+{applet manifest = "manifest.mcurl", locale = "en"}
+
+{include "../utils/guide-header.scurl"}
+{include "../utils/support.scurl"}
+
+{chapter
+    index = {HeadingIndex primary-key="AutocompleteTextField"},
+    Text Fields with Automatic Completion
+}
+{summary
+    {paragraph
+        The {docref AutocompleteTextField} helps to accelerate user
+        input by providing a list of items that complete the entry
+        typed so far. Completion candidates are obtained from a
+        {docref AutocompleteProvider} subclass. The candidates are
+        always suggestions and the user can always type a string that
+        is not on the completions list. The class
+        {docref AutocompleteStringCell} provides this feature in
+        a {docref RecordGrid}.
+    }
+}
+
+{heading level=2, Introduction}
+
+{paragraph
+    Two kinds of autocompleting entry fields are provided by this
+    package. The {docref AutocompleteTextField} is a {docref
+    TextField} that provides completions as a user types into the
+    field. It can be used anywhere a TextField would be used.
+    The {docref AutocompleteStringCell} is a type of {docref
+    RecordGridCell} that provides completions from other entries in
+    the same column of a {docref RecordGrid}.
+}
+{paragraph
+    To use an {docref AutocompleteTextField} control, you need an
+    {docref AutocompleteProvider}. When the value in the control
+    changes, it notifies the completion provider. If the provider is
+    able to generate a list of possible completions, it updates the
+    control to show the new list in a dropdown menu.  If you'd like to
+    customize the appearance of the items in the dropdown, you can
+    supply a procedure that takes a String and returns a {docref
+    Graphic}, which will become the label on the dropdown menu of
+    completions. 
+}
+{paragraph
+    Using an {docref AutocompleteStringCell} in a {ctext RecordGrid}
+    is simple because the provider, a {docref StringCellProvider} is
+    included automatically. This type of provider finds completion
+    candidates by looking at the values in the same column of
+    the {docref RecordSet} that is the
+    {ctext record-source} for the {ctext RecorGrid} 
+}
+{paragraph
+    Sample server scripts that provide completions from a list of
+    words are provided below. These samples are written using PHP.
+}
+
+{privilege-note}
+
+{heading level=2, Autocomplete Classes}
+{paragraph
+    The basic interfaces for autocompletion are defined by two
+    abstract base classes {docref AsyncCompletionProvider} and
+    {docref AutocompleteMixin}. The provider is responsible for
+    generating a list of completions and feeding it to the control to
+    populate the dropdown list of suggested completions.  The {ctext
+    AutocompleteMixin} defines the interface that the provider
+    uses to populate the dropdown list. This is a mixin class so
+    that it can be implemented by different kinds of text fields. The
+    current implementations are {docref AutocompleteTextField}
+    and {docref SRGAutocompleteTextField}, which is used as the editor
+    in a {docref AutocompleteStringCell}.
+}
+
+{heading level=2, Autocompletion Providers}
+{paragraph 
+    There are currently two implementations of {docref
+    AutocompleteProvider}, and it's easy to create your own version if
+    needed. An example is given later.
+    {definition-list
+        {term {docref AsyncCompletionProvider}
+        }
+        {definition
+            This provider queries a server for completions. You provide
+            a format string that will be used to construct the query.
+        }
+        {term {docref StringCellProvider}
+        }
+        {definition
+            This provider looks in the current column of a {docref
+            RecordGrid} for completions.
+        }
+    }
+}
+{paragraph
+    Here is an example of how the {docref AsyncCompletionProvider} might
+    be used.
+    {paragraph paragraph-left-indent = .5in, {curl-code
+        def host = "http://www.example.com"
+
+        {AutocompleteTextField
+            {AsyncCompletionProvider host & "/words-prefix.php?value=%s&max=%s"},
+            dropdown-height = 1.5in,
+            {on ValueFinished at acf:TextField do
+                || 
+            }
+        }
+    }}
+    This provider makes an asynchronous query to a server. When the
+    response comes back, the dropdown list is generated. If the user
+    types something into the text field before the server responds,
+    the request will be cancelled and a new request issued.
+}
+{paragraph
+    It's easy to create your own provider.  You can subclass {ctext
+    AutocompleteProvider} if you have special requirements. One reason
+    you might create a subclass is to parse the response from the
+    server. The default implementation expects the completion strings
+    to be returned as text, with one completion string per line.
+}
+{paragraph
+    The {docref AutocompleProvider} interface is very simple, with one
+    property and one method. The {ctext max-results} property is used
+    to indicate the maximum number of completions that should be
+    provided. The single abstract method is {ctext refresh}, which is
+    called when it is time to refresh the list of completions.
+}
+{paragraph
+    The {ctext refresh} method takes one parameter, which is an object
+    that subclasses {docref AutocompleteMixin}. When the list of
+    completions has been computed, one of two methods provided by
+    the {ctext AutocompleteMixin} will be called, 
+    {docref-abbr AutocompleteMixin.populate-from-strings} or
+    {docref-abbr AutocompleteMixin.populate-from-items}.
+    Either method will populate the dropdown list of completions, so
+    you should call one or the other but not both.
+}
+{paragraph
+    A subclass will call {ctext populate-from-strings} if it produces
+    a list of strings to be used as completions. In this case,
+    the {docref AutocompleteMixin.label-creation-proc} will be used to
+    convert each {ctext string} into a {ctext Graphic} to be used as a
+    label on the {docref MenuItem} that represents that completion.
+    The default creation proc simply uses the string itself as the
+    label.
+}
+{paragraph
+    A subclass will call {ctext populate-from-items} if it produces
+    a {docref MenuItem} for each completion, perhaps by parsing a
+    response from a server. Each such {ctext MenuItem} will be added
+    to the dropdown list of completions. When you construct these
+    {ctext MenuItem}s, you must add an {docref Action} event handler 
+    that sets the value of the associated {ctext TextField} to the
+    desired completion. For example, the default implementation of
+    the {ctext populate-from-strings} method creates a {ctext
+    MenuAction} using the following code.
+    {curl-code
+        def ma =
+            {MenuAction
+                add-icon-space? = false,
+                add-key-space? = false,
+                label = {self.label-creation-proc string},
+                {on Action do
+                    {self.text-field.set-value-with-events string}
+                }
+            }
+    }
+}
+{paragraph
+    Here is a sample {ctext AutocompleteProvider} subclass.  The goal
+    of this provider is to generate a completion list that contains
+    random strings that begin with the characters typed so far, with
+    each string padded with random digits to fill the entry out to a
+    specified number of digits (six by default).  This might then be
+    used as a lottery number.  As you type, the applet computes 10 new
+    random choices. When you've typed a few lucky digits, you can pick
+    one of the random choices to fill out the field.
+}
+{example
+    title = "Random Completion Provider",
+    {import * from COM.CURL.EXT.GUI}
+
+    || Generate randome choices for a lottery number by completing
+    || the current entry to 6 digits.
+    {define-class public open RandomCompletionProvider {inherits AutocompleteProvider}
+
+      field public rng:LinearRandom
+      field public digits:int
+
+      {constructor public {default
+                              max-results:int = 10,
+                              digits:int = 6
+                          }
+
+        {construct-super max-results}
+        set self.digits = digits
+        set self.rng =
+            {LinearRandom seed = ({DateTime}.info.fraction * 10000) asa int}
+      }
+
+      || Populate the dropdown by generating some random completions
+      {method public open {refresh acf:AutocompleteMixin}:void
+        def tf = acf.text-field
+        def s = tf.value
+        let items:StringArray = {StringArray}
+        def result-count = {max 10, self.max-results}
+        {if s.size < self.digits then
+            def n = self.digits - s.size
+            let a:int = 1
+            let b:int = {pow 10.0, n} asa int
+            let f:String = {format "%%s%%0%dd", n}
+            {for i = 0 below result-count do
+                {items.append 
+                    {format f, s, {self.rng.next-in-range a, b - 1}}
+                }
+            }
+        }
+        {acf.populate-from-strings items}
+      }
+    }
+
+    {AutocompleteTextField
+        {RandomCompletionProvider},
+        {on FocusIn at acf:AutocompleteTextField do
+            {acf.provider.refresh acf}
+        },
+        {on ValueFinished at acf:TextField do
+            || Use the value acf.value
+        }
+    } Choose your 6 digit lottery number!
+
+}
+{paragraph
+    The items in the dropdown list can be customized by providing a
+    {ctext label-creation-proc}. This procedure is given the text field
+    and the completion string for each item in the completion list.
+    The result of the procedure is used as the label for the item.
+}
+{paragraph
+    In the following example the server script will return words
+    that contain the current text field entry anywhere within the word.
+    The procedure will show the substring in bold. It also uses a
+    slightly larger font size for the items in the dropdown.
+}
+{example
+    title = "Customizing the Items",
+    {import * from COM.CURL.EXT.GUI}
+    {import * from CURL.GUI.SHAPES}
+
+    {def vframe =
+        {Frame border-width = 1px, border-color = "gray", margin = 1px,
+            width = 1in, height = 15pt, vorigin = 0.8
+        }
+    }
+
+||--    {def host = "http://wwwin.curl.com/~mgordon"}
+    {def host = "http://192.168.2.23/curltest"}
+
+    {define-proc {bold-item-proc s:String, acf:AutocompleteMixin}:Graphic
+        def actf = acf.text-field
+        def label = {text-part font-size = 1.2em}
+
+        let v:String = actf.value
+        let rng:StringDataModelWritableRange = actf.selected-range
+        {if rng.point > rng.anchor then
+            set v = {v.substr 0, rng.anchor}
+        }
+
+        def left = {s.find-string v}
+        {if left < 0 then
+            {label.add s}
+         else
+            def right = left + v.size
+            {if left > 0 then
+                {label.add {s.substr 0, left}}
+            }
+            {label.add {bold {value v}}}
+            {label.add {s.tail right}}
+        }
+        {return label}
+    }
+
+    {AutocompleteTextField
+        width = 1in,
+        {AsyncCompletionProvider host & "/words-containing.php?value=%s&max=%s"},
+        dropdown-height = 2.0in,
+        label-creation-proc = bold-item-proc,
+        {on ValueFinished at acf:TextField do
+            {vframe.add replace? = true, acf.value}
+        }
+    } Completions from server {value host}/words-containing.php
+
+    {value vframe} The value from the AutocompleteTextField
+}
+
+
+{heading level=2, Autocompletion in a RecordGrid}
+{paragraph
+    This example shows how to get autocompletion in a {docref
+    RecordGrid} cell. All you need to do is specify {ctext cell-spec =
+    AutocompleteStringCell} on a {docref RecordGridColumn}.
+}
+{example
+    title = "Using AutocompleteStringCell in a RecordGrid",
+    {import * from COM.CURL.EXT.GUI}
+    {let rs:RecordSet =
+        {RecordSet
+            {RecordFields
+                {RecordField "id", domain = int},
+                {RecordField "name", domain = String},
+                {RecordField "zip", domain = int}
+            },
+            {RecordData id = 1, name = "Fred Smith", zip = "39332"},
+            {RecordData id = 2, name = "Jeff Jones", zip = "60691"},
+            {RecordData id = 3, name = "Mark Tyler", zip = "60693"},
+            {RecordData id = 4, name = "Mary Tyler", zip = "60693"},
+            {RecordData id = 5, name = "Otto Frank", zip = "84832"}
+        }
+    }
+
+    {RecordGrid 
+        record-source = rs,
+        width = 4in, height = 2in,
+        automatic-columns? = false,
+        {RecordGridColumn  width=.75in, "id"},
+        {RecordGridColumn  width=1.0in, "name", cell-spec = AutocompleteStringCell},
+        {RecordGridColumn  width=1.0in, "zip", cell-spec = AutocompleteStringCell}
+    }
+}
+
+{heading level=2, Sample Scripts}
+{paragraph
+    The following script returns a list of words from the file {ctext
+    words.txt}, where the parameter {param value} is a prefix of each
+    word. The results are returned one word per line,
+}
+{paragraph
+    {bold {ctext words-prefix.php}}
+}
+{curl-code
+<?php
+$req_value = $_GET['value'];
+$vals = file("words.txt");
+$count = count($vals);
+$output = "";
+for ($i = 0; $i < $count; $i++) {
+    $pos = stripos($vals[$i], $req_value);
+    if ($pos === FALSE) {
+      // Skip it.
+    } else {
+      if ($pos == 0) {
+        $output .= "$vals[$i]";
+      }
+    }
+}
+echo "$output";
+?>
+}
+{paragraph
+    The other script used in these examples returns words where
+    the value parameter appears anywhere within the word.
+}
+{paragraph
+    {bold {ctext words-containing.php}}
+}
+{curl-code
+<?php
+$req_value = $_GET['value'];
+$vals = file("words.txt");
+$count = count($vals);
+$output = "";
+for ($i = 0; $i < $count; $i++) {
+    $pos = stripos($vals[$i], $req_value);
+    if ($pos === FALSE) {
+      // Skip it.
+    } else {
+      if ($pos >= 0) {
+        $output .= "$vals[$i]";
+      }
+    }
+}
+echo "$output";
+?>
+}
+{curl-copyright}

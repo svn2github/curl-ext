@@ -1,0 +1,1303 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0 applet}
+
+{applet manifest = "manifest.mcurl", locale = "en"}
+
+{include "../utils/guide-header.scurl"}
+{include "../utils/support.scurl"}
+
+{chapter
+    index = {HeadingIndex primary-key="Worksheet"},
+    Using the Worksheet
+}
+{summary
+    {itemize
+        {item
+            The {docref Worksheet} is a GUI component that works 
+            in many ways like a spreadsheet.
+        }
+        {item
+            Worksheets can contain "formulas", where the formula
+            procedure calculates a cell value. When cell values are
+            changed, the formulas are recalculated.
+        }
+        {item
+            Any standard GUI control can be used to edit values in
+            worksheet cells.
+        }
+        {item
+            The data model for a Worksheet is very flexible and can
+            include {docref RecordSet} data.
+        }
+        {item
+            To display {ctext RecordSet} data,
+            worksheets can contain embedded forms and embedded
+            {docref RecordGrid}s.
+        }
+    }
+}
+
+{privilege-note}
+
+{heading level=2, Introduction}
+
+{paragraph
+    A {docref Worksheet} displays a rectangular grid of cells. Each
+    cell can contain data that is displayed in the cell. Some cells
+    are editable, some are calculated from other cell values. Some
+    contain labels or other GUI objects to be displayed to the user.
+}
+{paragraph
+    The {docref Worksheet} is designed to provide a flexible kind of
+    data grid. Unlike a {docref RecordGrid}, it does not require that
+    all values in a column are of the same type, with the same
+    formatting.
+}
+{paragraph
+    The {ctext Worksheet} allows cells to span multiple rows and
+    columns where desired. It supports collapsable row and column
+    groups. It uses standard controls for editing values in cells.  In
+    fact, any GUI object can be placed in a cell or span of cells.
+}
+{paragraph
+    The worksheet supports embedded {docref RecordGrid}s, for
+    displaying large amounts of record data within a region of the
+    worksheet. It also allows record data to be displayed in an
+    embedded {docref RecordForm}s, where each record in a {docref
+    RecordSet} is expanded into a form that is embedded in the
+    worksheet.
+}
+
+{paragraph
+    Here is a very simple example of a {ctext Worksheet} with three
+    rows and two columns (the last two rows are blank).
+}
+{example
+    {import * from COM.CURL.EXT.WORKSHEET}
+
+    {Worksheet 3, 2,
+        "Hello", {bold World}
+    }
+}
+{paragraph
+    Here are a few notes about the user interface features of the
+    {ctext Worksheet}.
+}
+{paragraph
+    Without clicking the mouse button, move the mouse pointer slowly
+    just inside the top edge of the worksheet.  Notice that when the
+    mouse is over a grid line, the cursor changes.  This indicates
+    that you can click and drag the mouse to resize the column
+    width. You can resize the height of a row by dragging a grid line
+    at the far left.
+}
+{paragraph
+    Click inside of any cell. Notice how the cell is highlighted to
+    show that it is selected.  Now click at the top of a
+    column. Notice how all of the cells in that column are
+    highlighted. In a similar way, the row selector is at the far
+    left. If you click in the tiny square at the upper left, the
+    entire worksheet is selected.
+}
+{paragraph
+    Now select both columns by sliding the mouse from one column
+    selector to the other. Now resize a column. Notice that both
+    columns are resized to the new size. This makes it easier to
+    adjust the width of several adjacent columns to be the same.
+}
+{paragraph
+    By default, a {docref Worksheet} will use a {docref TextField} to
+    edit most types of values. When the user activates the cell, a
+    {ctext TextField} is created and displayed in the cell. The value
+    in the {ctext TextField} is obtained by using {docref
+    Domain.format} to convert the cell value into a string, and when
+    the user finishes editing, the {docref Domain.parse} method is
+    used to convert the string back to a value in the cell. In
+    addition, a {docref DomainValidator} is used to provide feedback
+    to the user if the entry is not valid. The {ctext Worksheet} also
+    recognizes date values and uses a {docref DateField} in that case.
+    You can also specify what kind of control is used to edit a value.
+    See the section {link href = {url "#custom-editors"}, Custom Cell
+    Editors} below for an explanation of how to specify the type of
+    control that should be used in a cell.
+}
+
+{heading level = 3, Data Model}
+{paragraph
+    The data model associated with each worksheet is represented by
+    the {docref WorksheetDataModel} class. It specifies what is to be
+    displayed in each cell of the {docref Worksheet}. The {ctext
+    Worksheet} constructor is designed to allow both the {ctext
+    Worksheet} and it's data model to be created in a declarative
+    style.  However, it is also often preferable to create the data
+    model first and pass it to the {ctext Worksheet} constructor.
+    This is useful when you want to operate on the model before you
+    create the {ctext Worksheet}.
+}
+
+{paragraph
+    The data model is based on two important concepts: the {docref
+    DataSource}, which is a container for data, and the {docref
+    DataRef}, which is a reference to data within a {ctext
+    DataSource}. In other words, the {ctext DataRef} is an object that
+    allows you to get or set a value in a {ctext DataSource}.
+}
+{paragraph
+    Because it is a container for data, the {docref WorksheetModel} is
+    a {ctext DataSource}. Two types of {docref DataRef} are defined
+    for use with the worksheet: the {docref CellRef} is a reference to
+    the value of a single cell, and the {docref RangeRef} is a
+    reference to a rectangular group of cells. These are the two types
+    of cell references used in a spreadsheet.
+}
+{paragraph
+    There are several other subclasses of {ctext DataSource}, and for
+    each of them, one or more subclasses of {ctext DataRef} are also
+    defined. This allows formula procedures access to the data with
+    a consistent interface. For example, one other type of {ctext
+    DataSource} is the {docref RecordSetDataSource}. It turns an
+    ordinary {docref RecordSet} into a {ctext DataSource}. The
+    class {docref RecordSetRef} provides a {ctext DataRef} for the
+    {ctext RecordSetDataSource}.
+}
+
+{heading level = 3, Cell Values}
+{paragraph
+    Each cell value in the worksheet model is a {docref CellValue}
+    object.  A {ctext CellValue} object is constructed for each cell
+    in the model when the {docref WorksheetModel} is first
+    instantiated. If an operation inserts additional rows or columns
+    into the worksheet, additional {ctext CellValue} objects are
+    instantiated for the new cells. Many of the properties of a {ctext
+    CellValue} are used for internal bookkeeping purposes. These are
+    the important properties to know about:
+    {itemize
+        {item {ctext value:any}: The current value of the cell.}
+        {item {ctext domain:Domain}: The domain used for parsing and
+            formatting values in the cell.
+        }
+        {item {ctext rowspan:int}: The number of rows spanned by the
+            cell.
+        }
+        {item {ctext colspan:int}: The number of columns spanned by the
+            cell.
+        }
+        {item {ctext editable?:bool}, If true the value can be edited.}
+        {item {ctext ui-spec:#Visual}: If non-null, the editor or other
+            user interface to be displayed in a cell.
+        }
+    }
+}
+
+{destination name = "cell-init-procs",
+{paragraph
+    There are various helper procedures that can be used to specify
+    the contents of a cell declaratively. They all work by creating
+    a {docref CellSpec} (or a subclass), which is in turn used to
+    initialize a {docref CellValue} when the cell is first created.
+    The procedure {docref value-cell} is used to create a cell that
+    contains a constant value or perhaps some object to be displayed
+    in the cell. Others include {docref currency-cell},
+    {docref formula-cell} {docref ref-cell}, and {docref input-cell}.
+}
+}
+
+{heading level = 3, Formulas}
+{paragraph
+    A cell value can be calculated from other values in the worksheet
+    (and other data sources) by attaching a formula to the cell.  Each
+    input value to a formula is specified as a {ctext DataRef}. This
+    allows calculations to be performed using data in any kind
+    of {ctext DataSource}.  The location where the calculated result
+    should be stored is also specified as a {ctext DataRef}.  This
+    means that values in any type of {ctext DataSource} can be
+    calculated using a formula.
+}
+{paragraph
+    The easiest way to attach a formula to a cell is to use
+    the {docref formula-cell} procedure in the constructor when you
+    are creating a {docref Worksheet} (see the next example). When
+    using this procedure, you only need to specify your calculation
+    proc and the data references for the input values. The output
+    reference is created automatically.
+}
+{heading level = 3, Simple Worksheet Example}
+{paragraph
+    Here is a very simple example of a {docref Worksheet} that
+    calculates a cell value. In this example, the values in the
+    editable cells on the first two rows are added up and the total is
+    displayed on the third row. Note that editable cells are displayed
+    with a white background. When an editable cell becomes active,
+    either because you clicked on it with the mouse or because you
+    used the tab key to navigate to it, an editor is created in the
+    cell.
+}
+{paragraph
+    The first few lines of this example define a procedure
+    called {ctext sum-proc} that is suitable for use as a the
+    calculation proc in a formula, since the first parameter is
+    a {ctext DataRef} for the computed value and the additional
+    parameters are {ctext DataRef}s that represent the inputs to the
+    calculation. The remainder of the example instantiates a {docref
+    Worksheet} of 3 rows and 2 columns, and populates it row by
+    row. Note that the insertion column is automatically incremented
+    each time a cell is inserted. Rows and columns are numbered from
+    0. The {ctext formula-cell} procedure automatically creates a
+    reference to the cell where the formula is inserted and arranges
+    for it to be passed as the {param dest} parameter when your
+    formula proc is invoked. 
+}
+{paragraph
+    To try this example, click on one of the white cells and enter a
+    number. Press Enter or tab to the next cell to commit the change
+    and see the total. Notice how if you type a non-numeric character
+    the cell background turns pink to indicate that the entry is
+    invalid.
+}
+{example
+    {import * from COM.CURL.EXT.WORKSHEET}
+
+    {def sum-proc =
+        {proc {dest:DataRef, a:DataRef, b:DataRef}:void
+            set dest.value = a.as-double + b.as-double
+        }
+    }
+
+    {Worksheet 3, 2,
+        row = 0, col = 0, "A", {input-cell 0.0},
+        row = 1, col = 0, "B", {input-cell 0.0},
+        row = 2, col = 0, "A + B",
+        {formula-cell
+            sum-proc,
+            {RelativeCellRef -2, 0},
+            {RelativeCellRef -1, 0}
+        }
+    }
+}
+
+{heading level=2, Worksheet Classes}
+{paragraph
+    For more details about the API used to build a {docref Worksheet},
+    you can use the package documentation for {docref
+    COM.CURL.EXT.WORKSHEET}. The following are the most commonly used
+    classes and procedures.
+
+    {itemize
+        {item {docref DataSource}}
+        {item {docref DataRef}}
+
+        {item {docref SheetRef}}
+        {item {docref CellRef}}
+        {item {docref RelativeCellRef}}
+        {item {docref RangeRef}}
+        {item {docref RelativeRangeRef}}
+        {item {docref RangeIterator}}
+
+        {item {docref WorksheetModel}}
+||--        {item {docref GroupTree}}
+        {item {docref CellValue}}
+        {item {docref CellSpec}}
+||--        {item {docref Formula}}
+
+||--        {item {docref RulerSpec}}
+||--        {item {docref BaseRuler}}
+||--        {item {docref HorizontalRuler}}
+||--        {item {docref VerticalRuler}}
+||--        {item {docref GridCell}}
+||--        {item {docref WorksheetGrid}}
+        {item {docref Worksheet}}
+        {item {docref EmbeddedRecordGrid}}
+        {item {docref EmbeddedRecordForm}}
+        {item {docref WorksheetSelection}}
+    }
+}
+
+{paragraph
+    The following procedures are used when building a {ctext
+    Worksheet} using the constructor. This is covered in more detail
+    in the next section.
+    {itemize
+        {item {docref value-cell}
+            - a value to be displayed and used in calculations}
+        {item {docref input-cell} - an editable input cell}
+        {item {docref currency-cell} - a cell that contains a currency value}
+        {item {docref formula-cell} - a cell that contains a formula}
+        {item {docref ref-cell}
+            - a cell that displays the value from some other cell}
+
+        {item {docref widths} - specify widths of columns}
+        {item {docref heights} - specify heights of rows}
+
+        {item {docref col-group} - specify a group of columns}
+        {item {docref row-group} - specify a group of rows}
+    }
+}
+
+{heading level = 2, Constructing a Worksheet}
+
+{paragraph
+    This section covers worksheet properties and how to construct a
+    worksheet and its data model.  It will describe the features of
+    the {docref Worksheet} constructor that allow complex models to be
+    created declaratively.
+}
+{paragraph
+    As a convenience, the {docref Worksheet} constructor tries to make
+    sense out of the arguments you pass in to specify the cell
+    contents. Technically the content of each cell must be specified
+    by a {docref CellSpec} (or a subclass). If you pass in some other
+    type of value, the constructor will create a suitable {ctext
+    CellSpec} and insert it. This often allows you to specify a
+    worksheet with less code.
+}
+{paragraph
+    Before taking a closer look at the constructor, here is an
+    overview of some of the general worksheet properties you might
+    want to use.
+}
+{heading level = 3, Worksheet Properties}
+{paragraph
+    A {docref Worksheet} is a subclass of {docref Graphic} and any of
+    the nonlocal options that can be used on a {ctext Graphic} can be
+    used on a {ctext Worksheet}. These might be used to specify a font
+    attributes, a border, a background, and many other general
+    properties.
+}
+{paragraph
+    The local option {docref Worksheet.column-selector-height}
+    controls the height of the column selectors. The corresponding
+    option for the row selectors is {docref
+    Worksheet.row-selector-width}.
+}
+{paragraph
+    The property {docref Worksheet.scrollable?} controls determines
+    if the {ctext Worksheet} will have internal scrollbars. If the
+    worksheet is contained in something that is already scrollable,
+    then you may want to set {ctext scrollable? = false} to allow
+    the worksheet to expand to it's full size. If {ctext scrollable?} is
+    {ctext true}, then the worksheet will display scrollbars at all
+    times and they will be disabled if there is no need to scroll.
+}
+{paragraph
+    If you specify a {docref-abbr Graphic.width} or
+    {docref-abbr Graphic.height}, then you should not specify
+    {ctext scrollable? = false} because the layout system may not be
+    able to satisfy the sizing constraints of the worksheet components.
+    The resulting layout might look strange.
+}
+{paragraph
+    The local options {docref Worksheet.frozen-rows} and
+    {docref Worksheet.frozen-cols} can be used to specify that
+    rows at the top or columns at the left should not scroll
+    with the rest of the cells. These options have no effect
+    however, if {docref Worksheet.scrollable?} is false.
+}
+{paragraph
+    The column widths and row heights of a {ctext Worksheet} are
+    determined by a {docref HorizontalRuler} and a {docref
+    VerticalRuler} respectively. The API for these rulers is not
+    designed to be called directly. Instead there are several more
+    convenient ways to specify these attributes (see {docref widths} and
+    {docref heights}. Once the {docref
+    Worksheet} has been rendered on the screen, the user can also
+    click and drag the grid lines at the top edge of the worksheet to
+    resize a column, or at the left edge to resize a row at any time.
+}
+{paragraph
+    You can use the local options {docref
+    Worksheet.default-column-width} and
+    {docref Worksheet.default-row-height} to specify the default
+    or initial width and height for columns or rows when they are
+    first added to the worksheet.
+}
+{paragraph
+    The procedure {docref widths} can be used to specify a width for
+    each column and the procedure {docref heights} can be used to
+    specify a height for each row. These procedures return a {docref
+    RulerSpec}, which is in turn used to initialize one of the
+    rulers. If too few widths or heights are specified, the
+    {ctext default-width} or {ctext default-height} will be used
+    for the remaining columns and rows, and for newly inserted columns
+    and rows as well.
+}
+{paragraph
+    Finally, the {docref Worksheet} constructor accepts the keyword
+    argument {ctext row-height} to specify the height of the current
+    row, and {ctext column-width} to specify the width of the current
+    column. If a column width or row height has already been specified
+    the value used is the larger of the previous value and the new
+    setting. This is convenient when you are creating a cell with a
+    large control or bigger font size, for example. You can specify
+    the required row height or column width in the same place where
+    you specify the control or font size.
+}
+
+{heading level = 3, A Simple Worksheet with a Formula}
+
+{paragraph
+    A typical {ctext Worksheet} declaration looks like the following
+    code block, which will be explained in detail next.
+}
+{curl-code
+    {import * from COM.CURL.EXT.WORKSHEET}
+    {Worksheet
+        4, 2, {widths 60pt, 1in},
+        font-size = 10pt, font-family = "Tahoma",
+        scrollable? = false,
+        border-width = 1px,
+
+        row = 0, col = 0,
+        row-height = .25in, colspan = 2, {big Sample Worksheet},
+
+        row = 1, col = 0, "Quantity", {input-cell domain = int, 0},
+
+        row = 2, col = 0,
+        "Price", {input-cell domain = DataSource.currency-domain, 0.0},
+
+        row = 3, col = 0,
+        {value-cell halign = "right", "Total"},
+        {formula-cell
+            domain = DataSource.currency-domain,
+            {proc {dest:DataRef, a:DataRef, b:DataRef}:void
+                set dest.value = a.as-double * b.as-double
+            },
+            {RelativeCellRef -2, 0},
+            {RelativeCellRef -1, 0}
+        }
+    }
+}
+
+{paragraph
+    This example shows how to create a simple worksheet with editable
+    input cells and a calculated result. The inputs are a quantity and
+    a price. The calculated value is the product of the two inputs.
+}
+
+{paragraph
+    The first two parameters to the {ctext Worksheet} constructor
+    specify the number of rows and columns (4 rows and 2 columns in
+    this example). The constructor will create an empty {docref
+    WorksheetModel} and populate it from the remaining arguments. You
+    can also create your {docref WorksheetModel} first, and pass it to
+    the {ctext Worksheet} constructor instead of the two integers used
+    here. That technique is useful if you need to operate on the model
+    directly before you create the {ctext Worksheet}.
+}
+{curl-code
+    {Worksheet
+        4, 2, {widths 60pt, 1in},
+        font-size = 10pt, font-family = "Tahoma",
+        scrollable? = false,
+        border-width = 1px,
+        ... (additional code not shown)
+    }
+}
+{paragraph
+    After the two numbers, the next argument specifies the
+    initial {docref widths} of the columns of the worksheet. You can
+    also pass in a value for the local option {docref
+    Worksheet.default-column-width} to specify the width of any
+    columns that are not explicitly specified. In this case there are
+    two columns and two width values. The row heights are not specified
+    here, so the worksheet will use the default value.
+}
+{paragraph
+    After the specification of the column widths there are few simple
+    property settings for the {ctext Worksheet}.
+}
+{paragraph
+    The remaining arguments to the constructor specify the cell
+    contents. You can use the keyword arguments {param row} and
+    {param col} at any time to specify the row and column where
+    the next item is to be added. After an item is added, the column
+    position is incremented by the {param colspan} of the item (which
+    is usually 1). This makes it easy to specify the cells one row at
+    a time. The next code fragment inserts a title at row 0. It
+    uses the {ctext row-height} keyword argument to override the
+    default row height for this row, and it uses the {ctext colspan}
+    keyword argument to allow the label to span two columns.
+}
+{curl-code
+    {... (earlier code not shown)
+        row = 0, col = 0,
+        row-height = .25in, colspan = 2, {big Sample Worksheet},
+    }
+}
+{paragraph
+    The next code fragment specifies another  row (row 1).  In this
+    example, row 1 is the label and input cell for a quantity, which
+    is an integer with an initial value of 0.
+}
+{curl-code
+    {...
+        row = 1, col = 0, "Quantity", {input-cell domain = int, 0},
+    }
+}
+{paragraph
+    The literal string "Quantity" will be placed in row 1, column 0.
+    The procedure {docref input-cell} is used to specify the contents
+    of the next cell.
+}
+{paragraph
+    The {ctext Worksheet} uses the same {docref Domain} classes as are
+    used in a {docref RecordSet} for parsing and formatting values.
+    This cell will use {docref StandardIntDomain} when the
+    {param int} type is automatically converted into a {ctext Domain}.
+    Note also that the {docref input-cell} procedure will add the
+    option {ctext halign = "right"} to the cell when the initial value
+    is a number, as it is here. It also specifies that the cell is
+    editable.
+}
+{paragraph
+    An editable cell normally displays the formatted cell value in a
+    cell with a white background. When the user clicks the cell, or
+    uses the tab key to give the keyboard focus to the cell, an editor
+    will be displayed. This is usually a {docref TextField}, but
+    a {docref DateField} will be used if the cell value is a date. If
+    you do not want the default editor, there are several ways to
+    specify what type of control to use.  This will be covered in a
+    subsequent example in the discussion of the {docref
+    CellSpec.ui-spec} property.
+}
+
+{paragraph
+    The next row, row 2, is the label and input cell for the price,
+    which is specified as a currency value by using the {docref-abbr
+    DataSource.currency-domain}.
+}
+{curl-code
+    {...
+        row = 2, col = 0,
+        "Price",
+        {input-cell domain = DataSource.currency-domain, 0.0},
+    }
+}
+{paragraph
+    The {ctext DataSource.currency-domain} is one of several
+    additional domains defined by the {docref DataSource} class for
+    use in worksheet models. It formats and parses values using the
+    currency format for the current locale. It is important to
+    remember that the numeric currency value displayed to the user is
+    multiplied by 100 internally. (Think of it as a number if cents,
+    not dollars.) In this example the product of the price and
+    quantity is also displayed using the {ctext currency-domain}, so
+    the fact that the cell value is "pennies" and not "dollars" is
+    consistent throughout the calculation and the result is displayed
+    correctly.
+}
+{paragraph
+    Finally, row 3 contains the formula that multiplies price by
+    quantity to get a total amount. The {docref value-cell} procedure
+    is used here to specify the label. The labels for the first two
+    rows were specified as literal strings. If you use the helper
+    procedures, such as {docref value-cell} and {docref formula-cell}
+    used here, you can specify additional options for the cell. In
+    this case, an option is used to align the label to the right of
+    the cell. These options are applied to the cell when it is
+    created.
+}
+{paragraph
+    The {docref formula-cell} procedure is used to add a formula to
+    the cell.  The first positional parameter is a procedure that
+    takes one or more {ctext DataRef} arguments.  By convention, the
+    first argument is always the destination reference and remaining
+    arguments are inputs to the computation. The arguments that appear
+    after the proc (in this example, two {ctext RelativeCellRef}
+    objects) are used to specify the input values when the formula
+    object is constructed. The output value ({param dest} in the
+    formula proc) will be a reference to the cell where the formula is
+    inserted. This reference is created internally by the {ctext
+    formula-cell} procedure.
+}
+{curl-code
+    {...
+        row = 3, col = 0,
+        {value-cell halign = "right", "Total"},
+        {formula-cell
+            halign = "right",
+            domain = DataSource.currency-domain,
+            {proc {dest:DataRef, a:DataRef, b:DataRef}:void
+                set dest.value = a.as-double * b.as-double
+            },
+            {RelativeCellRef -2, 0},
+            {RelativeCellRef -1, 0}
+        }
+    }
+}
+{paragraph
+    In this example the output is called {param dest} and the inputs
+    are called {param a} and {param b}. When the proc is
+    called, {param dest} will be the cell at row 3, column 1, {param
+    a} will be a reference to the cell two rows above (row 1, column
+    1) and {param b} will be a reference to the cell on the previous
+    row (row 2, column 1). The procedure simply gets the numeric
+    values from {param a} and {param b}, multiplies them together, and
+    stores the result in {param dest}.
+}
+{paragraph
+    The input arguments to the proc are specified using two {docref
+    RelativeCellRef}s. The first specifies the cell two rows above
+    (the quantity) and the second specifies the cell one row the
+    formula cell (the price).
+}
+{paragraph
+    Here is the complete example worksheet.  Go ahead and enter a
+    price and quantity to see the calculated result.
+}
+{example
+    {import * from COM.CURL.EXT.WORKSHEET}
+    {Worksheet
+        4, 2, {widths 60pt, 1in},
+        font-size = 10pt, font-family = "Tahoma",
+        scrollable? = false,
+        border-width = 1px,
+
+        row = 0, col = 0,
+        row-height = .25in, colspan = 2, {big Sample Worksheet},
+
+        row = 1, col = 0, "Quantity", {input-cell domain = int, 0},
+
+        row = 2, col = 0,
+        "Price", {input-cell domain = DataSource.currency-domain, 0.0},
+
+        row = 3, col = 0,
+        {value-cell halign = "right", "Total"},
+        {formula-cell
+            domain = DataSource.currency-domain,
+            {proc {dest:DataRef, a:DataRef, b:DataRef}:void
+                set dest.value = a.as-double * b.as-double
+            },
+            {RelativeCellRef -2, 0},
+            {RelativeCellRef -1, 0}
+        }
+    }
+}
+
+{heading level = 3, More about Formulas}
+
+{paragraph
+    In the previous example, the formula procedure was coded as part
+    of the cell specification. You may have noticed that the same
+    procedure could be used anywhere you need to multiply two numbers
+    together. It is often a good practice to define procedures of your
+    own that you can use over and over again. For the next example
+    we will define a procedure that takes any number of input
+    arguments and adds all of them up.
+}
+{paragraph
+    Previous examples have used a {docref CellRef}, which represents
+    the value in a single cell. Another type of reference is
+    the {docref RangeRef}, which represents all of the cells in a
+    rectangular region of the worksheet. The {ctext sum} proc in this
+    example uses the {docref DataRef.composite?} property to determine
+    when a reference represents many values. If it does, it iterates
+    over all of the values in the range as it accumulates the total.
+    Note that the same formula would work with a reference to all of
+    the cells in a column of a {docref RecordSetDataSource}.
+}
+
+{curl-code
+  def sum =
+      {proc {dest:DataRef, ...:DataRef}:void
+        let x:double = 0.0
+        {for v in ... do
+            {if v.composite? then
+                {for y in v do
+                    set x = x + y.as-double
+                }
+             else
+                set x = x + v.as-double
+            }
+        }
+        set dest.value = x
+      }
+}
+{paragraph
+    The first parameter to this procedure is the destination cell.  It
+    then accepts any number of additional {ctext DataRef} parameters.
+    It iterates through these accumulating the total, which is then
+    stored in the destination cell.
+}
+
+{paragraph
+    The range reference in this example is defined using a
+    {docref RelativeRangeRef} called {ctext above-3-rows}.
+    The defines the range as 3 rows by 1 column starting 3 rows above
+    the destination of the formula. Since it is a relative reference,
+    it can be used on all three formula cells here, since they all
+    add up the 3 three rows above.
+}
+{example
+    {import * from COM.CURL.EXT.WORKSHEET}
+
+    {define-proc {numeric-input}:CellSpec
+        {return
+            {input-cell
+                halign = "right", domain = DataSource.double-domain,
+                0.0
+            }
+        }
+    }
+
+    {def sum =
+        {proc {dest:DataRef, ...:DataRef}:void
+            let x:double = 0.0
+            {for v in ... do
+                {if v.composite? then
+                    {for y in v do
+                        set x = x + y.as-double
+                    }
+                 else
+                    set x = x + v.as-double
+                }
+            }
+            set dest.value = x
+        }
+    }
+
+    {def above-3-rows = {RelativeRangeRef 3, 1, row = -3}}
+    {Worksheet 6, 5, default-column-width = 1in,
+
+        row = 0, col = 1,
+        "A", "B", "C",
+
+        row = 1, col = 1, {numeric-input}, {numeric-input}, {numeric-input},
+        row = 2, col = 1, {numeric-input}, {numeric-input}, {numeric-input},
+        row = 3, col = 1, {numeric-input}, {numeric-input}, {numeric-input},
+
+        row = 4, col = 0,
+        {value-cell halign = "right", {bold Total:}},
+        {formula-cell
+            halign = "right",
+            domain = DataSource.double-domain,
+            sum,
+            above-3-rows
+        },
+        {formula-cell
+            halign = "right",
+            domain = DataSource.double-domain,
+            sum,
+            above-3-rows
+        },
+        {formula-cell
+            halign = "right",
+            domain = DataSource.double-domain,
+            sum,
+            above-3-rows
+        }
+    }
+}
+{paragraph
+    The generalized sum procedure shown here is in fact predefined in
+    the worksheet package as a class procedure {docref Formula.sum},
+    along with several other commonly used formulas.
+}
+{paragraph
+    You may have noticed that the formulas in the previous
+    {ctext Worksheet} are all the same. We can define a proc that returns a
+    formula and call it for each cell where we want that formula. In
+    the next example we will define two such procs, on to sum up the
+    rows and another to sum up the columns. We will also use the
+    predefined {docref Formula.sum} calculation procedure.
+}
+{paragraph
+    One other thing to remember about a {docref Worksheet} is that
+    formulas a calculated in the order that they are added to the
+    model. In this example, the last formula added is the one that
+    adds up the row of totals. All of the other formulas only add up
+    input values, so they can be added in any order.
+}
+{example
+    {import * from COM.CURL.EXT.WORKSHEET}
+
+    {define-proc {numeric-input}:CellSpec
+        {return
+            {input-cell domain = DataSource.double-domain, 0.0}
+        }
+    }
+
+    {define-proc {sum-rows}:CellSpec
+        def above-3-rows = {RelativeRangeRef 3, 1, row = -3}
+        {return
+            {formula-cell
+                domain = DataSource.double-domain, Formula.sum, above-3-rows
+            }
+        }
+    }
+
+    {define-proc {sum-cols}:CellSpec
+        def left-3-cols = {RelativeRangeRef 1, 3, col = -3}
+        {return
+            {formula-cell
+                domain = DataSource.double-domain, Formula.sum, left-3-cols
+            }
+        }
+    }
+
+    {Worksheet
+        6, 5, default-column-width = 1in,
+
+        row = 0, col = 1,
+        "A", "B", "C",
+
+        row = 1, col = 1, {numeric-input}, {numeric-input}, {numeric-input},
+        row = 2, col = 1, {numeric-input}, {numeric-input}, {numeric-input},
+        row = 3, col = 1, {numeric-input}, {numeric-input}, {numeric-input},
+
+        row = 4, col = 0,
+        {value-cell halign = "right", {bold Total:}},
+        {sum-rows},
+        {sum-rows},
+        {sum-rows},
+
+        row = 1, col = 4, {sum-cols},
+        row = 2, col = 4, {sum-cols},
+        row = 3, col = 4, {sum-cols},
+        row = 4, col = 4, {sum-cols}
+    }
+}
+
+{paragraph
+    By defining some helper procedures we were able to make the worksheet
+    definition very short and readable.
+}
+
+{destination name = "custom-editors",
+{heading level = 3, Custom Cell Editors}
+}
+{paragraph
+    As mentioned earlier, a {docref TextField} is normally created
+    when the user activates an editable cell (a {docref DateField} is
+    used if the value is a date). This section shows how you can
+    specify the type of control to use. If the control is a {docref
+    ValueControl} then the {ctext Worksheet} will automatically
+    recognize when a {docref ValueFinished} event is fired and will
+    update the cell value and schedule a recalculation.
+}
+
+{paragraph
+    Not all controls are used for editing values. For example, you
+    might want a {docref CommandButton} in your worksheet to allow the
+    user perform some action. In this case, the button should remain
+    present even if the cell is not currently active. There are also
+    controls that serve both to display the current value and to allow
+    it to be edited. A {docref Slider} is a good example of this type
+    of control. To support these requirements, a cell editor can be
+    "locked" in the cell so that it is displayed at all times, even if
+    the cell is not active.
+}
+
+{heading level = 3, Specifying the UI for a Cell}
+{paragraph
+    Each cell has three parameters can be used to control how the
+    value in the cell is displayed or edited.
+    {itemize
+        {item {ctext editable?:bool}}
+        {item {ctext locked?:bool}}
+        {item {ctext ui-spec:any}}
+    }
+}
+{paragraph
+    The {docref CellSpec.editable?} property is used to specify
+    whether or not a cell value can be edited by the user. If it
+    is false, the cell background is gray by default and clicking
+    on the cell will not open an editor.
+}
+{paragraph
+    The {docref CellSpec.locked?} property is used to indicate if a
+    cell can change state between editing and not editing. If
+    true, then the cell is locked in its current state.
+}
+{paragraph
+    The ui-spec property is of type {ctext any} and a number of
+    different types of values can be used to specify how the value of
+    a cell is displayed or edited. If the cell is editable, the {ctext
+    ui-spec} is used to create the cell editor when the cell is
+    active. If the cell is not editable, the {ctext ui-spec} is used
+    to display the current value of the cell at all times.
+}
+{paragraph
+    The following types of {ctext ui-spec} values are recognized.
+    {itemize
+        {item {ctext Visual}{br}
+            The {ctext ui-spec} can be any type of {docref Visual}.
+        }
+        {item {ctext {proc-type {cv:CellValue}:Visual}}{br}
+            The cell value and its attributes are passed to your
+            procedure, which should construct and return the
+            content to be displayed in the cell.
+        }
+        {item {ctext {proc-type {r:#Record, cv:CellValue}:Visual}}{br}
+            This type of procedure is normally used in an
+            {docref EmbeddedRecordForm}
+            ({link href = {url "#embedded-forms"}, described below}). It
+            is passed the {docref CellValue} and the record (if any)
+            associated with the current cell, and the object it
+            returns is displayed in the cell.            
+        }
+        {item Subclass of ValueControl{br}
+            The {ctext ui-spec} can be the name of a {docref
+            ValueControl} subclass, as long as it has a default
+            constructor that doesn't require any arguments.
+        }
+        {item {ctext {proc-type {cv:CellValue}:ValueControl}}{br}
+            The cell value and its attributes are passed to your
+            procedure, which should construct and return a control
+            that can be used to edit the cell value.
+        }
+        {item {ctext {proc-type {r:#Record, cv:CellValue}:ValueControl}}{br}
+            This type of procedure is normally used in an
+            {docref EmbeddedRecordForm}
+            ({link href = {url "#embedded-forms"}, described below}). It
+            is passed the {docref CellValue} and the record (if any)
+            associated with the current cell, and it returns a
+            control that can be used to edit the value.
+        }
+    }
+}
+{paragraph
+    Any of these types of procedures can be used on a non-editable
+    cell. If a {docref ValueControl} is used on a non-editable cell,
+    it will be used for display only. If the value is changed by the
+    user it will not update the data model. The last three types of
+    procedures should be used for an editable cell.
+}
+{paragraph
+    If the ui-spec is a class type, such as {ctext TextArea}, then
+    when an editor is needed the default constructor for that class
+    will be invoked to instantiate an editor. If this class is not a
+    subclass of {docref ValueControl} then a run-time error is thrown.
+    For example, 
+    {curl-code
+        {Worksheet...
+            {value-cell "test", height = {add-stretch}, ui-spec = TextArea}
+        }
+    }
+}
+{paragraph
+    If the {ctext ui-spec} is any other type, it will be shown in the
+    cell instead of the cell value.
+}
+{paragraph
+    As a convenience, the {docref Worksheet} constructor tries to make
+    sense out of the arguments you pass in to specify the cell
+    contents. If an argument is a {docref ValueControl}, the
+    constructor assumes that you meant for that control to be used to
+    edit the cell. It is assigned to the cell's {ctext ui-spec}
+    property and the current value of the control provides the initial
+    value for the cell. In addition, the {ctext locked?} property of
+    the cell is set to true, meaning that the control will be
+    displayed in the cell at all times, even if it is not the active
+    cell.
+}
+{example
+    {import * from COM.CURL.EXT.WORKSHEET}
+    
+    {Worksheet 4, 3, {widths 18pt, 2in},
+        row = 1, col = 1, 
+        row-height = 48pt, {Slider value = 4},
+        {formula-cell Formula.copy, {RelativeCellRef 0, -1}},
+        
+        row = 2, col = 1,
+        {CommandButton
+            label = "Show Slider Value",
+            {on Action at cb:CommandButton do
+                let v:String = "unknown"
+                {type-switch cb.selection-context
+                 case wks:Worksheet do
+                    set v = {String {wks.model.get-value 1, 1}}
+                }
+                {popup-message "The slider value is " & v}
+            }
+        }
+    }
+}
+{paragraph
+    In fact any subclass of {docref Visual} will be treated this way.
+    If it is a {ctext ValueControl}, the {ctext Worksheet} will add an
+    event handler for {docref ValueFinished} events and update the
+    cell value when the event is fired.
+}
+
+{destination name = "embedded-forms-grids",
+{heading level = 3, Embedded Forms and Grids}
+}
+{paragraph
+    The {docref Worksheet} supports embedded {docref RecordForm}s
+    and {docref RecordGrid}s to display and edit record based data.
+}
+{heading level = 3, Using an EmbeddedRecordGrid}
+
+{paragraph
+    Sometimes it is useful to display a {docref RecordSet} (possibly
+    with a large number of records) within a {docref Worksheet}. The
+    {docref EmbeddedRecordGrid} makes this possible. This allows a user
+    to scroll through all of the records in the grid without scrolling the
+    entire worksheet.
+}
+{paragraph
+    The columns of an {ctext EmbeddedRecordGrid} will automatically be
+    aligned with the worksheet columns if you set the colspan of the
+    cell that contains the grid to one greater than the number of
+    columns in the grid. It is best to place the {ctext
+    EmbeddedRecordGrid} on one row so that the user can easily adjust
+    the height of the grid by adjusting the height of the row.
+}
+{paragraph
+    An {docref EmbeddedRecordGrid} is added to a {docref Worksheet}
+    by passing it to the {ctext Worksheet} constructor, as shown in
+    the next example. The example also shows how a column of data
+    in the recordset can be computed. This example constructs a
+    {docref RecordSetDataSource} from the recordset and then adds
+    a formula to compute the "OD" column. Note that if you modify a
+    value in the Reaction or Braking columns, the last column will
+    be recomputed.    
+}
+
+{example
+    {import * from COM.CURL.EXT.WORKSHEET}
+
+    {value
+        def rs =
+            {RecordSet
+                {RecordFields
+                    {RecordField "KPH", caption = "Km/hr", domain = int},
+                    {RecordField "TD", caption = "Reaction", domain = int},
+                    {RecordField "BD", caption = "Braking", domain = int},
+                    {RecordField "OD", caption = "Overall", domain = int}
+                },
+                {RecordData KPH = 32, TD = 6, BD = 6},
+                {RecordData KPH = 48, TD = 9, BD = 14},
+                {RecordData KPH = 64, TD = 12, BD = 24},
+                {RecordData KPH = 80, TD = 15, BD = 38},
+                {RecordData KPH = 97, TD = 18, BD = 55},
+                {RecordData KPH = 113, TD = 21, BD = 75}
+            }
+
+
+        def rds = {RecordSetDataSource rs}
+        def KPH-ref = {rds.get-ref "KPH"}
+        def TD-ref = {rds.get-ref "TD"}
+        def BD-ref = {rds.get-ref "BD"}
+        def OD-ref = {rds.get-ref "OD"}
+        {rds.make-formula OD-ref, int asa Domain, Formula.sum, TD-ref, BD-ref}
+
+        {Worksheet
+            3, 6, default-column-width = .6in,
+            {widths .25in},
+            colspan = 5, {bold Sample EmbeddedRecordGrid},
+            row = 1, row-height = 1in, col = 1, colspan = 5,
+            {EmbeddedRecordGrid
+                takes-focus? = true,
+                record-source = rs,
+                region-selection-enabled? = true,
+                automatic-columns? = true
+            }
+        }
+    }
+
+}
+
+{paragraph
+    Notice how you can resize the columns of the {ctext Worksheet} and
+    the corresponding columns of the {ctext EmbeddedRecordGrid} are
+    also resized. You can also resize the row containing the
+    recordgrid to adjust its height.
+}
+
+{paragraph
+    This technique places an instance of a control in a cell. It
+    cannot be used in a {link href = {url "#embedded-forms"}, embedded
+    form} because a GUI object can appear only once in the GUI
+    hierarchy. When the embedded form is repeated for each record in
+    a {docref RecordSet} the control will be moved into the newest
+    form. Instead of using an instance of a control, you can use
+    a procedure that takes two parameters, the worksheet model and
+    a {ctext Record} (which may be null) and returns a {docref Visual}.
+    If the value returned by this procedure is a {ctext ValueControl},
+    it will be treated as described earlier.
+}
+
+{destination name = "embedded-forms",
+{heading level = 3, Embedded Forms}
+}
+{paragraph
+    Sometimes it is useful to display the data in a {docref RecordSet}
+    as a sequence of forms on the worksheet, one form per record. This
+    is the problem that {docref EmbeddedRecordForm} was designed to
+    solve.
+}
+{paragraph
+    The following example shows a simple "to do" list. Each task is
+    represented by a record in a record set. In the worksheet, each
+    record is displayed as a small form that occupies one row of the
+    worksheet. Buttons are provided to add and delete a task.
+}
+{paragraph
+    The {docref EmbeddedRecordForm} functions as a template for a
+    {docref RecordForm} that can be embedded in a {docref Worksheet}.
+    The template specifies a rectangle of cells. This pattern is
+    repeated for each record in a {docref RecordSetDataSource}.  If
+    records are added or removed, then corresponding form is added or
+    removed from the worksheet.
+}
+{paragraph
+    The {ctext EmbeddedRecordForm} constructor is very much like
+    the {ctext Worksheet} constructor. It accepts the same keyword
+    arguments, and positional arguments specify the initial values of
+    the cells in the form. A {docref FieldSpec} is used to obtain an
+    editable cell for a field in a record.
+}
+{example
+    {import * from COM.CURL.EXT.WORKSHEET}
+    {import * from COM.CURL.EXT.DATA-ACCESS}
+    {import * from COM.CURL.EXT.GUI}
+    {import * from CURL.IO.JSON}
+
+    || Status of a task
+    {define-enum Status todo, urgent, done}
+
+    || Procedure to generate unique id's
+    {define-proc public {get-new-id rs:RecordSet, id-field:String}:int
+        || Find the highest ID currently in use
+        let last-id:int = 0
+        {for r:Record in rs do
+            let recid:int = r[id-field] asa int
+            {if recid > last-id then
+                set last-id = recid
+            }
+        }
+        {return last-id + 1}
+    }
+
+    || The unique id field in our RecordSet
+    {def id-field = "id"}
+
+    || Data model for the To Do List
+    {def item-rs =
+        {RecordSet
+            {RecordFields
+                {RecordField id-field, domain = int},
+                {RecordField "status", domain = Status},
+                {RecordField "descr", caption = "Descr.", domain = String},
+                {RecordField "date", domain = DataSource.date-domain},
+                {RecordField "finished", nullable? = true,
+                    domain = {LocaleDateDomain default-value = null}
+                } 
+            },
+            {RecordData id = 0, status = "todo", 
+                descr = "Buy eggs, bacon, bread", date = "2011-04-01"
+            }
+        }
+    }
+
+    || Convert the RecordSet into a RecordSetDataSource
+    {def item-ds = {RecordSetDataSource item-rs}}
+
+    || A procedure that can be used for the ui-spec property
+    {def make-delete-button =
+        {proc {r:#Record, cv:CellValue}:Visual
+            {return
+                {CommandButton
+                    label = {bold color = "crimson", x},
+                    height = 13pt, takes-focus? = false,
+                    {on Action at cb:CommandButton do
+                        {type-switch cb.data-binding-context
+                         case rf:RecordForm do
+                            {if-non-null cr = rf.current-record then
+                                {cr.delete}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    {Worksheet
+        7, 8,
+        {widths 18pt, 24pt, 48pt, 72pt, 144pt, 72pt, 24pt, 18pt},
+
+        row = 0, col = 0, row-height = 20pt,
+        {display-cell
+            colspan = 3, margin = 3px, color = "navy",
+            {big To Do List}
+        },
+
+        row = 2, col = 1, "id", "status", "date", "description", "finished",
+
+        row = 3, col = 1,
+        {EmbeddedRecordForm item-ds, id-field = id-field,
+            row = 0, col = 0,
+            {FieldSpec id-field},
+            {FieldSpec editable? = true, "status",
+                ui-spec = {EnumDropdown-of Status}
+            },
+            {FieldSpec editable? = true, "date"},
+            {FieldSpec editable? = true, "descr"},
+            {FieldSpec editable? = true, "finished"},
+            {display-cell
+                halign = "center", valign = "center",
+                make-delete-button
+            }
+        },
+
+        row = 4, col = 1,
+        {display-cell
+            halign = "center", valign = "center", margin = 0pt,
+            {CommandButton
+                label = {bold font-size = 10pt, font-family = "Arial", +},
+                height = 15pt,
+                {on Action do
+                    def r = {item-rs.new-record}
+                    set r[id-field] = {get-new-id item-rs, id-field}
+                    {item-rs.append r}
+                }
+            }
+        },
+
+        row = 6, col = 1,
+        {value-cell
+            colspan = 2, halign = "center", valign = "center",
+            {CommandButton
+                label = {bold font-size = 10pt, Json Data},
+                height = 15pt,
+                {on Action at cb:CommandButton do
+                    {type-switch cb.selection-context
+                     case wks:Worksheet do
+                        def data = {JsonValue-to-String
+                                       {wks.model.get-data},
+                                       prettify? = true
+                                   }
+                        {dump data}
+                    }
+                }
+            }
+        }, colspan = 4, "write the worksheet data to the console"
+    }
+}
+{paragraph
+    The {ctext Worksheet} can export its content as a JSON data
+    structure. The button at the bottom of this example will
+    call {docref Worksheet.get-data} to obtain the worksheet data.
+    The data is then converted to a string and written to the standard
+    output. This JSON data can be stored and later used to reload the
+    worksheet with the same data by calling {docref
+    Worksheet.put-data}.
+}
