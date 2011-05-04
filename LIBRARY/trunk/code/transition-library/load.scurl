@@ -2010,6 +2010,160 @@
     set self.scene = scene
     {return scene, scene-graphic}
   }
+  
+  {doc-next
+    {purpose
+        Compute various useful parameters for 3D transition effects.
+    }
+    {parameter pmap,
+        The full {docref Pixmap} that contains the {quote from} or {quote to}
+        version of the {docref TransitionFrame} contents.
+        The height and width of {param pmap} are used to determine
+        the size parameters that are returned,
+        and the Pixmap contents are used to create the {docref FillPattern}
+        that is returned.
+    }
+    {parameter quad-scale,
+        The size of the 3D object that should be created to display
+        {param pmap},
+        along the shorter dimension of the Pixmap.
+        If {param pmap} has a {quote landscape} orientation, this will
+        be the height of the Pixmap;
+        otherwise it will be the width.
+    }
+    {return-vals
+        Four values are returned:
+        {enumerate
+            {item The width for the 3D object.}
+            {item The height for the 3D object.}
+            {item The z coordinate at which to place the 3D object.}
+            {item A {docref FillPattern} that will render the contents of {param pmap}.}
+        }
+        If a quad is sized and placed as specified by the first three return values,
+        it will exactly fill the bounds of the {docref SceneGraphic} object
+        and will have the correct aspect ratio for {param pmap}.
+    }
+  }
+  {method protected {get-3d-sizes
+                        pmap:Pixmap, quad-scale:Distance
+                    }:(quad-width:Distance, quad-height:Distance, z:Distance, fill-pattern:FillPattern)
+    def fill-pattern = {FillPattern.from-pixmap pmap}
+    def z = (1m - quad-scale) * self.fov-cotangent
+    def pw = pmap.width
+    def ph = pmap.height
+    {if pw >= ph then
+        def quad-height = quad-scale
+        def quad-width = (quad-scale * pw) / ph
+        {return quad-width, quad-height, z, fill-pattern}
+     else
+        def quad-width = quad-scale
+        def quad-height = (quad-scale * ph) / pw
+        {return quad-width, quad-height, z, fill-pattern}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Create a 3D quad that renders a given {docref Pixmap}
+        and place it in the current 3D {docref Scene}.
+    }
+    {parameter pmap,
+        The full {docref Pixmap} that contains the
+        content to be viewed in the {docref Scene}.
+    }
+    {parameter quad-scale,
+        The size (in the 3D scene) of the quad that should be created to display
+        {param pmap},
+        along the shorter dimension of the Pixmap.
+        If {param pmap} has a {quote landscape} orientation, this will
+        be the height of the Pixmap;
+        otherwise it will be the width.
+    }
+    {return-vals
+        The resulting {docref Quad} object is returned,
+        after having already been added to {ctext self.scene}.
+    }
+  }
+  {method protected {make-simple-quad pmap:Pixmap, quad-scale:Distance}:Quad
+    def (quad-width, quad-height, z, fill-pattern) = {self.get-3d-sizes pmap, quad-scale}
+    def quad =
+        {Quad
+            fill-pattern = fill-pattern,
+            z = z,
+            -0.5 * quad-width, -0.5 * quad-height, quad-width, quad-height
+        }
+    {self.scene.add-object quad}
+    {return quad}
+  }
+  
+  {doc-next
+    {purpose
+        Create a 3D quad that renders a portion of a given {docref Pixmap}
+        and place it in the current 3D {docref Scene}.
+    }
+    {parameter pmap,
+        The full {docref Pixmap} that contains the
+        content to be viewed in the {docref Scene}.
+    }
+    {parameter quad-scale,
+        The size (in the 3D scene) of the quad that would display
+        {param pmap} in full,
+        measured along the shorter dimension of the Pixmap.
+        If {param pmap} has a {quote landscape} orientation, this will
+        be the height of the Pixmap;
+        otherwise it will be the width.
+    }
+    {parameter (s0, s1, t0, t1),
+        Texture coordinates that indicate the portion of {param pmap}
+        that should be included in the {docref Quad} that is created
+        by this method call.
+        {no-break ({param s0}, {param t0})} gives the texture coordinates
+        of the upper left corner of the area to be included, and
+        {no-break ({param s1}, {param t1})} gives the texture coordinates
+        of the lower right corner.
+        The default values of these arguments are
+        {no-break (0, 0)} for the upper left corner and
+        {no-break (1, 1)} for the lower right corner,
+        which will cause the entire Pixmap to be included.
+        Specifying values between 0 and 1 for these arguments
+        will designate a smaller area to be included.
+    }
+    {return-vals
+        The resulting {docref Quad} object is returned,
+        after having already been added to {ctext self.scene}.
+        The {docref Quad} will have been placed in the scene
+        at a position that corresponds to its texture coordinates,
+        so if this method is called repeatedly with different
+        texture coordinates to create a set of {docref Quad}s
+        that collectively cover {param pmap},
+        the {docref Quad}s will be arranged in the scene so that
+        the appearance is the same as if just one {docref Quad}
+        had been created for the entire Pixmap.
+    }
+  }
+  {method protected {make-partial-quad
+                      pmap:Pixmap,
+                      quad-scale:Distance,
+                      s0:Fraction = 0.0,
+                      s1:Fraction = 1.0,
+                      t0:Fraction = 0.0,
+                      t1:Fraction = 1.0
+                  }:Quad
+    def (quad-width, quad-height, z, fill-pattern) = {self.get-3d-sizes pmap, quad-scale}
+    def quad =
+        {PartialQuad
+            s0 = s0, s1 = s1, t0 = t0, t1 = t1,
+            fill-pattern = fill-pattern,
+            z = z,
+            (s0 - 0.5) * quad-width,
+            (t0 - 0.5) * quad-height,
+            (s1 - s0) * quad-width,
+            (t1 - t0) * quad-height
+        }
+    {self.scene.add-object quad}
+    {return quad}
+  }
+  
 }
 
 {doc-next
@@ -2042,23 +2196,7 @@
         || Create the SceneGraphic if necessary.
         set self.completion = 0.0
     }
-    {self.make-quad pmap, 10m}
-  }
-  
-  {method private {make-quad pmap:Pixmap, quad-scale:Distance}:Quad
-    def fill-pattern = {FillPattern.from-pixmap pmap}
-    def quad-height = quad-scale
-    def quad-width = (quad-scale * pmap.width) / pmap.height
-    def quad =
-        {Quad
-            fill-pattern = fill-pattern,
-            z = (1m - quad-scale) * self.fov-cotangent,
-            -0.5 * quad-width, -0.5 * quad-height, quad-width, quad-height
-        }
-    {self.scene.add-object
-        quad    
-    }
-    {return quad}
+    {self.make-simple-quad pmap, 10m}
   }
   
   {setter public {completion c:double}:void
@@ -2067,7 +2205,7 @@
             sc
          else
             def (scene, scene-graphic) = {self.make-scene}
-            def quad = {self.make-quad self.pixmap, 1m}
+            def quad = {self.make-simple-quad self.pixmap, 1m}
             set self.quad = quad
             scene-graphic
         }
@@ -2149,23 +2287,7 @@
         || Create the SceneGraphic if necessary.
         set self.completion = 0.0
     }
-    set self.in-quad = {self.make-quad pmap, 1m}
-  }
-  
-  {method private {make-quad pmap:Pixmap, quad-scale:Distance}:Quad
-    def fill-pattern = {FillPattern.from-pixmap pmap}
-    def quad-height = quad-scale
-    def quad-width = (quad-scale * pmap.width) / pmap.height
-    def quad =
-        {Quad
-            fill-pattern = fill-pattern,
-            z = (1m - quad-scale) * self.fov-cotangent,
-            -0.5 * quad-width, -0.5 * quad-height, quad-width, quad-height
-        }
-    {self.scene.add-object
-        quad    
-    }
-    {return quad}
+    set self.in-quad = {self.make-simple-quad pmap, 1m}
   }
   
   {setter public {completion c:double}:void
@@ -2174,7 +2296,7 @@
             sc
          else
             def (scene, scene-graphic) = {self.make-scene}
-            def quad = {self.make-quad self.pixmap, 1m}
+            def quad = {self.make-simple-quad self.pixmap, 1m}
             set self.out-quad = quad
             scene-graphic
         }
@@ -2347,37 +2469,9 @@
         || Create the SceneGraphic if necessary.
         set self.completion = 0.0
     }
-    set self.in-quad = {self.make-quad pmap, 1m}
-    {self.make-quad pmap, 1m, s1 = 0.5}
-    {self.make-quad self.pixmap, 1m, s0 = 0.5}
-  }
-  
-  {method private {make-quad
-                      pmap:Pixmap,
-                      quad-scale:Distance,
-                      s0:Fraction = 0.0,
-                      s1:Fraction = 1.0,
-                      t0:Fraction = 0.0,
-                      t1:Fraction = 1.0
-                      
-                  }:Quad
-    def fill-pattern = {FillPattern.from-pixmap pmap}
-    def quad-height = quad-scale
-    def quad-width = (quad-scale * pmap.width) / pmap.height
-    def quad =
-        {PartialQuad
-            s0 = s0, s1 = s1, t0 = t0, t1 = t1,
-            fill-pattern = fill-pattern,
-            z = (1m - quad-scale) * self.fov-cotangent,
-            (s0 - 0.5) * quad-width,
-            (t0 - 0.5) * quad-height,
-            (s1 - s0) * quad-width,
-            (t1 - t0) * quad-height
-        }
-    {self.scene.add-object
-        quad    
-    }
-    {return quad}
+    set self.in-quad = {self.make-partial-quad pmap, 1m}
+    {self.make-partial-quad pmap, 1m, s1 = 0.5}
+    {self.make-partial-quad self.pixmap, 1m, s0 = 0.5}
   }
   
   {setter public {completion c:double}:void
@@ -2386,7 +2480,7 @@
             sc
          else
             def (scene, scene-graphic) = {self.make-scene}
-            def quad = {self.make-quad self.pixmap, 1m}
+            def quad = {self.make-partial-quad self.pixmap, 1m}
             set self.out-quad = quad
             scene-graphic
         }
@@ -3231,7 +3325,7 @@
 }
 {define-class public PageTurnPixmap {inherits Pixmap3dTransitionOverlay}
   
-  field in-pixmap:#Pixmap = null
+  field private in-pixmap:#Pixmap = null
   
   field private out-ptg:PageTurn2DGeometry
   field private in-ptg:PageTurn2DGeometry
@@ -3259,21 +3353,21 @@
   {constructor public {default pixmap:Pixmap, alpha:Angle = 10deg}
     {construct-super pixmap}
     def aspect-ratio = pixmap.width / pixmap.height
+    def (w3d, h3d, z, fill-pattern) = {self.get-3d-sizes pixmap, 1m}
     
     set self.out-ptg =
         {PageTurn2DGeometry
-            page-width = 1m * aspect-ratio,
-            page-height = 1m,
+            page-width = w3d,
+            page-height = h3d,
             alpha = alpha
         }
     set self.in-ptg =
         {PageTurn2DGeometry
-            page-width = 1m * aspect-ratio,
-            page-height = 1m,
+            page-width = w3d,
+            page-height = h3d,
             alpha = alpha
         }
     
-||++def shadow-band-pixmap-height = 600
     def shadow-band-pixmap-height = 360
     def shadow-band-pixmap-width = shadow-band-pixmap-height div self.shadow-band-pixmap-aspect-ratio
     set self.shadow-band-pixmap = {Pixmap shadow-band-pixmap-width, shadow-band-pixmap-height}
@@ -3984,32 +4078,7 @@
         || Create the SceneGraphic if necessary.
         set self.completion = 0.0
     }
-    {self.make-quad pmap, 2m}
-  }
-  
-  {method private {make-quad
-                      pmap:Pixmap,
-                      quad-scale:Distance,
-                      s0:Fraction = 0.0,
-                      s1:Fraction = 1.0,
-                      t0:Fraction = 0.0,
-                      t1:Fraction = 1.0
-                  }:Quad
-    def fill-pattern = {FillPattern.from-pixmap pmap}
-    def quad-height = quad-scale
-    def quad-width = (quad-scale * pmap.width) / pmap.height
-    def quad =
-        {PartialQuad
-            s0 = s0, s1 = s1, t0 = t0, t1 = t1,
-            fill-pattern = fill-pattern,
-            z = (1m - quad-scale) * self.fov-cotangent,
-            (s0 - 0.5) * quad-width,
-            (t0 - 0.5) * quad-height,
-            (s1 - s0) * quad-width,
-            (t1 - t0) * quad-height
-        }
-    {self.scene.add-object quad}
-    {return quad}
+    {self.make-partial-quad pmap, 2m}
   }
   
   {method private {make-polygon-set
@@ -4017,8 +4086,7 @@
                       quad-scale:Distance
                   }:PolygonSet
     def base-mesh = self.start-mesh
-    def quad-height = quad-scale
-    def quad-width = (quad-scale * pmap.width) / pmap.height
+    def (quad-width, quad-height, z, fill-pattern) = {self.get-3d-sizes pmap, quad-scale}
     def pset =
         {PolygonSet
             fill-pattern = {FillPattern.from-pixmap self.pixmap},
@@ -4059,8 +4127,7 @@
         target-mesh = self.temp-mesh
     }
     def pmap = self.pixmap
-    def quad-height = quad-scale
-    def quad-width = (quad-scale * pmap.width) / pmap.height
+    def (quad-width, quad-height, z, fill-pattern) = {self.get-3d-sizes pmap, quad-scale}
     set self.pset.vertices =
         {make-vertex-list-from-mesh
             self.temp-mesh,
