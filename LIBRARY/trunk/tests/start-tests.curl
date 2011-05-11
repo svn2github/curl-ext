@@ -82,12 +82,25 @@
                 {AppletTestCase
                     {url "../code/docs/en/dguide/writing-guiauto-tests.curl"}
                 }
+                ,
+            || samples
+            {TestSuite "samples",
+                {AppletTestCase
+                    {url "../code/docs/samples/sample-autocomplete.curl"}
+                },
+                {AppletTestCase
+                    {url "../code/docs/samples/sample-popup-balloon.curl"}
+                },
+                {AppletTestCase
+                    {url "../code/docs/samples/sample-titled-view.curl"}
+                }
 ||--                ,
-||--            || samples
-||--            {TestSuite "samples"
-||--                || TODO
-||--            },
-            
+||FIXME: This gets "Badly timed finish layout" error
+||--                {AppletTestCase
+||--                    {url "../code/docs/samples/sample-transition-frame.curl"}
+||--                }
+            }
+||--,
 ||++        || ==============================
 ||++        || PaneContainer
 ||++        {TestSuite "PaneContainer specs",

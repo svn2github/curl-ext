@@ -220,6 +220,7 @@
 || -----------------------------------------------------------------------------
 
 {define-proc {check-recordset-model}:void
+    let rs-event-count:int = 0
     def rs =
         {RecordSet
             {RecordFields
@@ -227,30 +228,72 @@
                 {RecordField "a", domain = DataSource.double-domain},
                 {RecordField "b", domain = DataSource.double-domain},
                 {RecordField "c", domain = DataSource.double-domain},
-                {RecordField "d", domain = DataSource.double-domain}
+                {RecordField "d", domain = DataSource.double-domain},
+                {RecordField "a name", domain = DataSource.double-domain}
             },
             {RecordData id = 0, a = 0.0, b = 0.0, c = 0.0},
             {RecordData id = 1, a = 1.0, b = 10.0, c = 0.1},
             {RecordData id = 2, a = 2.0, b = 20.0, c = 0.2},
             {RecordData id = 3, a = 3.0, b = 30.0, c = 0.3},
-            {RecordData id = 4, a = 4.0, b = 40.0, c = 0.4}
+            {RecordData id = 4, a = 4.0, b = 40.0, c = 0.4},
+            {on e:RecordsChanged at rs:RecordSet do
+                {inc rs-event-count}
+            }
         }
 
     def rds = {RecordSetDataSource rs}
     def r0 = {rs.select}[0]
     def ir0a = {RecordRef rds, r0, "a"}
+    {assert rs-event-count == 0}||fix this
+    set ir0a.value = 42.333 || does the RecordRef.value setter set and notify?
+    {assert rs-event-count == 1}
     {for v in ir0a do
         {TestCondition.assert v isa DataRef}
         {TestCondition.assert v.value == r0["a"]}
     }
 
+||--    let message:String = ""
+||--    let error?:bool = false
+||--    {try
+||--        
+||--     catch e:Exception do
+||--        set message = e.message
+||--        {dump "(Expected)", e.message}
+||--        set error? = true
+||--    }
+    {TestCondition.assert {RecordSetDataSource.parse-fields "", rs}.size == rs.fields.size}
+    {TestCondition.assert {RecordSetDataSource.parse-fields "a", rs}.size == 1}
+    {TestCondition.assert {RecordSetDataSource.parse-fields " a ", rs}.size == 1}
+    {TestCondition.assert {RecordSetDataSource.parse-fields "a name", rs}.size == 1}
+    {TestCondition.assert {RecordSetDataSource.parse-fields "   a name", rs}.size == 1}
+    {TestCondition.assert {RecordSetDataSource.parse-fields "id", rs}.size == 1}
+    {TestCondition.assert {RecordSetDataSource.parse-fields " a, b", rs}.size == 2}
+    {TestCondition.assert {RecordSetDataSource.parse-fields "a,b", rs}.size == 2}
+
+    let n:int = 0
+
+    def rsr = {RecordSetRef rds, ""}
+    def rsrid = {RecordSetRef rds, "id"}
+    set n = 0
+    def rsr-vals = {Array}
+    {for v in rsrid do
+        {rsr-vals.append v}
+    }
+    {for v in rsr do
+        {rsr-vals.append v}
+    }        
+
+    def frsrid = {RecordSetRef rds, "id=1[id]"}
+    {for v in frsrid do
+        {rsr-vals.append v}
+    }        
+
     || Iterate over all fields, all records
     let rsvi:RecordSetValueIterator = {RecordSetValueIterator rs, "id,a,b,c,d"}
-    let n:int = 0
     {for ref in rsvi do
         {inc n}
     }
-    {TestCondition.assert n == 5 * 5}
+    {TestCondition.assert n == rs.size * 5}
 
     || Iterate over all fields, all records another way
     set rsvi = {RecordSetValueIterator rs, ""}
@@ -258,7 +301,7 @@
     {for ref in rsvi do
         {inc n}
     }
-    {TestCondition.assert n == 5 * 5}
+    {TestCondition.assert n == rs.size * rs.fields.size}
 
     || Check a couple of columns
     set rsvi = {RecordSetValueIterator rs, "id"}
@@ -268,7 +311,7 @@
         {inc n}
         {TestCondition.assert ref.domain == DataSource.int-domain}
     }
-    {TestCondition.assert n == 5}
+    {TestCondition.assert n == rs.size}
 
     || Check a couple of columns
     set rsvi = {RecordSetValueIterator rs, "c"}
@@ -278,10 +321,10 @@
         {inc n}
         {TestCondition.assert ref.domain == DataSource.double-domain}
     }
-    {TestCondition.assert n == 5}
+    {TestCondition.assert n == rs.size}
 
     || Check references into a single record (RecordRef)
-    def rr0 = {RecordRef rds, r0, "a,b,c,d"}
+    def rr0 = {RecordRef rds, r0, "id,a,b,c,d"}
     def irr0 = {rr0.to-Iterator}
     {for f in rs.fields do
         def (v, done?) = {irr0.read-one}

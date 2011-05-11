@@ -21,7 +21,7 @@
         Create a JSON representation of the records in {param rs}.
     }
     {details
-        ||FIXME: currently returning a JsonObject with records:<array>
+        ||FIXME: also include fields:<field descriptions>
         The result is a {docref JsonArray} with one {docref JsonObject}
         for each record. The {ctext JsonObject} has entries field:value
         for each field in the {ctext RecordSet}. You can use {docref
@@ -34,7 +34,7 @@
 {define-proc public {RecordSet-to-Json rs:RecordSet}:JsonObject
     def data = {JsonObject}
     def records = {JsonArray}
-    ||FIXME: get rid of surrounding object, or also store col widths...
+    ||FIXME: add fields
     set data["records"] = records
     {for r in rs do
         def rdata = {JsonObject}
@@ -346,6 +346,26 @@ How does the edit/update cycle work?
 {define-class public open CellRef {inherits SheetRef}
 
   {doc-next
+    {purpose Compute a hash value for a {docref CellRef}.}
+  }
+  {define-proc public {hash-proc ref:CellRef}:int
+    let v:int = ref.row * WorksheetModel.max-cols + ref.col
+    {if not ref.row-abs? then set v = v * 7}
+    {if not ref.col-abs? then set v = v * 111}
+    {return {value-hash v}}
+  }
+
+  {doc-next
+    {purpose Compare two {docref CellRef}s and return true if they are equal.}
+  }
+  {define-proc public {equal-proc a:CellRef, b:CellRef}:bool
+    {return a.row == b.row and a.col == b.col
+        and a.row-abs? == b.row-abs?
+        and a.col-abs? == b.col-abs?
+    }
+  }
+
+  {doc-next
     {purpose The row number for this cell reference.}
   }
   field public-get protected-set row:int
@@ -407,7 +427,7 @@ How does the edit/update cycle work?
   }
 
   {method public open {equal? cr:CellRef}:bool
-    {return {CellRef-equal-proc self, cr}}
+    {return {CellRef.equal-proc self, cr}}
   }
 
   {method public open {resolve target:DataRef}:DataRef
@@ -437,8 +457,7 @@ How does the edit/update cycle work?
     }
   }
 
-  ||FIXME: you need to pass a row/col even if you want all-rows/cols
-  || maybe better to use all keyword args? Or maybe no big deal
+
   {doc-next
     {purpose Initialize a {docref CellRef}.}
     {notes
@@ -446,7 +465,11 @@ How does the edit/update cycle work?
         WorksheetModel.get-ref}, which will register the reference and
         update it if rows or columns are added or removed.
     }
-    ||FIXME: more params and details
+    {parameter worksheet, The {docref DataSource} that this reference
+        points into.
+    }
+    {parameter row, The row of the cell referred to.}
+    {parameter col, The column of the cell referred to.}
   }
   {constructor public {absolute
                           worksheet:WorksheetModel,
@@ -470,7 +493,11 @@ How does the edit/update cycle work?
         WorksheetModel.get-ref}, which will register the reference and
         update it if rows or columns are added or removed.
     }
-    ||FIXME: more params and details
+    {parameter worksheet, The {docref DataSource} that this reference
+        points into.
+    }
+    {parameter s, A string that describes a cell location, such as "D7".}
+    {parameter ref, The base cell for a relative reference.}
   }
   {constructor public {from-String
                           worksheet:WorksheetModel, s:String, ref:#CellRef
@@ -605,9 +632,25 @@ How does the edit/update cycle work?
     }
 }
 {define-class public open RelativeRangeRef {inherits ValueRef}
+
+  {doc-next
+    {purpose The base row for the range.}
+  }
   field public-get protected-set row:int
+
+  {doc-next
+    {purpose The base column for the range.}
+  }
   field public-get protected-set col:int
+
+  {doc-next
+    {purpose The number of rows in the range.}
+  }
   field public-get protected-set rows:int
+
+  {doc-next
+    {purpose The number of columns in the range.}
+  }
   field public-get protected-set cols:int
   
   {doc-next
@@ -641,6 +684,25 @@ How does the edit/update cycle work?
 }
 
 {doc-next
+    {purpose Compute a hash value for a {docref RangeRef}.}
+}
+{define-proc public {RangeRef-hash-proc ref:RangeRef}:int
+    let h:int = {CellRef.hash-proc ref.cell1}
+    {inc h, {CellRef.hash-proc ref.cell2}}
+    {return h}
+}
+
+{doc-next
+    {purpose Compare two {docref RangeRef}s and return true if they are equal.}
+}
+{define-proc public {RangeRef-equal-proc a:RangeRef, b:RangeRef}:bool
+    {return
+        {CellRef.equal-proc a.cell1, b.cell1}
+        and {CellRef.equal-proc a.cell2, b.cell2}
+    }
+}
+
+{doc-next
     {purpose
         Reference to a rectangular range of cells in a {docref Worksheet}.
     }
@@ -654,9 +716,23 @@ How does the edit/update cycle work?
 }
 {define-class public open RangeRef {inherits SheetRef}
 
+
+  {doc-next
+    {purpose
+        A constant that indicate that all rows or columns are
+        included in a range.
+    }
+  }
   let public constant all:int = -1
 
+  {doc-next
+    {purpose The top left corner of the range.}
+  }
   field public-get protected-set cell1:CellRef
+
+  {doc-next
+    {purpose The lower right corner of the range.}
+  }
   field public-get protected-set cell2:CellRef
 
   {doc-next
@@ -695,12 +771,17 @@ How does the edit/update cycle work?
         Create a new {docref RangeRef} from {docref RelativeRangeRef}
         and a target or reference cell.
     }
+    {parameter ref, An absolute cell reference used to determine
+        the location of the new range.
+    }
+    {parameter rr, A relative range that will be adjusted to {param ref}.} 
   }
   {constructor public {from-relative-ref
                           ref:CellRef,
                           rr:RelativeRangeRef
                       }
     {construct-super ref.worksheet}
+    {assert ref.absolute?}
     def r0 = ref.row + rr.row
     def c0 = ref.col + rr.col
     def r1 = r0 + rr.rows - 1
@@ -716,7 +797,13 @@ How does the edit/update cycle work?
         WorksheetModel.get-ref}, which will register the reference and
         update it if rows or columns are added or removed.
     }
-    ||FIXME: more params and details
+    {parameter s, This string should consist of two CellRef
+        strings separated by a colon (':'). For example "B3:D9".
+        (see {docref CellRef.from-String})
+    }
+    {parameter ref, If the CellRef strings are relative, they
+        are interpreted as relative to this reference cell.
+    }
   }
   {constructor public {from-String
                           worksheet:WorksheetModel,
@@ -863,56 +950,6 @@ How does the edit/update cycle work?
 }
 
 || ---------------------------------------------------------------------------
-
-||FIXME: make this a public class constant?
-{doc-next
-    {purpose The maximum number of columns in a {docref Worksheet}.}
-}
-{def public max-cols = 1000}
-
-{doc-next
-    {purpose The maximum number of rows in a {docref Worksheet}.}
-}
-{def public max-rows = 10000}
-
-{doc-next
-    {purpose Compute a hash value for a {docref CellRef}.}
-}
-{define-proc public {CellRef-hash-proc ref:CellRef}:int
-    let v:int = ref.row * max-cols + ref.col
-    {if not ref.row-abs? then set v = v * 7}
-    {if not ref.col-abs? then set v = v * 111}
-    {return {value-hash v}}
-}
-
-{doc-next
-    {purpose Compare two {docref CellRef}s and return true if they are equal.}
-}
-{define-proc public {CellRef-equal-proc a:CellRef, b:CellRef}:bool
-    {return a.row == b.row and a.col == b.col
-        and a.row-abs? == b.row-abs?
-        and a.col-abs? == b.col-abs?
-    }
-}
-
-{doc-next
-    {purpose Compute a hash value for a {docref RangeRef}.}
-}
-{define-proc public {RangeRef-hash-proc ref:RangeRef}:int
-    let h:int = {CellRef-hash-proc ref.cell1}
-    {inc h, {CellRef-hash-proc ref.cell2}}
-    {return h}
-}
-
-{doc-next
-    {purpose Compare two {docref RangeRef}s and return true if they are equal.}
-}
-{define-proc public {RangeRef-equal-proc a:RangeRef, b:RangeRef}:bool
-    {return
-        {CellRef-equal-proc a.cell1, b.cell1}
-        and {CellRef-equal-proc a.cell2, b.cell2}
-    }
-}
 
 ||--{define-class public open WorksheetRefTable
 ||--
@@ -1415,6 +1452,9 @@ How does the edit/update cycle work?
     {return {non-null self.index-map}}
   }
 
+  {doc-next
+    {purpose Map a position in a cell grid to an index in the data model.}
+  }
   {method public open {map-position-to-index pos:int}:int
     {if self.index-size <= pos then
         set self.index-size = pos + 1
@@ -1424,6 +1464,9 @@ How does the edit/update cycle work?
     {return self.index-map[pos]}
   }
 
+  {doc-next
+    {purpose Map an index in the data model to a position in the cell grid.}
+  }
   {method public open {map-index-to-position i:int}:int
     {if self.index-size <= i then
         set self.index-size = i + 1
@@ -1433,10 +1476,22 @@ How does the edit/update cycle work?
     {return self.position-map[i]}
   }
 
+  {doc-next
+    {purpose
+        Return true if the cell the given {param index} in the data model
+        not within a collapsed row or column group.
+    }
+  }
   {method public open {visible? index:int}:bool
     {return {self.map-index-to-position index} >= 0}
   }
 
+  {doc-next
+    {purpose
+        Given an index {param i} within the data model, return the corresponding
+        position in a grid, taking account of collapsed groups.
+    }
+  }
   {method public open {visible-position i:int, below?:bool = false}:int
     {while not {self.visible? i} do
         {if below? then
@@ -1848,25 +1903,6 @@ How does the edit/update cycle work?
 }
 {def public ValueArray = {ResizableArray-of CellValue}}
 
-||FIXME: no longer used
-||--{define-class public open EmbeddedFormInfo
-||--  field public row:int
-||--  field public col:int
-||--  field public erf:EmbeddedRecordForm
-||--  field public form:#RecordForm
-||--  {constructor public {default
-||--                          erf:EmbeddedRecordForm,
-||--                          row:int,
-||--                          col:int,
-||--                          form:#RecordForm = null
-||--                      }
-||--    set self.row = row
-||--    set self.col = col
-||--    set self.erf = erf
-||--    set self.form = form
-||--  }
-||--}
-
 
 {doc-next
     {purpose
@@ -2015,6 +2051,11 @@ How does the edit/update cycle work?
 
   {doc-next
     {purpose Create a new {docref CellValue}.}
+    {parameter value, the initial value of the cell}
+    {parameter spec, An object that specifies the properties of the cell.}
+    {parameter editing?, If true, the cell will start out in the editing state.}
+    {parameter rowspan, The number of rows to be used to display the cell.}
+    {parameter colspan, The number of columns to be used to display the cell.}
   }
   {constructor public {default
                           value:any = null,
@@ -2030,6 +2071,12 @@ How does the edit/update cycle work?
     set self.colspan = colspan
   }
 
+  {doc-next
+    {purpose
+        Return the string that results from using the {docref-abbr
+        CellValue.domain} to format the value of this cell.
+    }
+  }
   {getter public open {formatted-value}:String
     {if-non-null self._value then
         {return {self.domain.format self._value}}
@@ -2038,6 +2085,9 @@ How does the edit/update cycle work?
     }
   }
 
+  {doc-next
+    {purpose The value of this cell.}
+  }
   {getter public open {value}:any
     {return self._value}
   }
@@ -2062,6 +2112,12 @@ How does the edit/update cycle work?
     }
   }
 
+  {doc-next
+    {purpose
+        Attempt to convert {param v} into the domain of this cell.
+        The result is null if this is not possible.
+    }
+  }
   {method public open {domain-value v:any}:any
     let err:#Exception = null
     let dv:any = null
@@ -2079,10 +2135,16 @@ How does the edit/update cycle work?
     {return dv}
   }
 
+  {doc-next
+    {purpose Return true if the value of this cell is numeric.}
+  }
   {getter public open {number?}:bool
     {return {number? self.domain.default-value}}
   }
 
+  {doc-next
+    {purpose Return the value of this cell as a double value.}
+  }
   {getter public open {numval}:double
     {if self.number? then
         {return self.value asa double}
@@ -2091,10 +2153,16 @@ How does the edit/update cycle work?
     }
   }
 
+  {doc-next
+    {purpose Return the value of tis cell as a String.}
+  }
   {getter public open {strval}:String
         {return {self.domain.format self.value}}
   }
 
+  {doc-next
+    {purpose Apply the options associated with this cell to {param v}.}
+  }
   {method public open {apply-options v:Visual}:void
     {if-non-null options = self.options then
         {for (a,k) in options do
@@ -2114,6 +2182,12 @@ How does the edit/update cycle work?
     }
   }
 
+  {doc-next
+    {purpose
+        For each option associated with this cell, unset the option
+        on {param v}.
+    }
+  }
   {method public open {unset-options v:Visual}:void
     {if-non-null options = self.options then
         {for (a,k) in options do
@@ -2153,6 +2227,9 @@ How does the edit/update cycle work?
 ||--    set self.embedded-form = null
   }
 
+  {doc-next
+    {purpose Store a {docref Formula} on this cell.}
+  }
   {setter public open {formula fval:#Formula}:void
     set self._formula = fval
   }
@@ -2161,6 +2238,12 @@ How does the edit/update cycle work?
     {return self._formula}
   }
 
+  {doc-next
+    {purpose
+        The number of rows occupied by this cell when it is displayed
+        in the grid.
+    }
+  }
   {setter public open {rowspan val:int}:void
     ||FIXME: update the self.covered? flags for adjacent cells (on WorksheetModel)
     set self._rowspan = val
@@ -2170,6 +2253,12 @@ How does the edit/update cycle work?
     {return self._rowspan}
   }
 
+  {doc-next
+    {purpose
+        The number of columns occupied by this cell when it is displayed
+        in the grid.
+    }
+  }
   {setter public open {colspan val:int}:void
     ||FIXME: update the self.covered? flags for adjacent cells (on WorksheetModel)
     set self._colspan = val
@@ -2181,6 +2270,12 @@ How does the edit/update cycle work?
 }
 
 
+{doc-next
+    {purpose
+        Enumerate the operations on a worksheet that might need to
+        be described in a notification message.
+    }
+}
 {define-enum WorksheetOpcode
     none,
     insert-rows,    || a is first, b is count
@@ -2189,6 +2284,12 @@ How does the edit/update cycle work?
     recalc          || a, b ignored. sender.row/col-min/max describes changes
 }
 
+||FIXME: Incomplete. Add more docstrings if it survives.
+{doc-next
+    {purpose
+        A record of an operation on a {docref Worksheet}.
+    }
+}
 {define-class public open WorksheetOperation
   field public operation:WorksheetOpcode
   field a:int
@@ -2232,6 +2333,16 @@ How does the edit/update cycle work?
     {purpose The data model for a {docref Worksheet}.}
 }
 {define-class public open WorksheetModel {inherits DataSource, CalcMixin}
+
+  {doc-next
+    {purpose The maximum number of columns in a {docref Worksheet}.}
+  }
+  {def public max-cols = 1000}
+
+  {doc-next
+    {purpose The maximum number of rows in a {docref Worksheet}.}
+  }
+  {def public max-rows = 10000}
 
   {doc-next
     {purpose
@@ -2314,8 +2425,8 @@ How does the edit/update cycle work?
     {purpose A table of the CellRefs used in formulas.}
   }
   field protected cellrefs:{OrderedSet-of CellRef,
-                             key-hash-proc = CellRef-hash-proc,
-                             key-equality-proc = CellRef-equal-proc
+                             key-hash-proc = CellRef.hash-proc,
+                             key-equality-proc = CellRef.equal-proc
                            }
 
   {doc-next
@@ -2360,8 +2471,8 @@ How does the edit/update cycle work?
     set self.embedded-forms = {{ResizableArray-of #EmbeddedRecordForm} rows, 1}
 
     set self.cellrefs = {new {OrderedSet-of CellRef,
-                                 key-hash-proc = CellRef-hash-proc,
-                                 key-equality-proc = CellRef-equal-proc
+                                 key-hash-proc = CellRef.hash-proc,
+                                 key-equality-proc = CellRef.equal-proc
                              }
                         }
     set self.rangerefs = {new {OrderedSet-of RangeRef,
@@ -2545,6 +2656,13 @@ How does the edit/update cycle work?
   }
 
 
+  {method private {invalid-get-ref}:void
+    {error
+        {hlmessage Too many positional arguments.}
+    }
+  }
+
+
   {doc-next
     {purpose Create a reference to a cell or range of cells in
         the cell array.
@@ -2582,13 +2700,6 @@ How does the edit/update cycle work?
     }
   }
   ||FIXME: docstring needs to mention RelativeCell/RangeRef
-
-  {method private {invalid-get-ref}:void
-    {error
-        {hlmessage Too many positional arguments.}
-    }
-  }
-
   {method public open {get-ref
                           ...
                       }:SheetRef
@@ -2811,6 +2922,12 @@ How does the edit/update cycle work?
   field public changed-col-max:int
 
 
+  {doc-next
+    {purpose
+        Take note of the fact that the call at ({param row}, {param col})
+        was changed.
+    }
+  }
   {method public open {note-cell-changed row:int, col:int}:void
     {if row > self.changed-row-max then
         set self.changed-row-max = row
@@ -3012,6 +3129,17 @@ How does the edit/update cycle work?
     {self.note-operation "recalc", 0, 0}
   }
 
+  {doc-next
+    {purpose
+        If the is a group at the specified {param row} and {param col}, return
+        the {docref GroupSpec}.
+        }
+    {parameter row, The cell row.}
+    {parameter col, The cell column.}
+    {parameter node?, If {param node?} is true, the result is non-null
+        only if it is the location where the group was inserted.
+    }
+  }
   {method public open {get-group row:int, col:int, node?:bool = true}:#GroupSpec
     let gs:#GroupSpec = null
     let is-node?:bool = false
@@ -3299,7 +3427,8 @@ How does the edit/update cycle work?
 
   {getter package {event-hook}:EventHandler
     {return
-        {on e:GuiEvent at t:ActiveTraversor do
+||--        {on e:GuiEvent at t:ActiveTraversor do
+        {on e:DialogEvent at t:ActiveTraversor do
             {handle-grid-cell-event self, e, t}
         }
     }
@@ -3395,7 +3524,7 @@ How does the edit/update cycle work?
     def cv = self.cell-value
     {if cv.rowspan > 1 then
         def r0 = {self.worksheet.model.row-tree.map-index-to-position self.row}
-||--        def r1 = {self.worksheet.model.row-tree.map-index-to-position
+||--        defaultaa r1 = {self.worksheet.model.row-tree.map-index-to-position
 ||--                     self.row + cv.rowspan - 1
 ||--                 }
         def r1 = {self.worksheet.model.row-tree.visible-position
@@ -3496,7 +3625,7 @@ How does the edit/update cycle work?
             {e.consume}
         }
         ||FIXME: probably not needed now
-        ,{click-recognizer consume? = false}
+||--        ,{click-recognizer consume? = false}
 ||--        ,
 ||--        {on e:Click at gc:GridCell do
 ||--            {dump e, e.consumed?}
@@ -3609,48 +3738,54 @@ How does the edit/update cycle work?
         }
     }
 
+    || Should not rebuild the self.ui if there is one already, but if
+    || the ui-spec is a VisualProc, it might produce a new Visual if
+    || the cell value changed.
     {if-non-null spec = cv.spec then
-        {type-switch spec.ui-spec
-         case gcp:GridCellProc do
-            set self.stale? = true
-            set content = {gcp self}
-
-         case fp:FieldProc do
-           def erf = {non-null cv.embedded-form}
-           {if self.data-binding-context == null then
-               set self.data-binding-context =
-                   {erf.get-RecordForm self.row, self.col}
-            else
-              {assert
-                  {erf.get-RecordForm
-                      self.row, self.col} == self.data-binding-context
-              }
-            }
-            {if-non-null context = self.data-binding-context then
+        {if self.ui == null or spec.ui-spec isa VisualProc then
+            {type-switch spec.ui-spec
+             case gcp:GridCellProc do
                 set self.stale? = true
-                set content = {fp (context asa RecordForm).current-record, cv}
-                {if content isa EmbeddedRecordGrid then
-                    {dump self.rowspan, self.colspan}
-                    {if self.rowspan == 1 then
-                        {dump "???"}
+                set content = {gcp self}
+                set self.ui = content
+
+             case fp:FieldProc do
+                def erf = {non-null cv.embedded-form}
+                {if self.data-binding-context == null then
+                    set self.data-binding-context =
+                        {erf.get-RecordForm self.row, self.col}
+                 else
+                    {assert
+                        {erf.get-RecordForm
+                            self.row, self.col} == self.data-binding-context
                     }
                 }
+                {if-non-null context = self.data-binding-context then
+                    set self.stale? = true
+                    set content = {fp (context asa RecordForm).current-record, cv}
+||--                {if content isa EmbeddedRecordGrid then
+||--                    {dump self.rowspan, self.colspan}
+||--                    {if self.rowspan == 1 then
+||--                        {dump "???"}
+||--                    }
+||--                }
+                    set self.ui = content
+                }
+
+             case vp:VisualProc do
+                set self.stale? = true
+                set content = {vp cv}
+                set self.ui = content
+
+             case n:Null do
+                || Don't change content
+
+             else
+                || The cell value can be hidden by the ui-spec
+                set content = spec.ui-spec
             }
-
-         case vp:VisualProc do
-            set self.stale? = true
-            set content = {vp cv}
-
-         case n:Null do
-            || Don't change content
-
-         else
-            || The cell value can be hidden by the ui-spec
-            set content = spec.ui-spec
         }
-    }
 
-    {if self.editor == null then
         {if cv.value != self.value or self.stale? then
             ||FIXME: reset the margin because sometimes cells don't display
             set self.margin = 0pt
@@ -3753,11 +3888,10 @@ How does the edit/update cycle work?
             editor
          else
             {switch cv.domain.type
-             case DateTime do
-                {DateField}
-||--                def df = {DateField}
-||--                set df.value-as-any = cv.value
-||--                df
+             case #DateTime, DateTime do
+                def df = {DateField}
+                set df.value-as-any = cv.value
+                df
              else
                 {TextField
                     {validate-with {WorksheetDomainValidator cv.domain}}
@@ -3981,12 +4115,6 @@ How does the edit/update cycle work?
         {if-non-null rf = self.data-binding-context then
             {rf.update}
         }
-||--        {if-non-null rf = cv.embedded-form then
-||--||--            {dump "rf.update"}
-||--
-||--            {assert false} || FIXME: Find another way to do this
-||--||--            {rf.update}
-||--        }
     }
   }
 
@@ -4048,12 +4176,10 @@ How does the edit/update cycle work?
     || Adjust to change in rowspan or colspan
     {if self.rowspan != self.last-rowspan or self.colspan != self.last-colspan
 ||--        or cv.rowspan > 1 or cv.colspan > 1
-        or self.visual-parent == null
-        or self.stale?
+||--        or self.visual-parent == null
+||--        or self.stale?
      then
-        {if self.stale? then
-            {self.worksheet.attach-cell self}
-        }
+        {self.worksheet.attach-cell self}
         set self.last-rowspan = self.rowspan
         set self.last-colspan = self.colspan
     }
@@ -4324,6 +4450,7 @@ How does the edit/update cycle work?
   }
   field protected _handler:EventHandler
 
+  ||FIXME: missing doc
   field public-get protected-set ruler-x:Distance
   field public-get protected-set ruler-y:Distance
   field public-get protected-set x0:Distance
@@ -4633,7 +4760,7 @@ How does the edit/update cycle work?
   {getter abstract public open {default-size}:Distance
   }
 
-  ||FIXME: define an enum for this
+  ||FIXME: define an enum for this, or use a bool
   {doc-next
     {purpose
         0 means the ruler is in the frozen area, 1 is in the scrolling area.
@@ -4641,6 +4768,9 @@ How does the edit/update cycle work?
   }
   field public-get protected-set region:int
 
+  {doc-next
+    {purpose Return the {docref GroupTree} associated with this ruler.}
+  }
   {getter public open {group-tree}:GroupTree
     {return
         {if self.orientation == Orientation.vertical then
@@ -4654,6 +4784,17 @@ How does the edit/update cycle work?
   field protected _offset:int
   field protected _prev-offset:int = 0
 
+  {doc-next
+    {purpose
+        The number of segments at the bottom of the {docref BaseRuler.spec}
+        that are not included within this ruler.
+    }
+    {details
+        The {docref RulerSpec} covers all rows or columns in a worksheet,
+        but if there are frozen rows or columns, they will be displayed
+        separately.
+    }
+  }
   {getter public open {offset}:int
     def offset = {if self.region == 0 then
                      0
@@ -4669,6 +4810,11 @@ How does the edit/update cycle work?
 
   field protected _prev-count:int = 0
 
+  {doc-next
+    {purpose
+        The highest row or column covered by this ruler.
+    }
+  }
   {getter public open {last-index}:int
     {return
         {if self.region == 0 then
@@ -4697,6 +4843,11 @@ How does the edit/update cycle work?
     }
   }
 
+  {doc-next
+    {purpose
+        The widht of the lines between ruler segments.
+    }
+  }
   {getter public open {line-width}:Distance
     {return
         {if self.orientation == Orientation.horizontal then
@@ -4707,6 +4858,9 @@ How does the edit/update cycle work?
     }
   }
 
+  {doc-next
+    {purpose The specification of the sizes of the segments in the ruler.}
+  }
   field protected spec:RulerSpec
 
   ||FIXME: remove this?
@@ -4715,10 +4869,21 @@ How does the edit/update cycle work?
   || Objects to fill up the ruler
   field protected segments:{Array-of SizeNotifier}
 
+  {doc-next
+    {purpose The orientation of this ruler (horizontal or vertical).}
+  }
   {getter public open {orientation}:Orientation
     {return self.spec.orientation}
   }
 
+  {doc-next
+    {purpose Initialize a ruler object.}
+    {parameter worksheet, The {docref Worksheet} associated with this ruler.}
+    {parameter spec, The specification for the sizes of ruler segments.}
+    {parameter region, Indicates if the ruler covers a frozen or scrolling
+        part of the worksheet.
+    }
+  }
   {constructor public {default
                           worksheet:Worksheet,
                           spec:RulerSpec,
@@ -4745,6 +4910,20 @@ How does the edit/update cycle work?
   }
 
   || Return the first and last position for first and count in the model
+  {doc-next
+    {purpose
+        Provide the bounds for segments within this ruler.
+    }
+    {parameter first, The lowest index in the model of interest.}
+    {parameter count, The number of rows or columns (starting at {param first})
+        of interest.
+    }
+    {return-vals
+        The first and last position covered by this ruler. These are
+        in grid coordinates (which can be smaller than model coordinates
+        when there are collapsed groups).
+    }
+  }
   {method public open {clip first:int, count:int}:(first:int, last:int)
     def delete? = count < 0
     def n = {if delete? then -count else count}
@@ -4765,10 +4944,21 @@ How does the edit/update cycle work?
     {return (p0, p1)}
   }
 
+  {doc-next
+    {purpose
+        Return the model index associated with position {param pos}
+        in this ruler.
+    }
+  }
   {method public open {get-index pos:int}:int
     {return {self.group-tree.map-position-to-index pos} + self.offset}
   }
 
+  {doc-next
+    {purpose
+        Return the grid position for the model index {param i}.
+    }
+  }
   {method public open {get-position i:int}:int
     def pos = {self.group-tree.map-index-to-position i}
     {return
@@ -4780,6 +4970,12 @@ How does the edit/update cycle work?
     }
   }
 
+  {doc-next
+    {purpose
+        Return the size of a segment, including any applicable
+        separator line, for the given position {param pos}.
+    }
+  }
   {method public open {get-total-size pos:int}:Distance
     def i = {self.get-index pos}
 ||--    {assert {self.includes? i}}
@@ -4796,6 +4992,12 @@ How does the edit/update cycle work?
 ||--    {self.refresh}
 ||--  }
 
+  {doc-next
+    {purpose
+        Create a {docref SizeNotifier} to represent the segment of the
+        ruler at the position given by {param pos}.
+    }
+  }
   {method protected open {init-segment pos:int}:void
     let sn:SizeNotifier = self.segments[pos]
     let size:Distance = {self.get-total-size pos}
@@ -4809,6 +5011,11 @@ How does the edit/update cycle work?
     }
   }
 
+  {doc-next
+    {purpose
+        Insert the graphic that represents segment {param i} of the ruler.
+    }
+  }
   {method abstract protected open {insert-segment i:int}:void
   }
 
@@ -4831,6 +5038,11 @@ How does the edit/update cycle work?
   }
 
   || Called when user adjusts size
+  {doc-next
+    {purpose
+        A method to be called when the user resizes a segment.
+    }
+  }
   {method public open {note-resize resizer:#RulerResizer}:void
     {self.refresh}
     {self.notify-observers message = resizer}
@@ -4845,6 +5057,9 @@ How does the edit/update cycle work?
 
   || Make sure there are the correct number of segments and that the
   || sizes are correct.
+  {doc-next
+    {purpose Make the rulser consistent with the current state of the model.}
+  }
   {method public open {refresh}:void
     {assert self._prev-count == self.segments.size}
     def old-count = self.segments.size
@@ -4884,6 +5099,12 @@ How does the edit/update cycle work?
 ||--    }
 ||--  }
 
+  {doc-next
+    {purpose
+        Return the size of the Graphic that represents the segment
+        of the ruler at position {param pos}.
+    }
+  }
   {method public open {get-spacer-size pos:int}:Distance
     {if pos < self.segments.size then
         {if-non-null layout = self.segments[pos].layout then
@@ -4902,6 +5123,11 @@ How does the edit/update cycle work?
     {return {self.any-to-Distance {self.get-total-size pos}}}
   }
 
+  {doc-next
+    {purpose
+        Return the {docref SizeNotifier} for coordinate {param i} in the model.
+    }
+  }
   {method public open {get-notifier i:int}:#SizeNotifier
     {if {self.includes? i} then
         def pos = {self.group-tree.map-index-to-position i} - self.offset
@@ -5522,32 +5748,21 @@ How does the edit/update cycle work?
 ||--    }
 ||--  }
 
-  ||FIXME: is this really needed?
-  ||FIXME: doc
-  {method public open {note-insert-rows first:int, count:int}:void
-    {self.insert-rows first, count}
-  }
-
-  ||FIXME: doc
-  {method public open {note-insert-cols first:int, count:int}:void
-    {self.insert-cols first, count}
-  }
-
-  ||FIXME: this is just for debugging
-  {method public open {add-cell
-                          row:int, col:int,
-                          g:Graphic,
-                          rowspan:int = 1,
-                          colspan:int = 1
-                      }:Graphic
-    def cv = self.worksheet.model.vals[row, col]
-||--    {if cv.rowspan > 1 then
-||--        {dump "add-cell", row, col, self.name, rowspan, colspan}
+||--  ||FIXME: this is just for debugging
+||--  {method public open {add-cell
+||--                          row:int, col:int,
+||--                          g:Graphic,
+||--                          rowspan:int = 1,
+||--                          colspan:int = 1
+||--                      }:Graphic
+||--||--    def cv = self.worksheet.model.vals[row, col]
+||--||--    {if cv.rowspan > 1 then
+||--||--        {dump "add-cell", row, col, self.name, rowspan, colspan}
+||--||--    }
+||--    {return
+||--        {super.add-cell row, col, g, rowspan = rowspan, colspan = colspan}
 ||--    }
-    {return
-        {super.add-cell row, col, g, rowspan = rowspan, colspan = colspan}
-    }
-  }
+||--  }
 
   || doc inherited
   {method public open {refresh}:void
@@ -5579,10 +5794,11 @@ How does the edit/update cycle work?
                 {type-switch self.cells[rpos, cpos]
                  case gc:GridCell do
                     {gc.refresh} ||qfix
-                    {self.add-cell
-                        rpos, cpos, gc,
-                        rowspan = gc.rowspan, colspan = gc.colspan
-                    }
+||--                    {self.add-cell
+||--
+||--                        rpos, cpos, gc,
+||--                        rowspan = gc.rowspan, colspan = gc.colspan
+||--                    }
 
                  case n:Null do
                     def gc = {GridCell self.worksheet, ri, ci}
@@ -5744,7 +5960,6 @@ How does the edit/update cycle work?
     {purpose Refresh the horizontal and vertical resizers.}
   }
   {method public open {refresh-resizers}:void
-    ||FIXME: Could make this a RefreshMixin and have this override update
     {if-non-null resizer = self.h-resizer then
         {resizer.refresh}
     }
@@ -6057,10 +6272,10 @@ How does the edit/update cycle work?
     RefreshMixin
   }
 
-  ||FIXME: temporary override
-  {method public open {update}:void
-    {super.update}
-  }
+||--  ||FIXME: temporary override
+||--  {method public open {update}:void
+||--    {super.update}
+||--  }
 
   {doc-next
     {purpose
@@ -6107,18 +6322,30 @@ How does the edit/update cycle work?
     {self.update}
   }
 
+  {doc-next
+    {purpose Returns the number of visible frozen rows.}
+  }
   {getter public open {visible-frozen-rows}:int
     {return self.v-ruler-top.visible-count}
   }
 
+  {doc-next
+    {purpose Returns the number of visible frozen columns.}
+  }
   {getter public open {visible-frozen-cols}:int
     {return self.h-ruler-left.visible-count}
   }
 
+  {doc-next
+    {purpose Returns the number of visible scrolling rows.}
+  }
   {getter public open {visible-scrolling-rows}:int
     {return self.v-ruler-main.visible-count}
   }
 
+  {doc-next
+    {purpose Returns the number of visible scrolling columns.}
+  }
   {getter public open {visible-scrolling-cols}:int
     {return self.h-ruler-main.visible-count}
   }
@@ -6143,7 +6370,6 @@ How does the edit/update cycle work?
     {self.update}
   }
 
-  ||FIXME: I don't think there is any reason for this option
   {doc-next
     {purpose
         If true, the {docref Worksheet} will have scrollbars if the
@@ -6996,16 +7222,16 @@ How does the edit/update cycle work?
 
     || Now update the individual grids
     {if-non-null g = self.top-left-grid then
-        {g.note-insert-rows first, count}
+        {g.insert-rows first, count}
     }
     {if-non-null g = self.top-grid then
-        {g.note-insert-rows first, count}
+        {g.insert-rows first, count}
     }
     {if-non-null g = self.left-grid then
-        {g.note-insert-rows first, count}
+        {g.insert-rows first, count}
     }
     {if-non-null g = self.main-grid then
-        {g.note-insert-rows first, count}
+        {g.insert-rows first, count}
     }
     
 ||--    || If deleting, update the model and rulers last
@@ -7048,16 +7274,16 @@ How does the edit/update cycle work?
     }
 
     {if-non-null g = self.top-left-grid then
-        {g.note-insert-cols first, count}
+        {g.insert-cols first, count}
     }
     {if-non-null g = self.top-grid then
-        {g.note-insert-cols first, count}
+        {g.insert-cols first, count}
     }
     {if-non-null g = self.left-grid then
-        {g.note-insert-cols first, count}
+        {g.insert-cols first, count}
     }
     {if-non-null g = self.main-grid then
-        {g.note-insert-cols first, count}
+        {g.insert-cols first, count}
     }
 
     || If deleting, update the model and rulers last
@@ -7069,6 +7295,16 @@ How does the edit/update cycle work?
     {self.update}
   }
 
+  {doc-next
+    {purpose
+        Set the expanded state of the group at ({param row}, {param col})
+        to {param expanded?}.
+    }
+    {parameter gs, The {docref GroupSpec} at the specified {param row} and
+        {param col}.
+    }
+    {parameter expanded?, The desired new state of the group.}
+  }
   {method public open {set-group-expanded
                           row:int, col:int,
                           gs:GroupSpec,
@@ -7077,11 +7313,10 @@ How does the edit/update cycle work?
     let first:int = gs.first
     let last:int = gs.last
     let count:int = 0
-    {if last - first < 1 then
-        || Singleton group doesn't toggle
+    {if last - first < 1 or gs.expanded? == expanded? then
+        || Singleton group doesn't toggle; or already in correct state
         {return}
     }
-    {assert gs.expanded? != expanded?}
 
     || Capture the map before and after the change
     def prev-map =
@@ -7214,19 +7449,19 @@ How does the edit/update cycle work?
 ||--  }
         
 
-  ||FIXME: keep this?
-  || Add more things just the way you would in the constructor
-  {method public open {add-items
-                          ...
-                      }:void
-    {for (arg,k) in ... do
-        {if-non-null k then
-            {self.keyword-init-arg k, arg}
-         else
-            {self.non-keyword-init-arg arg}
-        }
-    }
-  }
+||--  ||FIXME: keep this?
+||--  || Add more things just the way you would in the constructor
+||--  {method public open {add-items
+||--                          ...
+||--                      }:void
+||--    {for (arg,k) in ... do
+||--        {if-non-null k then
+||--            {self.keyword-init-arg k, arg}
+||--         else
+||--            {self.non-keyword-init-arg arg}
+||--        }
+||--    }
+||--  }
 
   {doc-next
     {purpose
@@ -7363,8 +7598,19 @@ How does the edit/update cycle work?
   || UI can be properly rebuilt from a serialized version, etc.
   {doc-next
     {purpose Initialize a cell in the {docref Worksheet}.}
+    {parameter spec, Specifies the initial contents of the cell.}
+    {parameter row, The row of the cell. The default value means to use
+        the current {docref-abbr Worksheet.insert-row}.
+    }
+    {parameter col, The column of the cell. The default value means to use
+        the current {docref-abbr Worksheet.insert-col}.
+    }
+    {parameter rowspan, The number of rows to be occupied by the cell.}
+    {parameter colspan, The number of columns to be occupied by the cell.}
+    {parameter erf, The {docref EmbeddedRecordForm} that the cell belongs
+        to, if any.
+    }
   }
-  ||FIXME: more doc
   {method public open {init-cell
                           spec:CellSpec,
                           row:int = -1,
@@ -7466,6 +7712,9 @@ How does the edit/update cycle work?
     {return cv}
   }
 
+  {doc-next
+    {purpose Get the value of the cell at ({param row}, {param col}).}
+  }
   {method public open {get-value row:int, col:int}:any
     def val = {self.model.get-value row, col}
 ||--    {dump "get-value", row, col, val}
@@ -7473,12 +7722,18 @@ How does the edit/update cycle work?
   }
 
 
+  {doc-next
+    {purpose
+        Set the value of the cell at ({param row}, {param col})
+        to {param val}.
+    }
+  }
   {method public open {set-value row:int, col:int, val:any}:void
     def cv = self.model.vals[row, col]
     let nv:any = {cv.domain-value val}
     {if nv != cv.value then
         || Use model.set-value so a recalc will be scheduled
-        {self.model.set-value row, col, val}
+        {self.model.set-value row, col, nv}
     }
   }
 
@@ -7587,6 +7842,9 @@ How does the edit/update cycle work?
     }
   }
 
+  {doc-next
+    {purpose Rebuild the cell grid.}
+  }
   {method public open {rebuild-cell-grid}:void
     ||FIXME: clear grids, reset last-whatever to force a rebuild
     {self.refresh}
@@ -7672,11 +7930,11 @@ How does the edit/update cycle work?
 ||--    }
 
     def (grid, rpos, cpos) = {self.get-grid-coordinates row, col}
-    ||FIXME: Should omit covered cells?
-    {if cv.rowspan > 1 then
-        {dump "attach-cell", row, col, gc.rowspan, self.name}
-    }
-    {if true or 
+||--    ||FIXME: Should omit covered cells?
+||--    {if cv.rowspan > 1 then
+||--        {dump "attach-cell", row, col, gc.rowspan, self.name}
+||--    }
+    {if|| true or 
         not cv.covered?
      then
         {if rpos >= 0 and cpos >= 0 then
@@ -7850,16 +8108,6 @@ How does the edit/update cycle work?
                     set gc.value = null
                 }
             }
-||--                    {if-non-null rf = gc.data-binding-context asa #RecordForm
-||--                     then
-||--                        {if-non-null cr = rf.current-record then
-||--                            set cv.value = cr[fs.field-name]
-||--                            set gc.value = null
-||--                        }
-||--||--                        {dump "update from rsds", ri, ci, cv.value}
-||--                    }
-||--        }
-||--        }
         }
         {if next-row >= 0 then
             {break}
@@ -8136,7 +8384,7 @@ How does the edit/update cycle work?
 
     {type-switch ev.contents
      case pp:PointerPress do
-||--        {dump pp, self.selecting?, self.shift?}
+||--        {dump pp, self.selecting?, self.shift?, "envelope"}
         {if-non-null fm:FocusManager = {self.get-focus-manager} then
             {if fm.active-selection-context != self then
                 {self.selection-context-request-activate}
@@ -8165,7 +8413,7 @@ How does the edit/update cycle work?
             }
         }
      case pr:PointerRelease do
-||--        {dump pr, self.selecting?, self.shift?}
+||--        {dump pr, self.selecting?, self.shift?, "envelope"}
         || Only get here with click-and-release
         {if self.selecting? and pr.button == left-button then
             def (row, col) = {self.describe-point ex, ey}
@@ -8190,7 +8438,7 @@ How does the edit/update cycle work?
         set self.selecting? = false
 
      case cme:ContextMenuEvent do
-||--        {dump cme, self.selecting?, self.shift?}
+||--        {dump cme, self.selecting?, self.shift?, "envelope"}
         def (row, col) = {self.describe-point ex, ey}
         {if row != self._context-row or col != self._context-column then
 ||--            {dump "consuming a ContextMenuEvent envelope"}
@@ -8259,11 +8507,9 @@ How does the edit/update cycle work?
         || ignore because everything is already selected
      elseif self.point-col == -1 then
         || selecting entire rows
-||--||--        {dump row, col}
-||--        set self.anchor-row = row
-||--     elseif self.point-row == -1 then
-||--        || selecting entire columns
-||--        {dump row, col}
+        set self.anchor-row = row
+     elseif self.point-row == -1 then
+        || selecting entire cols
         set self.anchor-col = col
      else
         set self.anchor-row = row
@@ -8507,7 +8753,17 @@ How does the edit/update cycle work?
 }
 {define-class public open EmbeddedGridHeader {inherits Frame, Observer}
 
+  {doc-next
+    {purpose The column position of the header within the {docref Worksheet}}
+  }
   field public-get protected-set pos:int
+
+  {doc-next
+    {purpose
+        The {docref RecordGridColumn} from the {docref RecordGrid} associated
+        with this header.
+    }
+  }
   field public-get protected-set rgc:RecordGridColumn
 
   {doc-next
@@ -8585,6 +8841,11 @@ How does the edit/update cycle work?
   }
   field public-get protected-set worksheet:#Worksheet
 
+  {doc-next
+    {purpose
+        The {docref GridCell} that contains this {docref EmbeddedRecordGrid}.
+    }
+  }
   field public-get protected-set grid-cell:#GridCell
 
   {doc-next
@@ -8686,7 +8947,7 @@ How does the edit/update cycle work?
             {inc pos, gc.col}
          else
             set self.init-header? = true
-            {dump "?? make-header: no gc", worksheet}
+||--            {dump "?? make-header: no gc", worksheet}
         }
         {return
             {EmbeddedGridHeader
@@ -8782,24 +9043,112 @@ Theory
 
 #|
 
+{doc-next
+    {purpose
+        A procedure that will return a visual object to represent the
+        value of the cell {param cv}.
+    }
+}
 {def public VisualProc = {proc-type {cv:CellValue}:Visual}}
+
+{doc-next
+    {purpose
+        A procedure that will return a visual object to represent the
+        value of the cell {param cv}.
+    }
+}
 {def public FieldProc = {proc-type {r:#Record, cv:CellValue}:Visual}}
 ||FIXME: the following is not yet documented in using-worksheet.curl
+
+{doc-next
+    {purpose
+        A procedure that will create anda return a visual object to
+        represent the value of the cell {param cv}.
+    }
+}
 {def public GridCellProc = {proc-type {gc:GridCell}:Visual}}
 
+
+{doc-next
+    {purpose
+        A procedure that will create and return a control to display
+        and or edit value of the cell.
+    }
+    {details
+        This type of procedure is useful in specifying the control
+        to be used in a cell that represents an editable field in an
+        {docref EmbeddedRecordForm}. A data binding will be created
+        so that the cell value can be displayed and edited.
+    }
+}
 {def public ValueControlProc = {proc-type {}:ValueControl}}
+
+{doc-next
+    {purpose
+        A procedure that will return a control to display and edit
+        a cell value.
+    }
+    {details
+        This type of procedure is useful in specifying the control
+        to be used in a cell that represents an editable field in an
+        {docref EmbeddedRecordForm}. A data binding will be created
+        so that the cell value can be displayed and edited.
+    }
+}
 {def public FieldEditorProc = {proc-type {r:#Record, cv:CellValue}:ValueControl}}
+
 ||FIXME: the following is not yet documented in using-worksheet.curl
 {def public GridCellEditorProc = {proc-type {gc:GridCell}:ValueControl}}
 
+
+{doc-next
+    {purpose Specifies the initial contents of a cell.}
+}
 {define-class public open CellSpec
+
+  {doc-next
+    {purpose The number of rows to be used to display the cell.}
+  }
   field public rowspan:int
+
+  {doc-next
+    {purpose The number of columns to be used to display the cell.}
+  }
   field public colspan:int
+
+  {doc-next
+    {purpose If true, the cell value can be edited.}
+  }
   field public editable?:bool
+
+  {doc-next
+    {purpose If true, the cell will remain in it's current state at
+        all times (editing or not editing).
+    }
+  }
   field public _locked?:bool
+
+  {doc-next
+    {purpose Spedifies the user interface for the cell, when editing.}
+  }
   field public constant ui-spec:any
+
+  {doc-next
+    {purpose Option bindings to be applied to the cell container.}
+  }
   field public constant options:#Arguments
 
+  {doc-next
+    {purpose Initialize the specification for a cell.}
+    {parameter rowspan, The number of rows to be used to display the cell.}
+    {parameter colspan, The number of columns to be used to display the cell.}
+    {parameter editable?, If true, the cell will can be edited by the user.}
+    {parameter locked?, If true, the cell will remain in it's current state at
+        all times (editing or not editing).
+    }
+    {parameter ui-spec,Spedifies the user interface for the cell, when editing.}
+    {parameter ..., Option settings}
+  }
   {constructor public {default
                           rowspan:int,
                           colspan:int,
@@ -8837,6 +9186,9 @@ Theory
     }
   }
 
+  {doc-next
+    {purpose Return an object that is a copy of {param spec}.}
+  }
   {constructor public {clone-from spec:CellSpec}
     set self.rowspan = spec.rowspan
     set self.colspan = spec.colspan
@@ -8853,27 +9205,52 @@ Theory
         }
   }
 
+  {doc-next
+    {purpose The initial value of the cell.}
+  }
   {getter public open {value}:any
     {return null}
   }
 
+  {doc-next
+    {purpose The domain for values of the cell.}
+  }
   {getter public open {domain}:Domain
     {return DataSource.any-domain}
   }
 
+  {doc-next
+    {purpose If true the editing state of the cell will not change.}
+  }
   {getter public open {locked?}:bool
     {return self._locked?}
   }
 }
 
+{doc-next
+    {purpose
+        An object that provides the initial value and other properties 
+        for a cell.
+    }
+}
 {define-class public open ValueCell {inherits CellSpec}
-  field public _value:any
-  field public _domain:Domain
 
+  {doc-next
+    {purpose The initial value for the cell.}
+  }
+  field protected _value:any
+
+  {doc-next
+    {purpose The domain for values of a cell.}
+  }
+  field protected _domain:Domain
+
+  || override
   {getter public open {locked?}:bool
     {return super.locked? or not self.editable?}
   }
 
+  || override
   {getter public open {value}:any
     {return self._value}
   }
@@ -8881,6 +9258,7 @@ Theory
     set self._value = v
   }
   
+  || override
   {getter public open {domain}:Domain
     {return self._domain}
   }
@@ -8888,6 +9266,19 @@ Theory
     set self._domain = d
   }
   
+  {doc-next
+    {purpose Initialize the specification for a cell with a value.}
+    {parameter value, The initial value for a cell.}
+    {parameter domain, The domain for values of a cell.}
+    {parameter editable?, If true, the cell will can be edited by the user.}
+    {parameter locked?, If true, the cell will remain in it's current state at
+    {parameter rowspan, The number of rows to be used to display the cell.}
+    {parameter colspan, The number of columns to be used to display the cell.}
+        all times (editing or not editing).
+    }
+    {parameter ui-spec,Spedifies the user interface for the cell, when editing.}
+    {parameter ..., Option settings}
+  }
   {constructor public {default
                           value:any,
                           domain:Domain = {DataSource.get-default-domain value},
@@ -8909,6 +9300,9 @@ Theory
     set self._domain = domain
   }
 
+  {doc-next
+    {purpose Return an object that is a copy of {param spec}.}
+  }
   {constructor public {clone-from spec:ValueCell}
     {construct-super
         spec.rowspan,
@@ -8923,9 +9317,24 @@ Theory
   }
 }
 
+{doc-next
+    {purpose
+        Used internally to store initial cell properties that
+        were found in the rest args for an {docref EmbeddedRecordForm}.
+    }
+}
 {define-class public open FormCell {inherits CellSpec}
   field public arg:any
 
+  {doc-next
+    {purpose Initialize the object.}
+    {parameter arg, A positional argument from the {docref EmbeddedRecordForm}
+        constructor.
+    }
+    {parameter rowspan, The number of rows to be occupied by the cell.}
+    {parameter colspan, The number of columns to be occupied by the cell.}
+    {parameter ..., Option bindings.}
+  }
   {constructor public {default
                           arg:any,
                           rowspan:int = 1,
@@ -8949,6 +9358,9 @@ Theory
     set self.arg = arg
   }
 
+  {doc-next
+    {purpose Return an object that is a copy of {param spec}.}
+  }
   {constructor public {clone-from spec:FormCell}
     {construct-super
         spec.rowspan,
@@ -8963,14 +9375,36 @@ Theory
 }
 
 
+{doc-next
+    {purpose
+        Specifies the initial values for a cell that contains a formula.
+    }
+}
 {define-class public open FormulaSpec {inherits ValueCell}
+
+  {doc-next
+    {purpose A procedure to calculate the cell value.}
+  }
   field public-get protected-set formula:CalcProc
+
+  {doc-next
+    {purpose References to the input values used to compute the cell value.}
+  }
   field public-get protected-set refs:{Array-of DataRef}
 
   {getter public open {locked?}:bool
     {return true}
   }
 
+  {doc-next
+    {purpose Initialize the specification for a cell that contains a formula.}
+    {parameter formula, The formula to be placed in the cell.}
+    {parameter domain, The domain for values of a cell.}
+    {parameter rowspan, The number of rows to be used to display the cell.}
+    {parameter colspan, The number of columns to be used to display the cell.}
+    {parameter ui-spec,Spedifies the user interface for the cell, when editing.}
+    {parameter ..., Option settings}
+  }
   {constructor public {default
                           formula:CalcProc,
                           domain:Domain,
@@ -9015,6 +9449,9 @@ Theory
     set self.formula = formula
   }
 
+  {doc-next
+    {purpose Return an object that is a copy of {param spec}.}
+  }
   {constructor public {clone-from spec:FormulaSpec}
     {construct-super
         spec.value,
@@ -9033,10 +9470,36 @@ Theory
 }
 
 
-|| Can only be used within an EmbeddedRecordForm
+{doc-next
+    {purpose The specification for a cell that represents a field
+        in an {docref EmbeddedRecordForm}.
+    }
+    {details
+        This type of {docref CellSepc} can only be used in the constructor
+        for an {docref EmbeddedRecordForm}.
+    }
+}
 {define-class public open FieldSpec {inherits ValueCell}
+
+  {doc-next
+    {purpose The name of the field to be shown in the cell.}
+  }
   field public constant field-name:String
 
+  {doc-next
+    {purpose Initialize the specification for a cell that represents a field
+        in an embedded form.
+    }
+    {parameter field-name, The field name.}
+    {parameter editable?, If true, the cell will can be edited by the user.}
+    {parameter locked?, If true, the cell will remain in it's current state at
+    {parameter rowspan, The number of rows to be used to display the cell.}
+    {parameter colspan, The number of columns to be used to display the cell.}
+        all times (editing or not editing).
+    }
+    {parameter ui-spec,Spedifies the user interface for the cell, when editing.}
+    {parameter ..., Option settings}
+  }
   {constructor public {default
                           field-name:String,
                           rowspan:int = 1,
@@ -9059,6 +9522,9 @@ Theory
     set self.field-name = field-name
   }
 
+  {doc-next
+    {purpose Return an object that is a copy of {param spec}.}
+  }
   {constructor public {clone-from spec:FieldSpec}
     {construct-super
         null,
@@ -9534,11 +10000,17 @@ Theory
 
   field protected forms:{Array-of RecordForm}
 
+  {doc-next
+    {purpose The number of rows in the embedded form template.}
+  }
   {getter public open {form-rows}:int
     def (rows, cols) = {self.items.size}
     {return rows}
   }
 
+  {doc-next
+    {purpose The number of columns in the embedded form template.}
+  }
   {getter public open {form-cols}:int
     def (rows, cols) = {self.items.size}
     {return cols}
@@ -9858,7 +10330,7 @@ Theory
                        filter = filter,
                        display-navigation-panel? = false
                    }
-        {dump "-- Created new filter and form"} ||FIXME: can these be re-used?
+||--        {dump "-- Created new filter and form"} ||FIXME: can these be re-used?
         {form.request-current-record-change 0}
         {self.forms.append form}
         {for fri = 0 below form-rows do
@@ -9871,7 +10343,7 @@ Theory
                         set gc.data-binding-context = form
                      else
                         ||FIXME: this should never happen
-                        {dump "?? no GridCell", frow, fcol}
+||--                        {dump "?? no GridCell", frow, fcol}
                         {assert false}
                     }
                     def fspec = 
@@ -10098,6 +10570,9 @@ Theory
     set self.column-anchor = column-anchor
   }
 
+  {doc-next
+    {purpose Construct an empty selection.}
+  }
   {constructor public {empty
                           worksheet:Worksheet
                       }
@@ -10110,6 +10585,9 @@ Theory
     set self.column-anchor = 0
   }
 
+  {doc-next
+    {purpose Construct a selection for all cells in the worksheet.}
+  }
   {constructor public {all
                           worksheet:Worksheet
                       }
@@ -10177,16 +10655,27 @@ Theory
     }
   }
 
+  {doc-next
+    {purpose Return true of the selection contains no cells.}
+  }
   {getter public open {empty?}:bool
     {return self.row-count == 0 and self.column-count == 0}
   }
 
+  {doc-next
+    {purpose Return true of the selection contains all rows.}
+  }
   {getter public open {all-rows?}:bool
     {return self.first-row == -1}
+  }
+
+  {doc-next
+    {purpose Return true of the selection contains all columns.}
   }
   {getter public open {all-cols?}:bool
     {return self.first-column == -1}
   }
+
   {doc-next 
     {purpose 
         Return true when the selection covers the entire {docref Worksheet}.

@@ -18,12 +18,11 @@
  COM.CURL.EXT Library
 ======================
 
-This directory contains the current release of the Curl Extensions Library
+This directory contains the current release of the Curl Extensions Library.
 
 To install the library, unzip the distribution onto your machine.
 
 The following sections describe the included material in more detail.
-
 
 The distribution is organized into directories which each serve a
 specific purpose.
@@ -32,8 +31,8 @@ specific purpose.
 Deployable Library
 -------------------
  
-The 'deploy' directory contains a preprocessed library 
-for use in deployed applications.
+The 'deploy' directory contains a preprocessed library for use in
+deployed applications.
 
 - COM.CURL.EXT-V0.x/manifest.mcurl   	COM.CURL.EXT library manifest
 
@@ -45,7 +44,7 @@ addition to the Curl Documentation Viewer using the IDE 'Install
 Documentation' command.  The directories include both documentation
 and source code, which allows stepping into code in the library.
 
-- COM.CURL.EXT-V0.x/manifest.mcurl   	COM.CURL.EXT library definition
+- COM.CURL.EXT-V0.x-doc/manifest.mcurl  COM.CURL.EXT library definition
 
 
 =============
@@ -78,10 +77,6 @@ interactively.
 
 Some of the tests access web content or invoke web services,
 and thus require privilege and web access to succeed.
-
-Nested row and column groups are buggy in this release.
-
-More tests are needed.
 
 =========
  CHANGES

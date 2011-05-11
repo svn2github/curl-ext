@@ -29,7 +29,8 @@
     font-size = 10pt
 }
 
-{let max-files:int = 2}
+{let max-files:int = 1}
+{let more-files:int = 99} || 999
 
 || ------------------------------------
 {title EmbeddedRecordForm with RecordGrid}
@@ -353,7 +354,7 @@ or folder). A second RecordSet is used to store list of file types
 
 {after 9.01s do
 ||--    set worksheet.vertical-grid-line-width = 4pt
-    set max-files = 999
+    set max-files = more-files
     {init-file-rs}
     {worksheet.model.update}
 }

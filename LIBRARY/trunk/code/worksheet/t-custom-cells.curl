@@ -123,7 +123,7 @@
         default-column-width = 1.0in,
         default-row-height = 20pt,
         {widths 2.0in, 1.5in},
-        {heights 20pt, 20pt, 1in},
+        {heights 20pt, 20pt},
 
         row = 0, col = 0, {bold Control}, {bold Value},
 
@@ -166,7 +166,7 @@
         row = 7, col = 0,
         {input-cell {FillPattern.get-black}, ui-spec = make-color-selector},
         {ref-cell a8,
-            ui-spec = 
+            ui-spec =
                 {proc {cv:CellValue}:Visual
                     {return {Fill background = cv.value asa #FillPattern}}
                 }

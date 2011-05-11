@@ -580,18 +580,18 @@
   }
 
   {doc-next
+    {purpose Update the value that is the target of this reference.}
+  }
+  {setter abstract public open {value val:any}:void
+  }
+
+  {doc-next
     {purpose
         Get the {docref Domain} for values produced by theis {docref DataRef}.
     }
   }
   {getter public open {domain}:Domain
     {return {DataSource.get-default-domain self.value}}
-  }
-
-  {doc-next
-    {purpose Update the value that is the target of this reference.}
-  }
-  {setter abstract public open {value val:any}:void
   }
 
   {doc-next
