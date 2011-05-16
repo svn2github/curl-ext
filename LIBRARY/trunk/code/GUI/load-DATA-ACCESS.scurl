@@ -330,6 +330,9 @@
   
   {method public open {parse x:String}:any
     
+    {if x == "" then
+        {return null}
+    }
     let dt:#DateTime = null
     {if not x.empty? then
         {try

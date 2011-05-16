@@ -200,7 +200,7 @@
         {currency-cell editable? = true, 0},
 
         || Show net at the bottom (total expenses less prepaid amount)
-        row = 12, col = 0, colspan = 2, "Total----",
+        row = 12, col = 0, colspan = 2, "Total",
         {formula-cell
             domain = DataSource.currency-domain, font-weight = "bold",
             compute-diff, total-ref, prepaid-ref
@@ -229,32 +229,49 @@
     {on Action do
         {model.put-data {JsonValue-parse
 |"
-{ "forms":
+{
+ "data-version":"",
+ "model-name":"",
+ "forms":
+    [
+     {
+      "records":
+        [
+         {
+          "id":"1",
+          "date":"8/30/2010",
+          "description":"First Item",
+          "amount":"$33.00",
+          "purpose":"meals"
+         },
+         {
+          "id":"2",
+          "date":"8/30/2010",
+          "description":"Second Item",
+          "amount":"$1.23",
+          "purpose":"Travel"
+         }
+        ],
+      "ref":"$B$7"
+     }
+    ],
+ "$D$3":"Richard Thompson",
+ "$D$4":"Marketing",
+ "h-ruler-spec":
     {
-     "$B$6":
-        {
-         "records":
-            [
-             {
-              "id":"1",
-              "date":"8/30/2010",
-              "description":"First Item",
-              "amount":"$33.00",
-              "purpose":"meals"
-             },
-             {
-              "id":"2",
-              "date":"8/30/2010",
-              "description":"Second Item",
-              "amount":"$1.23",
-              "purpose":"Travel"
-             }
-            ]
-        }
+     "orientation":"horizontal",
+     "split-count":0,
+     "specs":
+        [
+         "24pt",
+         "24pt",
+         "72pt",
+         "180pt",
+         "60pt",
+         "72pt",
+         "30pt"
+        ]
     },
- "$D$2":"Richard Thompson",
- "$D$3":"Marketing",
-
  "v-ruler-spec":
     {
      "orientation":"vertical",
@@ -269,22 +286,16 @@
          "18pt",
          "18pt",
          "18pt",
-         "24pt"
-        ]
-    },
- "h-ruler-spec":
-    {
-     "orientation":"horizontal",
-     "split-count":0,
-     "specs":
-        [
+         "18pt",
          "24pt",
-         "24pt",
-         "72pt",
-         "180pt",
-         "60pt",
-         "72pt",
-         "30pt",
+         "18pt",
+         "18pt",
+         "18pt",
+         "18pt",
+         "18pt",
+         "18pt",
+         "18pt",
+         "18pt"
         ]
     }
 }

@@ -181,7 +181,6 @@
     {assert {DataSource.get-default-domain null} == DataSource.any-domain}
     {assert {DataSource.get-default-domain ""} == DataSource.string-domain}
     {assert {DataSource.get-default-domain "abc"} == DataSource.string-domain}
-    {assert {DataSource.get-default-domain "123"} == DataSource.double-domain}
     {assert {DataSource.get-default-domain "1/1/1981"} == DataSource.date-domain}
     {assert {DataSource.get-default-domain "1/1/1981 12:00"} == DateTime asa Domain}
     {assert {DataSource.get-default-domain 123} == DataSource.double-domain}

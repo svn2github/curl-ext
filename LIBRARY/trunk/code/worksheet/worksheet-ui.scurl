@@ -56,17 +56,32 @@
         names in {param rs}. Each string value is parsed using the
         field domain.
 
-        All records in {param rs} are deleted (and committed).
-        For each record in {param records}, a new record is created
+        All records in {param rs} are deleted (and committed).  For
+        each object in {param records}, a new record is created
         in {param rs} with fields initialized from the next {docref
-        JsonObject} in {param records}. The result is then committed to
+        JsonObject}. The result is then committed to
         {param rs}.
     }
+    {parameter rs, The {docref RecordSet} to be updated. The fields
+        are used to parse the data.
+    }
+    {parameter records, An array of {docref JsonObject}s containing
+        the record data.
+    }
+    {parameter append?, If false, the existing record data is cleared
+        before the {param records} are added.
+    }
 }
-{define-proc public {RecordSet-from-Json rs:RecordSet, records:JsonArray}:void
+{define-proc public {RecordSet-from-Json
+                        rs:RecordSet,
+                        records:JsonArray,
+                        append?:bool = false
+                    }:void
     {with rs.batch-events? = true do
-        {rs.delete-all}
-        {rs.commit}
+        {if not append? then
+            {rs.delete-all}
+            {rs.commit}
+        }
         {for rd in records do
             def rdo = rd asa JsonObject
             def r = {rs.new-record}
@@ -77,6 +92,38 @@
         }
         {rs.commit}
     }
+}
+
+{doc-next
+    {purpose Construct an array of {docref RecordData} from a JSON
+        object.
+    }
+    {details
+        Each element in the {param records} array is expected to be
+        a {docref JsonObject} containing strings named by the field
+        names in {param rs}. Each string value is parsed using the
+        field domain.
+
+        For each object in {param records}, a new {ctext RecordData}
+        is created with values initialized from the {docref
+        JsonObject}.
+    }
+}
+{define-proc public {RecordData-from-Json
+                        rs:RecordSet,
+                        rs-json:JsonObject
+                    }:{Array-of RecordData}
+    def rda = {new {Array-of RecordData}}
+    def records = rs-json["records"] asa JsonArray
+    {for rdj in records do
+        def rdo = rdj asa JsonObject
+        def rd = {RecordData}
+        {for f in rs.fields do
+            set rd[f.name] = {f.domain.parse rdo[f.name] asa String}
+        }
+        {rda.append rd}
+    }
+    {return rda}
 }
 
 || -------------------------------------------------------------------------
@@ -3216,16 +3263,18 @@ How does the edit/update cycle work?
                    "data-version", self.data-version,
                    "model-name", self.model-name
                }
-    def forms = {JsonObject}
+    def forms = {JsonArray}
     set data["forms"] = forms
     {for ri = 0 below self.rows do
         {if-non-null erf = {self.get-embedded-form ri, -1} then
-            def ref = {format "$%c$%s", 'A' + erf.base-col, erf.base-row}
+            def ref = {format "$%c$%s", 'A' + erf.base-col, erf.base-row + 1}
             def rs = erf.data-source.record-set
-            set forms[ref] = {RecordSet-to-Json rs}
+            def jf = {RecordSet-to-Json rs}
+            set jf["ref"] = ref
+            {forms.append jf}
         }
         {for ci = 0 below self.cols do
-            def ref = {format "$%c$%s", 'A' + ci, ri}
+            def ref = {format "$%c$%s", 'A' + ci, ri + 1}
             def cv = self.vals[ri, ci]
             {if-non-null erf = cv.embedded-form then
                 || Already added the forms
@@ -3257,6 +3306,7 @@ How does the edit/update cycle work?
             {if-non-null erf = cv.embedded-form then
                 def rs = erf.data-source.record-set
                 {rs.delete-all}
+                {rs.commit}
              else
                 {if cv.editable? then
                     set cv.value = null
@@ -3287,30 +3337,34 @@ How does the edit/update cycle work?
     {if-non-null data = {self.migrate data, WorksheetModel.default-migration}
      then
         {self.clear-data}
-        let forms:JsonObject = data["forms"] asa JsonObject
+        let forms:JsonArray = data["forms"] asa JsonArray
+        let fi:int = 0
+        {for erf in self.embedded-forms do
+            {if-non-null erf then
+                def rs = erf.data-source.record-set
+                {assert rs.size == 0}
+                def rda = {RecordData-from-Json rs, forms[fi] asa JsonObject}
+                {for rd in rda do
+                    {rs.append rd}
+                }
+                {inc fi}
+            }
+        }
         {for ri = 0 below self.rows do
             {for ci = 0 below self.cols do
                 def cv = self.vals[ri, ci]
-                def ref = {format "$%c$%s", 'A' + ci, ri}
+                def ref = {format "$%c$%s", 'A' + ci, ri + 1}
                 let (v:any, exists?:bool) = {data.get-if-exists ref}
                 {if exists? then
                     set cv.value = {cv.domain.parse v asa String}
                 }
-                set (v, exists?) = {forms.get-if-exists ref}
-                {if exists? then
-                    def records = (v asa JsonObject)["records"] asa JsonArray
-                    {if-non-null erf = cv.embedded-form then
-                        def rs = erf.data-source.record-set
-                        {RecordSet-from-Json rs, records}
-                     else
-                        {error "Internal error"} ||RecordSet data but no form
-                    }
-                 elseif v != null then
+                {if v != null then
                     set cv.value = {cv.domain.parse v asa String}
                 }
             }
         }
 
+        ||FIXME: must adjust rulers after all forms are inserted/deleted
         let (vr:any, v-exists?:bool) = {data.get-if-exists "v-ruler-spec"}
         {if v-exists? then
             {if self.v-ruler-spec == null then
@@ -3956,7 +4010,7 @@ How does the edit/update cycle work?
             {assert cv.locked? == true}
         }
      else
-        {output "DEBUG"}
+        {output "DEBUG"} ||FIXME: why does this happen?
     }
     {return null}
   }
@@ -3982,7 +4036,13 @@ How does the edit/update cycle work?
     {ctl.add-event-handler self.event-hook}
   }
 
-  {method private {refresh-discloser}:void
+  {doc-next
+    {purpose
+        Make the state and presence of a group discloser on this cell match
+        the state of the model.
+    }
+  }
+  {method protected open {refresh-discloser}:void
     let gs:#GroupSpec = null
     let discloser?:bool = false
     {if-non-null
@@ -4112,8 +4172,13 @@ How does the edit/update cycle work?
     }
     {if-non-null spec = self.cell-value.field-spec then
         || Use the data binding to update the underlying record
-        {if-non-null rf = self.data-binding-context then
-            {rf.update}
+        {if-non-null dbc = self.data-binding-context then
+            def rf = dbc asa RecordForm
+            {if rf.current-record != null then
+                {rf.update}
+||--             else
+||--                {dump "DEBUG:", rf}
+            }
         }
     }
   }
@@ -4165,27 +4230,19 @@ How does the edit/update cycle work?
 ||--       {dump active?, self.row, self.col}
 ||--    }
 
-|| DEBUG
-||--    {if self.row == 15 and self.col == 2 then
-||--        {dump self.value, cv.value}
-||--    }
-
     {self.refresh-discloser}
     {self.refresh-options}
 
     || Adjust to change in rowspan or colspan
     {if self.rowspan != self.last-rowspan or self.colspan != self.last-colspan
+        or self.stale?
 ||--        or cv.rowspan > 1 or cv.colspan > 1
 ||--        or self.visual-parent == null
-||--        or self.stale?
      then
         {self.worksheet.attach-cell self}
         set self.last-rowspan = self.rowspan
         set self.last-colspan = self.colspan
     }
-||--    {if cv.value != null then
-||--        {dump cv.value}||debug
-||--    }
 
     {if cv.editable? and (active? or cv.editing? or cv.locked?) then
         || Model says this cell should be editing, so create a control, etc.
@@ -4213,11 +4270,7 @@ How does the edit/update cycle work?
             }
         }
      else
-        || Should not be editing
-||DEBUG
-||--        {if ar == self.row and ac == self.col then
-||--            {dump "show-cell-value for current cell", self.row, self.col}
-||--        }
+        || According to the model, this cell should not be editing
         {self.show-cell-value}
     }
     {if cv.covered? then
@@ -5080,25 +5133,6 @@ How does the edit/update cycle work?
 ||--    {return self.segments[pos]}
 ||--  }
 
-||--  {method public open {set-spec i:int, spec:any}:void
-||--    def size = {self.any-to-Distance spec}/1pt
-||--    {dump "set-spec", i, size}
-||--
-||--    || Insert default specs if needed. If there are more columns than specs,
-||--    || get-spec-size just returns the default and the spec is created only
-||--    || if it gets changed to a new value
-||--    {for si = self.spec.specs.size - 1 below i do
-||--        {self.insert-segments si + 1, 1}
-||--    }
-||--    set self.specs[i] = spec
-||--    def sn = self.segments[i]
-||--    {if self.orientation == Orientation.vertical then
-||--        set sn.height = {self.get-spec-size i}
-||--     else
-||--        set sn.width = {self.get-spec-size i}
-||--    }
-||--  }
-
   {doc-next
     {purpose
         Return the size of the Graphic that represents the segment
@@ -5793,12 +5827,7 @@ How does the edit/update cycle work?
             {if ri >= 0 and ri < self.rows and ci >= 0 and ci < self.cols then
                 {type-switch self.cells[rpos, cpos]
                  case gc:GridCell do
-                    {gc.refresh} ||qfix
-||--                    {self.add-cell
-||--
-||--                        rpos, cpos, gc,
-||--                        rowspan = gc.rowspan, colspan = gc.colspan
-||--                    }
+                    {gc.refresh}
 
                  case n:Null do
                     def gc = {GridCell self.worksheet, ri, ci}
@@ -5981,6 +6010,24 @@ How does the edit/update cycle work?
     }
   }
 
+  {doc-next
+    {purpose
+        Mark all {docref GridCell}s starting at ({param row}, {param col})
+        as stale to force them to be refreshed later.
+    }
+  }
+  {method public open {mark-cells-stale row:int, col:int}:void
+    set row = {max 0, row - 1} ||x
+    {for ri = row below self.rows do
+        {for ci = col below self.cols do
+            {type-switch self.cells[ri, ci]
+             case gc:GridCell do
+                set gc.stale? = true
+            }
+        }
+    }
+  }
+
   || Override
   || Insert or delete rows, but only insofar as they are visible in self.
   || first and count are model coordinates. The model is updated separately,
@@ -6009,6 +6056,7 @@ How does the edit/update cycle work?
         }
 ||--        {dump "insert-rows", self.name, first, count, r0, r1, gcount}
         {super.insert-rows r0, gcount, init-proc = init-proc}
+        {self.mark-cells-stale r0, 0}
 
         || Re-insert all of the spacers
         {self.refresh-v-spacers}
@@ -6057,13 +6105,14 @@ How does the edit/update cycle work?
         }
 ||--        {dump "reveal-rows", self.name, first, count, r0, r1, gcount}
         {super.insert-rows r0, gcount, init-proc = init-proc}
+        {self.mark-cells-stale r0, 0}
 
         || Re-insert all of the spacers
 ||--        {self.clear-v-spacers} || Force full re-build
         {self.refresh-v-spacers}
     }
     || Refresh synchronously to create the GridCells needed
-    {self.refresh}
+||x    {self.refresh}
   }
 
   || Override
@@ -6090,6 +6139,7 @@ How does the edit/update cycle work?
         }
 ||--        {dump "insert-cols", self.name, first, count, c0, c1, gcount}
         {super.insert-cols c0, gcount, init-proc = init-proc}
+        {self.mark-cells-stale 0, c0}
 
         || Re-insert all of the spacers
 ||--        {self.clear-h-spacers} || Force full re-build
@@ -6122,6 +6172,7 @@ How does the edit/update cycle work?
         }
 ||--        {dump "reveal-cols", self.name, first, count, c0, c1, gcount}
         {super.insert-cols c0, gcount, init-proc = init-proc}
+        {self.mark-cells-stale 0, c0}
 
         || Re-insert all of the spacers
 ||--        {self.clear-h-spacers} || Force full re-build
@@ -8081,11 +8132,28 @@ How does the edit/update cycle work?
     }
   }
 
-  || Find any embedded forms that reference rsds and rebuild them.
-  || If records are deleted, return so the scan can start over again
-  {method private {adjust-embedded-forms
-                      rsds:RecordSetDataSource, first-row:int
-                  }:int
+  {doc-next
+    {purpose
+        Find an embedded form for {param rsds} and insert or delete
+        rows to show the proper records.
+    }
+    {details
+        Starting at {param first-row}, find an embedded form with
+        {param rsds} as its data source. If rows were deleted since
+        the last time it was refreshed, remove the extra cells from
+        the worksheet. If rows were added to the data source, add
+        rows in the cell array.
+    }
+    {return-vals
+        Return the number of rows added or deleted. If the result is
+        nonzero, the caller will start scanning again from the top
+        because rows will have been renumbered.
+    }
+  }
+  {method protected open {adjust-embedded-forms
+                             rsds:RecordSetDataSource,
+                             first-row:int
+                         }:int
     let next-row:int = -1
     let rows:int = self.model.rows
     {for ri = first-row below self.model.rows do
@@ -8101,13 +8169,13 @@ How does the edit/update cycle work?
                     }
                 }
             }
-
-            {if-non-null fs = cv.field-spec then
-                {if-non-null gc = {self.get-grid-cell ri, ci} then
-                    {gc.refresh-value fs}
-                    set gc.value = null
-                }
-            }
+||FIXME: is this really needed?
+||--            {if-non-null fs = cv.field-spec then
+||--                {if-non-null gc = {self.get-grid-cell ri, ci} then
+||--                    {gc.refresh-value fs}
+||--                    set gc.value = null
+||--                }
+||--            }
         }
         {if next-row >= 0 then
             {break}
@@ -8701,15 +8769,20 @@ How does the edit/update cycle work?
     {self.request-update-commands}
   }
 
+
   || Debugging
   {method private {check-invariants}:void
-    {return}
-    {for ri = 0 below self.model.rows do
+||--    {return}
+    {for ri = 0 below {min 100, self.model.rows} do
         {for ci = 0 below self.model.cols do
             def cv = self.model.vals[ri, ci]
             {for erf in self.model.embedded-forms do
-                {if erf.base-row == ri and erf.base-col == ci then
-||--                    {assert cv.embedded-form == erfi.erf}
+                {if-non-null erf then
+                    {if erf.base-row == ri and erf.base-col == ci then
+                        {if cv.embedded-form != null then
+                            {assert cv.embedded-form == erf}
+                        }
+                    }
                 }
             }
             def (g, grow, gcol) = {self.get-grid-coordinates ri, ci}
@@ -10284,7 +10357,6 @@ Theory
     || If the number of records is unchanged, data bindings should
     || ensure the form fields are correct, so can return immediately.
     {if old-nrecs == nrecs and {self.validate-forms} then
-||--        {dump "insert-embedded-form: no new records"}
         {return nrecs}
     }
 
@@ -10300,13 +10372,6 @@ Theory
             row + rows-reserved, nrows - rows-reserved
         }
     }
-||--    || Clear the first row
-||--    {for fci = 0 below form-cols do
-||--        def fcol = col + fci
-||--        def cv = self.worksheet.model.vals[row, fcol]
-||--||--        def gc = {self.worksheet.get-grid-cell row, fcol}
-||--||--        {dump row, fci, cv.value, gc.value, rows-reserved}
-||--    }
     {if nrecs == 0 then
         {return 0}
     }

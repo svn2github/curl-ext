@@ -1,0 +1,292 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0 applet}
+
+{applet manifest = "../manifest.mcurl", locale = "en"}
+
+{import * from COM.CURL.EXT.WORKSHEET}
+
+{import * from COM.CURL.EXT.DATA-ACCESS}
+{import * from COM.CURL.EXT.GUI}
+{import * from CURL.IO.JSON}
+
+{set-document-properties
+    font-family = "Calibri, Cordia, Arial",
+    font-size = 10pt
+}
+
+|| -------------------------------------------------------------------------
+
+{title heading? = false, ToDo List}
+
+{define-enum Status todo, urgent, ongoing, later, done}
+
+|| Procedure to generate unique id's
+{define-proc public {get-new-id rs:RecordSet, id-field:String}:int
+    || Find the highest ID currently in use
+    let last-id:int = 0
+    {for r:Record in rs do
+        let recid:int = r[id-field] asa int
+        {if recid > last-id then
+            set last-id = recid
+        }
+    }
+    {return last-id + 1}
+}
+
+|| The unique id field in our RecordSet
+{def id-field = "id"}
+
+|| Data model for the To Do List
+{def item-rs =
+    {RecordSet
+        {RecordFields
+            {RecordField id-field, domain = int},
+            {RecordField "status", domain = Status},
+            {RecordField "description", caption = "Description", domain = String},
+            {RecordField "due", domain = DataSource.date-domain},
+            {RecordField "finished", nullable? = true,
+                domain = {LocaleDateDomain default-value = null}
+            } 
+        },
+        {RecordData id = 0, status = "todo", 
+            description = "Add things to do here...", due = {DateTime.date}
+        }
+    }
+}
+
+{define-proc {high-prio r:Record}:bool
+    def rs = r["status"] asa Status
+    def today = {DateTime.date}
+    def due-time = {today.elapsed ending = r["due"] asa DateTime}
+    {return
+        rs == Status.todo or
+        rs == Status.urgent or
+        rs == Status.ongoing or
+        (due-time > 0s and due-time <= 7d)
+        and r["finished"] == null
+    }
+}
+
+{def current-rv =
+    {RecordView item-rs,
+        filter = high-prio
+    }
+}
+{def later-rv =
+    {RecordView item-rs,
+        filter = {proc {r:Record}:bool
+                     {return not {high-prio r}}
+                 }
+    }
+}
+
+
+|| Convert the RecordSet into a RecordSetDataSource
+{def item-ds = {RecordSetDataSource item-rs}}
+{def current-ds = {RecordSetDataSource current-rv}}
+{def later-ds = {RecordSetDataSource later-rv}}
+
+|| A procedure that can be used for the ui-spec property
+{def make-delete-button =
+    {proc {r:#Record, cv:CellValue}:Visual
+        {return
+            {CommandButton
+                label = {bold color = "crimson", x},
+                height = 13pt, takes-focus? = false,
+                {on Action at cb:CommandButton do
+                    {type-switch cb.data-binding-context
+                     case rf:RecordForm do
+                        {if-non-null cr = rf.current-record then
+                            {cr.delete}
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+{def worksheet = 
+    {Worksheet
+        10, 8,
+        {widths 18pt, 24pt, 48pt, 72pt, 144pt, 72pt, 24pt, 18pt},
+
+        row = 0, col = 7, "0",
+        row = 1, col = 7, "1",
+        row = 2, col = 7, "2",
+        row = 3, col = 7, "3",
+        row = 4, col = 7, "4",
+        row = 5, col = 7, "5",
+        row = 6, col = 7, "6",
+        row = 7, col = 7, "7",
+        row = 8, col = 7, "8",
+        row = 9, col = 7, "9",
+
+
+        row = 0, col = 0, row-height = 20pt,
+
+
+        {display-cell
+            colspan = 3,
+            margin = 3px, color = "navy",
+            {big To Do List}
+        },
+
+        row = 2, col = 1, "id", "status", "date", "description", "finished",
+
+        row = 3, col = 1,
+        {EmbeddedRecordForm current-ds, id-field = id-field,
+            row = 0, col = 0,
+            {FieldSpec id-field},
+            {FieldSpec editable? = true, "status",
+                ui-spec = {EnumDropdown-of Status}
+            },
+            {FieldSpec editable? = true, "due"},
+            {FieldSpec editable? = true, "description"},
+            {FieldSpec editable? = true, "finished"},
+            {display-cell
+                halign = "center", valign = "center",
+                make-delete-button
+            }
+        },
+
+        row = 4, col = 1,
+        {display-cell
+            halign = "center", valign = "center", margin = 0pt,
+            {CommandButton
+                label = {bold font-size = 10pt, font-family = "Arial", +},
+                height = 15pt,
+                {on Action do
+                    def r = {item-rs.new-record}
+                    set r[id-field] = {get-new-id item-rs, id-field}
+                    {item-rs.append r}
+                }
+            }
+        },
+
+        row = 5, col = 1, "CS=1",
+        row = 6, col = 0, colspan = 4, {row-group 2},
+        col = 1, colspan = 4, "Lower Priority Tasks",
+        row = 7, col = 1,
+        {EmbeddedRecordForm later-ds, id-field = id-field,
+            row = 0, col = 0,
+            {FieldSpec id-field},
+            {FieldSpec editable? = true, "status",
+                ui-spec = {EnumDropdown-of Status}
+            },
+            {FieldSpec editable? = true, "due"},
+            {FieldSpec editable? = true, "description"},
+            {FieldSpec editable? = true, "finished"},
+            {display-cell
+                halign = "center", valign = "center",
+                make-delete-button
+            }
+        },
+
+        row = 8, col = 1,
+        {value-cell
+            colspan = 2, halign = "center", valign = "center",
+            {CommandButton
+                label = {bold font-size = 10pt, Json Data},
+                height = 15pt,
+                {on Action at cb:CommandButton do
+                    {type-switch cb.selection-context
+                     case wks:Worksheet do
+                        def data = {JsonValue-to-String
+                                       {wks.model.get-data},
+                                       prettify? = true
+                                   }
+                        {dump data}
+                    }
+                }
+            }
+        }, colspan = 4, "write the worksheet data to the console"
+
+
+
+
+    }
+}
+{value worksheet
+}
+
+{def data =
+    |"{
+ "data-version":"",
+ "model-name":"",
+ "forms":
+    [
+     {
+      "records":
+        [
+         {
+          "id":"0",
+          "status":"todo",
+          "description":"Add things to do here...",
+          "due":"5/12/2011",
+          "finished":""
+         },
+         {
+          "id":"1",
+          "status":"todo",
+          "description":"Thing 2",
+          "due":"5/12/2011",
+          "finished":""
+         },
+         {
+          "id":"3",
+          "status":"todo",
+          "description":"Thing 4",
+          "due":"5/12/2011",
+          "finished":""
+         }
+        ],
+      "ref":"$B$4"
+     },
+     {
+      "records":
+        [
+         {
+          "id":"2",
+          "status":"later",
+          "description":"Thing 3",
+          "due":"5/12/2011",
+          "finished":""
+         }
+        ],
+      "ref":"$B$11"
+     }
+    ], "h-ruler-spec": { "orientation":"horizontal", "split-count":0,
+ "specs": [ "18pt", "24pt", "48pt", "72pt", "144pt", "72pt", "24pt",
+ "18pt" ]
+    },
+ "v-ruler-spec": { "orientation":"vertical", "split-count":0, "specs":
+    [ "20pt", "18pt", "18pt", "18pt", "18pt", "18pt", "18pt", "18pt",
+    "18pt", "18pt", "18pt", "18pt", "18pt", "18pt" ]
+    }
+}
+"|}
+{CommandButton
+    label = "Reload",
+    {on Action do
+        {worksheet.model.put-data {JsonValue-parse data}}
+    }
+}
+
+

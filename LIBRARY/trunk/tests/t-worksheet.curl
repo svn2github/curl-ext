@@ -75,11 +75,6 @@
                     {url "../code/worksheet/demo-expenses.curl"}
                 }
             },
-            {TestSuite "erg-example",
-                {AppletTestCase
-                    {url "../code/worksheet/erg-example.curl"}
-                }
-            },
             {TestSuite "t-basics",
                 {AppletTestCase
                     {url "../code/worksheet/t-basics.curl"}
@@ -113,11 +108,6 @@
             {TestSuite "t-insert",
                 {AppletTestCase
                     {url "../code/worksheet/t-insert.curl"}
-                }
-            },
-            {TestSuite "t-model",
-                {AppletTestCase
-                    {url "../code/worksheet/t-model.curl"}
                 }
             },
             {TestSuite "t-mortgage",

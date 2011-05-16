@@ -47,19 +47,6 @@
                 {DataSource.get-default-domain 1.1} == DataSource.double-domain
             }
             {TestCondition.assert
-                {DataSource.get-default-domain "1"} == DataSource.double-domain
-            }
-            {TestCondition.assert
-                {DataSource.get-default-domain "9.9"} == DataSource.double-domain
-            }
-            {TestCondition.assert
-                {DataSource.get-default-domain "$1,999.9"} == DataSource.double-domain
-            }
-            {TestCondition.assert
-                {DataSource.get-default-domain "9.9e9"} == DataSource.string-domain
-            }
-
-            {TestCondition.assert
                 {DataSource.get-default-domain ""} == DataSource.string-domain
             }
             {TestCondition.assert

@@ -434,17 +434,20 @@
          case s:StringInterface do
             set domain = DataSource.string-domain
             let num?:bool = false
-            {try
-                def s = v asa String
-                def (ret, end, underflow?, overflow?) =
-                    {DataSource.np.parse-double s}
-                {if end == s.size then
-                    set domain = DataSource.double-domain
-                    set num? = true
-                }
-             catch e:Exception do
-                || Ignored - no change to domain
-            }
+            ||FIXME: The idea was to use a double if the value can be parsed
+            || as a double. But that doesn't work if the value still goes in
+            || as a string. And why is it needed?
+||--            {try
+||--                def s = v asa String
+||--                def (ret, end, underflow?, overflow?) =
+||--                    {DataSource.np.parse-double s}
+||--                {if end == s.size then
+||--                    set domain = DataSource.double-domain
+||--                    set num? = true
+||--                }
+||--             catch e:Exception do
+||--                || Ignored - no change to domain
+||--            }
             {if not num? and s != "" then
                 {try
                     def dt = {DateTime v}
