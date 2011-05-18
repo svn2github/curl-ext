@@ -1,0 +1,1663 @@
+||| Copyright (C) 1998-2011, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An Open Curl project.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+{curl 7.0 package}
+{curl-file-attributes character-encoding = "windows-latin-1"}
+{package COM.CURL.EXT.VIEW-ANIMATION,
+    {compiler-directives careful? = true}
+}
+
+{import * from CURL.GUI.STANDARD}
+{import * from CURL.GRAPHICS.SCENE}
+{import * from COM.CURL.EXT.TRANSITION-LIBRARY}
+
+
+{doc-next
+    {purpose
+        A graphical object that renders a {docref Pixmap} and provides
+        suitable layout size preferences.
+    }
+    {details
+        This class provides layout height and width preferences
+        that equal the height and width of the {docref Pixmap},
+        respectively, multiplied by the pixel size in the current
+        {docref DisplayContext}.
+    }
+    {usage
+        This class is used as an overlay over the contents of an
+        {docref AnimatedView} during its opening or closing animation.
+        The {docref-abbr ViewGrowOverlay.set-draw-size} method provides
+        special support for the {docref GrowViewAnimator} animation.
+    }
+}
+{define-class public ViewGrowOverlay {inherits Graphic}
+  
+  {doc-next
+    {purpose
+        The {docref Pixmap} that records the {docref AnimatedView} appearance
+        that should be animated.
+    }
+  }
+  field protected pixmap:Pixmap
+  
+  {doc-next
+    {purpose
+        Construct a new {docref ViewGrowOverlay} object.
+    }
+    {parameter pixmap,
+        The {docref Pixmap} that records the {docref AnimatedView} appearance
+        that should be animated.
+    }
+  }
+  {constructor public {default
+                          pixmap:Pixmap
+                      }
+    set self.pixmap = pixmap
+    {construct-super}
+  }
+  
+  || These fields remember the values most recently passed to self.set-draw-size
+  || and control the size at which the Pixmap will be rendered in the
+  || draw method.
+  field private drawn-width:Distance
+  field private drawn-height:Distance
+  
+  {doc-next
+    {purpose
+        Set the size at which {ctext self.{docref-abbr GrowViewAnimator.pixmap}}
+        will be rendered in the {docref-abbr Graphic.draw} method.
+    }
+    {parameter (width, height),
+        The width and height that should be used for drawing
+        the {docref Pixmap}.
+    }
+  }
+  {method public {set-draw-size width:Distance, height:Distance}:void
+    set self.drawn-width = width
+    set self.drawn-height = height
+    {self.request-draw}
+  }
+  
+  {method public {get-width-preference lc:LayoutContext}:Dimension
+    def pixmap-width = self.pixmap.width
+    def pixel-size = lc.layout-display-context.pixel-size
+    {return pixmap-width * pixel-size}
+  }
+  
+  {method public {get-height-preference lc:LayoutContext}:Dimension
+    def pixmap-height = self.pixmap.height
+    def pixel-size = lc.layout-display-context.pixel-size
+    {return pixmap-height * pixel-size}
+  }
+  
+  {method public {draw r2d:Renderer2d}:void
+    def pixel-size = r2d.pixel-size
+    def pw = self.pixmap.width
+    def ph = self.pixmap.height
+    def w = pw * pixel-size
+    def h = ph * pixel-size
+    def rwidth = self.drawn-width
+    def rheight = self.drawn-height
+    def cx = 0.5 * rwidth
+    def cy = 0.5 * rheight
+    def xo = -rwidth / 2
+    def yo = -rheight / 2
+    {with-render-properties
+        translation = {Distance2d cx, cy}
+     on r2d do
+        {r2d.render-pixmap
+            xo, yo,
+            rwidth, rheight,
+            self.pixmap,
+            src-x = 0, src-y = 0,
+            src-width = pw, src-height = ph
+        }
+    }
+  }
+}
+
+{define-class public abstract ViewCommonAnimator
+  
+  {doc-next
+    {purpose
+        The length of time from the beginning to the end of the animation.
+    }
+  }
+  field public constant duration:Time
+  
+  {doc-next
+    {purpose
+        A procedure that can be used to warp the time scale of an animation.
+    }
+    {details
+        If non-null, this procedure is applied to an argument between 0 and 1
+        that indicates the fraction of the total animation duration that has
+        already elapsed.
+        The returned value from this procedure should be between 0 and 1
+        and controls the percentage of progress in the animation effect
+        that should be displayed.
+        This procedure should return 0 when the argument is 0
+        and should return 1 when the argument is 1,
+        and the procedure's value should increase monotonically between those
+        two points.
+        
+        If this getter returns null,
+        the result is the same as if the identity function
+        {no-break {ctext {proc {x:double}:double {return x}}}}
+        had been specified.
+    }
+  }
+  field public constant pacing:#{proc-type {double}:double}
+  
+  {doc-next
+    {purpose
+        Construct a {docref ViewCommonAnimator} object.
+    }
+    {parameter duration,
+        The duration of the animation effect.
+        This is the value that will be stored in the {docref-abbr ViewCommonAnimator.duration} field
+        for this object.
+    }
+    {parameter pacing,
+        A procedure that can be used to warp the time scale of an animation.
+        See {docref ViewCommonAnimator.pacing} for additional information.
+    }
+    {details
+        This constructor initializes the
+        {docref-abbr ViewCommonAnimator.duration} and
+        {docref-abbr ViewCommonAnimator.pacing} fields
+        based on the specified parameter values.
+    }
+  }
+  {constructor protected {default
+                             duration:Time = 0.5s,
+                             pacing:#{proc-type {double}:double} = null
+                         }
+    set self.duration = duration
+    set self.pacing = pacing
+  }
+  
+  {doc-next
+    {purpose
+        Set the initial state for an {docref AnimatedView} at the beginning
+        of a posting or closing animation,
+        and create a {docref Graphic} to be overlaid on the {docref AnimatedView}
+        during that animation.
+    }
+    {parameter v,
+        The {docref AnimatedView} whose posting or closing will be animated.
+    }
+    {parameter pmap,
+        A {docref Pixmap} that contains a snapshot of the initial or final contents
+        of {param v}.
+    }
+    {return-vals
+        A {docref Graphic} that can be overlaid over the contents of {param v}
+        while the animation is in progress.
+        The draw method of this {docref Graphic} draws the contents of {param pmap}.
+    }
+    {override
+        The abstract base method should be implemented by a method
+        that sets the initial state (size, opacity, etc.) of {param v}
+        for the start of the animation,
+        and returns a {docref Graphic} that can be overlaid over the
+        regular contents of {param v} during the animation.
+        The actual installation of this {docref Graphic} as part of the overlay
+        will be performed by the caller of this method.
+    }
+  }
+  {method public abstract {initialize-view
+                              v:AnimatedView,
+                              pmap:Pixmap
+                          }:Graphic
+  }
+  
+  {doc-next
+    {purpose
+        Update the state of a given {docref AnimatedView}
+        to reflect the current percentage of progress through
+        a posting or closing animation.
+    }
+    {parameter v,
+        The {docref AnimatedView} whose posting or closing is being animated.
+    }
+    {parameter completion,
+        The percentage of completion of the animation,
+        ranging from 0.0 to 1.0.
+    }
+    {override
+        The abstract base method should be implemented by a method
+        that updates the state (size, opacity, etc.) of {param v}
+        to reflect the current percentage of progress through the animation.
+    }
+  }
+  {method public abstract {update-view v:AnimatedView, completion:double}:void}
+  
+  {doc-next
+    {purpose
+        Update the state of a given {docref AnimatedView}
+        to reflect the completion of
+        a posting or closing animation.
+    }
+    {parameter v,
+        The {docref AnimatedView} whose posting or closing has just been animated.
+    }
+    {override
+        The abstract base method should be implemented by a method
+        that updates the state (size, opacity, etc.) of {param v}
+        to reflect the final state (fully posted or fully closed)
+        that {param v} should have at the end of the animation.
+    }
+  }
+  {method public abstract {finish-view v:AnimatedView}:void}
+  
+}
+
+{doc-next
+    {purpose
+        Abstract superclass for classes that define different animations
+        for posting an {docref AnimatedView}.
+    }
+}
+{define-class public abstract ViewOpenAnimator {inherits ViewCommonAnimator}
+  
+  {doc-next
+    {purpose
+        Construct a {docref ViewOpenAnimator} object.
+    }
+    {parameter duration,
+        The duration of the animation effect.
+    }
+    {parameter pacing,
+        A procedure that can be used to warp the time scale of an animation.
+    }
+    {notes
+        See {docref ViewCommonAnimator.default} for further information
+        about this constructor.
+    }
+  }
+  {constructor protected {default
+                             duration:Time = 0.5s,
+                             pacing:#{proc-type {double}:double} = null
+                         }
+    {construct-super duration = duration, pacing = pacing}
+  }
+  
+  {doc-next
+    {purpose
+        Record whether the closing animation for the {docref AnimatedView} in question
+        will involve setting {docref View} opacities less than 1.0.
+    }
+    {notes
+        See {docref ViewCloseAnimator.needs-translucency?} for further information.
+    }
+  }
+  field public needs-translucency?:bool = false
+  
+  {doc-next
+    {purpose
+        Return the default {docref ViewCloseAnimator} that corresponds to this
+        {docref ViewOpenAnimator}.
+    }
+    {notes
+        Typically the value returned by this getter is a {docref ViewCloseAnimator}
+        whose style is similar to that of this {docref ViewOpenAnimator}.
+        For example, an opening animation in which a window gradually fades
+        into view would be matched by a closing animation in which the
+        window gradually fades out.
+        Typically the
+        {docref-abbr ViewCommonAnimator.duration} and
+        {docref-abbr ViewCommonAnimator.pacing} of the closing animation will be
+        the same as those for the opening animation.
+    }
+  }
+  {getter public abstract {matched-close-animator}:ViewCloseAnimator}
+}
+
+{doc-next
+    {purpose
+        Abstract superclass for classes that define different animations
+        for closing an {docref AnimatedView}.
+    }
+}
+{define-class public abstract ViewCloseAnimator {inherits ViewCommonAnimator}
+  
+  {doc-next
+    {purpose
+        Construct a {docref ViewCloseAnimator} object.
+    }
+    {parameter duration,
+        The duration of the animation effect.
+    }
+    {parameter pacing,
+        A procedure that can be used to warp the time scale of an animation.
+    }
+    {notes
+        See {docref ViewCommonAnimator.default} for further information
+        about this constructor.
+    }
+  }
+  {constructor protected {default
+                             duration:Time = 0.5s,
+                             pacing:#{proc-type {double}:double} = null
+                         }
+    {construct-super duration = duration, pacing = pacing}
+  }
+  
+  {doc-next
+    {purpose
+        Indicate whether this animation
+        will involve setting {docref View} opacities less than 1.0.
+    }
+    {notes
+        In the Curl rendering system on Windows, there is a noticeable glitch
+        visible when changing the opacity of a {docref View} from 1.0 to a number
+        less than 1.0 (even 0.999).
+        In an effort to avoid such a glitch at the beginning of an
+        {docref AnimatedView} close animation,
+        if the animation will involve reducing the opacity of the window,
+        the opacity of the fully displayed window should be set to 0.999 rather than 1.0.
+        This getter indicates whether this close animation will need to reduce the
+        opacity of the {docref AnimatedView} below 1.0.
+        
+        The behavior when resizing an {docref AnimatedView} differs
+        depending on whether the opacity is 1.0 or 0.999.
+        When a window's opacity is 0.999, momentary black flashes may be seen
+        around its edge when it is resized.
+        Developers should determine whether this will be objectionable,
+        and if so,
+        should avoid using closing animations such as
+        {docref FadeViewCloseAnimator} and
+        {docref GenieViewCloseAnimator} that will cause this
+        behavior to occur.
+    }
+  }
+  {getter public {needs-translucency?}:bool
+    {return false}
+  }
+  
+}
+
+{doc-next
+    {purpose
+        Abstract superclass for a family of classes that define animations
+        for posting an {docref AnimatedView} that share common processing
+        in the {docref-abbr ViewCommonAnimator.initialize-view} method.
+    }
+}
+{define-class public abstract SingleViewOpenAnimator {inherits ViewOpenAnimator}
+  
+  {doc-next
+    {purpose
+        Construct a {docref SingleViewOpenAnimator} object.
+    }
+    {parameter duration,
+        The duration of the animation effect.
+    }
+    {parameter pacing,
+        A procedure that can be used to warp the time scale of an animation.
+    }
+    {notes
+        See {docref ViewCommonAnimator.default} for further information
+        about this constructor.
+    }
+  }
+  {constructor public {default
+                          duration:Time = 0.5s,
+                          pacing:#{proc-type {double}:double} = null
+                      }
+    {construct-super duration = duration, pacing = pacing}
+  }
+  
+  || The initial position of the AnimatedView on the screen.
+  || This is the position of the upper left corner of the content area of the View
+  || (not counting any decorations that surround the content area).
+  field protected x0:Distance
+  field protected y0:Distance
+  
+  || The width and height that the Animated View should have at the end
+  || of the animation.
+  field protected full-width:Distance
+  field protected full-height:Distance
+  
+  || The graphical object that displays a Pixmap showing the AnimatedView contents
+  || during the animation that posts the AnimatedView.
+  field protected overlay:ViewGrowOverlay = {uninitialized-value-for-type ViewGrowOverlay}
+  
+  {method public {initialize-view v:AnimatedView, pmap:Pixmap}:Graphic
+    set (self.x0, self.y0, self.full-width, self.full-height) = {v.get-window-position-and-size}
+    set self.overlay = {ViewGrowOverlay pmap}
+    {return self.overlay}
+  }
+}
+
+{doc-next
+    {purpose
+        Abstract superclass for a family of classes that define animations
+        for closing an {docref AnimatedView} that share common processing
+        in the {docref-abbr ViewCommonAnimator.initialize-view}
+        and {docref-abbr ViewCommonAnimator.finish-view} methods.
+    }
+}
+{define-class public abstract SingleViewCloseAnimator {inherits ViewCloseAnimator}
+  
+  {doc-next
+    {purpose
+        Construct a {docref SingleViewOpenAnimator} object.
+    }
+    {parameter duration,
+        The duration of the animation effect.
+    }
+    {parameter pacing,
+        A procedure that can be used to warp the time scale of an animation.
+    }
+    {notes
+        See {docref ViewCommonAnimator.default} for further information
+        about this constructor.
+    }
+  }
+  {constructor public {default
+                          duration:Time = 0.5s,
+                          pacing:#{proc-type {double}:double} = null
+                      }
+    {construct-super duration = duration, pacing = pacing}
+  }
+  
+  || See SingleViewOpenAnimator for a description of the following fields.
+  field protected x0:Distance
+  field protected y0:Distance
+  field protected full-width:Distance
+  field protected full-height:Distance
+  field protected overlay:ViewGrowOverlay = {uninitialized-value-for-type ViewGrowOverlay}
+  
+  {method public {initialize-view v:AnimatedView, pmap:Pixmap}:Graphic
+    set (self.x0, self.y0, self.full-width, self.full-height) = {v.get-window-position-and-size}
+    set self.overlay = {ViewGrowOverlay pmap}
+    {return self.overlay}
+  }
+  
+  {method public {finish-view v:AnimatedView}:void
+    {v.destroy}
+  }
+}
+
+{doc-next
+    {purpose
+        Animation for posting an {docref AnimatedView} that grows
+        from the smallest possible window size to the full intended size
+        over the course of the animation.
+    }
+    {notes
+        {docref ShrinkViewCloseAnimator} is the standard close animation
+        for a window that is opened using this animator.
+    }
+}
+{define-class public GrowViewAnimator {inherits SingleViewOpenAnimator}
+  
+  {doc-next
+    {purpose
+        Construct a {docref GrowViewOpenAnimator} object.
+    }
+    {parameter duration,
+        The duration of the animation effect.
+    }
+    {parameter pacing,
+        A procedure that can be used to warp the time scale of an animation.
+    }
+    {notes
+        See {docref ViewCommonAnimator.default} for further information
+        about this constructor.
+    }
+  }
+  {constructor public {default
+                          duration:Time = 0.5s,
+                          pacing:#{proc-type {double}:double} = null
+                      }
+    {construct-super duration = duration, pacing = pacing}
+  }
+  
+  || The width and height of the window when it is at its minimum possible size.
+  field package min-width:Distance
+  field package min-height:Distance
+  
+  {method public {initialize-view v:AnimatedView, pmap:Pixmap}:Graphic
+    {super.initialize-view v, pmap}
+    {if self.needs-translucency? then {v.set-opacity 0.999}}
+    {v.set-window-size 0m, 0m}
+    set (self.min-width, self.min-height) = {v.get-window-size}
+    {return self.overlay}
+  }
+  
+  {method public {update-view v:AnimatedView, completion:double}:void
+    def w = self.min-width + completion * (self.full-width - self.min-width)
+    def h = self.min-height + completion * (self.full-height - self.min-height)
+    {v.set-window-position-and-size
+        self.x0 + 0.5 * (self.full-width - w),
+        self.y0,
+        w,
+        h
+    }
+    {self.overlay.set-draw-size w, h}
+  }
+  
+  {method public {finish-view v:AnimatedView}:void
+    {v.set-window-position-and-size self.x0, self.y0, self.full-width, self.full-height}
+  }
+  
+  {getter public {matched-close-animator}:ViewCloseAnimator
+    {return
+        {ShrinkViewCloseAnimator
+            duration = self.duration,
+            pacing = self.pacing,
+            grow-view-animator = self
+        }
+    }
+  }
+  
+}
+
+{doc-next
+    {purpose
+        Animation for closing an {docref AnimatedView} that shrinks
+        from the original size of the posted window to the minimum possible
+        window size over the course of the animation.
+    }
+    {notes
+        This is the standard close animation for a window that is opened
+        using {docref GrowViewAnimator}.
+    }
+}
+{define-class public ShrinkViewCloseAnimator {inherits SingleViewCloseAnimator}
+  
+  || The GrowViewAnimator that was used to open the window, or null.
+  field private gva:#GrowViewAnimator
+  
+  || The width and height that the window will shrink to.
+  field private min-width:Distance
+  field private min-height:Distance
+  
+  {doc-next
+    {purpose
+        Construct a {docref ShrinkViewCloseAnimator} object.
+    }
+    {parameter (duration, pacing),
+        The duration and pacing for the animation effect.
+        See {docref ViewCommonAnimator.default} for further information
+        about these parameters.
+    }
+    {parameter grow-view-animator,
+        The {docref GrowViewAnimator}, if any, that was used to post the
+        {docref AnimatedView}.
+        If this parameter is supplied,
+        it is used to fetch {ctext min-width} and {ctext min-height}
+        values that are used in place of the {ctext min-width} and {ctext min-height}
+        parameters provided to this constructor.
+    }
+    {parameter (min-width, min-height),
+        The width and height that the window will shrink to
+        before it is closed at the end of the animation.
+    }
+  }
+  {constructor public {default
+                          duration:Time = 0.5s,
+                          pacing:#{proc-type {double}:double} = null,
+                          grow-view-animator:#GrowViewAnimator = null,
+                          min-width:Distance = 1.2in,
+                          min-height:Distance = 0in
+                      }
+    {construct-super duration = duration, pacing = pacing}
+    set self.gva = grow-view-animator
+    set self.min-width = min-width
+    set self.min-height = min-height
+  }
+  
+  {method public {initialize-view v:AnimatedView, pmap:Pixmap}:Graphic
+    {if-non-null gva = self.gva then
+        set self.min-width = gva.min-width
+        set self.min-height = gva.min-height
+    }
+    {super.initialize-view v, pmap}
+    {return self.overlay}
+  }
+  
+  {method public {update-view v:AnimatedView, completion:double}:void
+    def scale = 1.0 - completion
+    def w = self.min-width + scale * (self.full-width - self.min-width)
+    def h = self.min-height + scale * (self.full-height - self.min-height)
+    {v.set-window-position-and-size
+        self.x0 + 0.5 * (self.full-width - w),
+        self.y0,
+        w,
+        h
+    }
+    {self.overlay.set-draw-size w, h}
+  }
+  
+}
+
+{doc-next
+    {purpose
+        Animation for posting an {docref AnimatedView} that fades
+        smoothly in, from complete transparency to complete opacity.
+    }
+    {notes
+        {docref FadeViewCloseAnimator} is the standard close animation
+        for a window that is opened using this animator.
+        Since {docref FadeViewCloseAnimator} changes the opacity of the window,
+        the opacity of the fully displayed window, before beginning the
+        close animation, will be set to 0.999 to avoid a glitch at the
+        beginning of the close animation.
+        See the documentation for {docref-abbr ViewCloseAnimator.needs-translucency?}
+        for further information about this issue.
+        If the use of an opacity of 0.999 is not acceptable,
+        a close animation that does not require this opacity,
+        such as {docref ShrinkViewCloseAnimator},
+        should be specified explicitly.
+        
+        If used in an unprivileged applet, the window will initially appear
+        with 50% opacity.
+    }
+}
+{define-class public FadeViewAnimator {inherits SingleViewOpenAnimator}
+  
+  {doc-next
+    {purpose
+        Construct a {docref FadeViewAnimator} object.
+    }
+    {parameter (duration, pacing),
+        The duration and pacing for the animation effect.
+        See {docref ViewCommonAnimator.default} for further information
+        about these parameters.
+    }
+  }
+  {constructor public {default
+                          duration:Time = 0.5s,
+                          pacing:#{proc-type {double}:double} = null
+                      }
+    {construct-super duration = duration, pacing = pacing}
+  }
+  
+  {method public {initialize-view v:AnimatedView, pmap:Pixmap}:Graphic
+    {super.initialize-view v, pmap}
+    {v.set-opacity 0.0}
+    {self.overlay.set-draw-size self.full-width, self.full-height}
+    {return self.overlay}
+  }
+  
+  {method public {update-view v:AnimatedView, completion:double}:void
+    {v.set-opacity {min completion, 0.999}}
+  }
+  
+  {method public {finish-view v:AnimatedView}:void
+    {v.set-opacity {if self.needs-translucency? then 0.999 else 1.0}}
+  }
+  
+  {getter public {matched-close-animator}:ViewCloseAnimator
+    {return
+        {FadeViewCloseAnimator duration = self.duration, pacing = self.pacing}
+    }
+  }
+  
+}
+
+{doc-next
+    {purpose
+        Animation for closing an {docref AnimatedView} that fades
+        smoothly out, from complete opacity to complete transparency.
+    }
+    {notes
+        This is the standard close animation for a window that is opened
+        using {docref FadeViewAnimator}.
+        
+        Since this animator changes the opacity of an {docref AnimatedView},
+        the opacity of the fully displayed window, before beginning the
+        close animation, will be set to 0.999 to avoid a glitch at the
+        beginning of the close animation.
+        See the documentation for {docref-abbr ViewCloseAnimator.needs-translucency?}
+        for further information about this issue.
+        
+        If used in an unprivileged applet, the window will stop fading
+        out when it reaches 50% opacity.
+    }
+}
+{define-class public FadeViewCloseAnimator {inherits SingleViewCloseAnimator}
+  
+  {doc-next
+    {purpose
+        Construct a {docref FadeViewAnimator} object.
+    }
+    {parameter (duration, pacing),
+        The duration and pacing for the animation effect.
+        See {docref ViewCommonAnimator.default} for further information
+        about these parameters.
+    }
+  }
+  {constructor public {default
+                          duration:Time = 0.5s,
+                          pacing:#{proc-type {double}:double} = null
+                      }
+    {construct-super duration = duration, pacing = pacing}
+  }
+  
+  {method public {initialize-view v:AnimatedView, pmap:Pixmap}:Graphic
+    {super.initialize-view v, pmap}
+    {self.overlay.set-draw-size self.full-width, self.full-height}
+    {return self.overlay}
+  }
+  
+  {method public {update-view v:AnimatedView, completion:double}:void
+    def scale = 1.0 - completion
+    {v.set-opacity {min scale, 0.999}}
+  }
+  
+  {getter public {needs-translucency?}:bool
+    {return true}
+  }
+  
+}
+
+{doc-next
+    {purpose
+        Abstract superclass for opening or closing animations
+        that modify a window's shape via Bezier interpolation
+        between a series of {docref DisplacementMesh}es that
+        specify how to warp the window contents.
+    }
+    {notes
+        This class provides a large number of methods and fields
+        that implement various utility operations on the
+        {docref DisplacementMesh} objects.
+        The class is designed to be inherited by classes that
+        also inherit from
+        {docref SingleViewOpenAnimator} or
+        {docref SingleViewCloseAnimator}.
+    }
+}
+{define-class public abstract BezierViewAnimator
+  
+  {doc-next
+    {purpose
+        Create a {docref BezierViewAnimator} object.
+    }
+    {parameter mesh-size,
+        The width and height of the {docref DisplacementMesh} objects
+        that will be used.
+        Larger numbers for this parameter lead to smoother warping of the old screen,
+        while smaller numbers may increase performance at the expense of a more angular
+        look to the warping.
+        After a certain mesh size is reached, however, the added improvement from
+        further increases in the mesh size is very difficult to notice.
+        
+        The {param mesh-size} parameter is only used if no value is specified
+        for the {param start-mesh} parameter.
+        If a {docref DisplacementMesh} is specified for the {param start-mesh} parameter, then the
+        height and width of that {docref DisplacementMesh} will govern.
+    }
+    {parameter start-mesh,
+        A {docref DisplacementMesh} describing the initial warping of the window
+        during the transition.
+        If no value is explicitly specified for this argument,
+        a regular {docref DisplacementMesh} with height and width equal
+        to {param mesh-size} is used.
+    }
+    {parameter (t1-mesh, t2-mesh),
+        These {docref DisplacementMesh}es specify the control points for a
+        Bezier cubic curve that smoothly transitions from
+        {param start-mesh} to {param end-mesh}.
+        If only {param t1-mesh} is specified,
+        the same {docref DisplacementMesh} is used for {param t2-mesh}.
+        In this case, the shape of the old screen will warp toward{em-dash}but
+        not actually reach{em-dash} this shape as it transitions from
+        {param start-mesh} to {param end-mesh}.
+        If different meshes are specified for {param t1-mesh} and {param t2-mesh},
+        a greater degree of control over the trajectory of the animation
+        is possible.
+    }
+    {parameter end-mesh,
+        A {docref DisplacementMesh} describing the final warping of the window
+        in the transition.
+        By default this mesh is a {docref DisplacementMesh} that maps all
+        coordinates to the same point,
+        such as is returned by {docref make-point-displacement-mesh}.
+        Callers may want to specify this {docref DisplacementMesh} explicitly
+        to control the (x, y) coordinates of the final point into which the
+        old screen vanishes.
+    }
+    {notes
+        All four {docref DisplacementMesh}es {param start-mesh}, {param t1-mesh},
+        {param t2-mesh}, and {param end-mesh}, must have the same width and height.
+    }
+  }
+  {constructor protected {default
+                             mesh-size:int = 30,
+                             end-mesh:DisplacementMesh =
+                                 {make-regular-displacement-mesh mesh-size, mesh-size},
+                             t1-mesh:DisplacementMesh =
+                                 {make-genie-displacement-mesh end-mesh},
+                             t2-mesh:DisplacementMesh = t1-mesh,
+                             start-mesh:DisplacementMesh = {make-point-displacement-mesh end-mesh}
+                         }
+    set self.start-mesh = start-mesh
+    set self.t1-mesh = t1-mesh
+    set self.t2-mesh = t2-mesh
+    set self.end-mesh = end-mesh
+    set self.temp-mesh = {start-mesh.clone}
+  }
+  
+  {doc-next
+    {purpose
+        An undecorated {docref View} whose outline and contents
+        will both be warped during the course of the animation.
+    }
+    {notes
+        This {docref View} will replace the {docref AnimatedView} that is
+        being closed before the warping animation actually begins.
+    }
+  }
+  field protected borderless-view:#View = null
+  
+  || Saved pointers to the constructor parameters.
+  field protected start-mesh:DisplacementMesh
+  field protected t1-mesh:DisplacementMesh
+  field protected t2-mesh:DisplacementMesh
+  field protected end-mesh:DisplacementMesh
+  
+  || A DisplacementMesh used as scratch storage to hold the result
+  || of Bezier interpolation.
+  field protected temp-mesh:DisplacementMesh
+  
+  {doc-next
+    {purpose
+        The {docref PolygonSet} that will hold the contents of
+        {ctext self.{docref-abbr BezierViewAnimator.borderless-view}}
+        after the warping adjustment is applied.
+    }
+  }
+  field protected pset:#PolygonSet = null
+  
+  {doc-next
+    {purpose
+        The {docref Pixmap} that contains the unwarped contents of the
+        {docref AnimatedView}.
+    }
+  }
+  field protected pixmap:#Pixmap = null
+  
+  {doc-next
+    {purpose
+        The cotangent of the field of view angle in the 3D scene that displays
+        the animation.
+    }
+    {notes
+        This value controls how extreme the perspective effects (if any) in the 3D view are.
+        When this value is smaller, the perspective is more extreme;
+        when this value is larger, the perspective is more flattened.
+    }
+  }
+  field protected constant fov-cotangent:double = 3.0
+  
+  {doc-next
+    {purpose
+        The {docref SceneGraphic} used for displaying the animation in
+        {ctext self.{docref-abbr BezierViewAnimator.borderless-view}}.
+    }
+  }
+  field protected scene-graphic:#SceneGraphic = null
+  
+  {doc-next
+    {purpose
+        The {docref Scene} used for displaying the animation in
+        {ctext self.{docref-abbr BezierViewAnimator.borderless-view}}.
+    }
+  }
+  field protected scene:#Scene = null
+  
+  {doc-next
+    {purpose
+        Make the {docref Scene} and {docref SceneGraphic} that will
+        be used to display this animation.
+    }
+    {return-vals
+        The required {docref Scene} and {docref SceneGraphic} objects,
+        which will also have been stored into the
+        {docref-abbr BezierViewAnimator.scene} and
+        {docref-abbr BezierViewAnimator.scene-graphic} fields.
+    }
+    {details
+        This method creates the necessary {docref Scene}-related objects
+        and connects them together.
+        The {docref-abbr BezierViewAnimator.scene} and
+        {docref-abbr BezierViewAnimator.scene-graphic} fields are initialized,
+        and the {docref SceneGraphic} is added to
+        {ctext self.{docref-abbr BezierViewAnimator.borderless-view}}.
+    }
+  }
+  {method protected {make-scene}:(Scene, SceneGraphic)
+    def camera =
+        {Camera.create-perspective-camera
+            position = {Distance3d 0m, 0m, 1m * self.fov-cotangent},
+            near-clipping-plane = 0.1m,
+            far-clipping-plane = 100m,
+            field-of-view = 2.0 * {atan 0.5 / self.fov-cotangent}
+        }
+    def scene =
+        {Scene
+            camera = camera
+        }
+    def scene-graphic =
+        {SceneGraphic
+            background = "gray",
+            camera-motion-mode = "none",
+            scene
+        }
+    {self.borderless-view.add scene-graphic}
+    set self.scene-graphic = scene-graphic
+    set self.scene = scene
+    {return scene, scene-graphic}
+  }
+  
+  {doc-next
+    {purpose
+        Compute the 3D world height and width for this animation.
+    }
+    {parameter pmap,
+        The full {docref Pixmap} that contains the full-size contents
+        of the {docref AnimatedView} in question.
+        The height and width of {param pmap} are used to determine
+        the size parameters that are returned.
+    }
+    {parameter quad-scale,
+        The size of the 3D object that should be created to display
+        {param pmap},
+        along the shorter dimension of the {docref Pixmap}.
+        If {param pmap} has a {quote landscape} orientation, this will
+        be the height of the {docref Pixmap};
+        otherwise it will be the width.
+    }
+    {return-vals
+        Two values are returned:
+        {enumerate
+            {item The width for the 3D object.}
+            {item The height for the 3D object.}
+        }
+        If a 3D quad is sized as specified by these return values,
+        it will exactly fill the bounds of the {docref SceneGraphic} object
+        and will have the correct aspect ratio for {param pmap}.
+    }
+  }
+  {method protected {compute-3d-sizes pmap:Pixmap, quad-scale:Distance}:(width:Distance, height:Distance)
+    def pw = pmap.width
+    def ph = pmap.height
+    {if pw > ph then
+        {return
+            (quad-scale * pw) / ph,
+            quad-scale
+        }
+     else
+        {return
+            quad-scale,
+            (quad-scale * ph) / pw
+        }
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Create the {docref PolygonSet} to be used for warping
+        window contents during an {docref AnimatedView} animation.
+    }
+    {parameter pmap,
+        The full {docref Pixmap} that contains the full-size contents
+        of the {docref AnimatedView} in question.
+    }
+    {parameter quad-scale,
+        The size of the 3D object that should be created to display
+        {param pmap},
+        along the shorter dimension of the {docref Pixmap}.
+        If {param pmap} has a {quote landscape} orientation, this will
+        be the height of the {docref Pixmap};
+        otherwise it will be the width.
+    }
+    {return-vals
+        A {docref PolygonSet} that is populated with texture tiles
+        derived from {param pmap}.
+        This {docref PolygonSet} can then be warped according to a
+        specified {docref DisplacementMesh} by calling the
+        {docref BezierViewAnimator.set-pset-warp} method.
+    }
+  }
+  {method protected {make-polygon-set
+                        pmap:Pixmap,
+                        quad-scale:Distance
+                    }:PolygonSet
+    def base-mesh = self.t1-mesh
+    def (quad-width, quad-height) = {self.compute-3d-sizes pmap, quad-scale}
+    def pset =
+        {PolygonSet
+            fill-pattern = {FillPattern.from-pixmap pmap},
+            texture-coords = {make-texture-coords-from-mesh base-mesh},
+            vertices =
+                {make-vertex-list-from-mesh
+                    base-mesh,
+                    -0.5 * quad-width, -0.5 * quad-height, 0m,
+                    quad-width, quad-height
+                },
+            primitive-type = "quads"
+        }
+    {return pset}
+  }
+  
+  {doc-next
+    {purpose
+        Change the {docref DisplacementMesh} that is used to warp the
+        contents of the {docref PolygonSet} in
+        {ctext self.pset}.
+    }
+    {parameter mesh,
+        The {docref DisplacementMesh} that specifies the new
+        deformation to be applied to the {docref PolygonSet}.
+    }
+  }
+  {method protected {set-pset-warp mesh:DisplacementMesh}:void
+    def pmap = {non-null self.pixmap}
+    def quad-scale = 1m
+    def (quad-width, quad-height) = {self.compute-3d-sizes pmap, quad-scale}
+    set self.pset.vertices =
+        {make-vertex-list-from-mesh
+            mesh,
+            -0.5 * quad-width, -0.5 * quad-height, 0m,
+            quad-width, quad-height
+        }
+    {self.scene-graphic.update-drawable}
+    {self.scene-graphic.request-draw}
+  }
+  
+  {method private {make-warp-region mesh:DisplacementMesh, fw:Distance, fh:Distance}:Region
+    def vertices = {new {Array-of Distance2d}}
+    def h = mesh.height
+    def w = mesh.width
+    {for j = 0 below h do
+        def fract = mesh[0, j]
+        {vertices.append
+            {Distance2d fract.x * fw, fract.y * fh} 
+        }
+    }
+    {for i = 1 below w do
+        def fract = mesh[i, h - 1]
+        {vertices.append
+            {Distance2d fract.x * fw, fract.y * fh} 
+        }
+    }
+    {for j = h - 2 downto 0 do
+        def fract = mesh[w - 1, j]
+        {vertices.append
+            {Distance2d fract.x * fw, fract.y * fh} 
+        }
+    }
+    {for i = w - 2 above 0 do
+        def fract = mesh[i, 0]
+        {vertices.append
+            {Distance2d fract.x * fw, fract.y * fh} 
+        }
+    }
+    def region = {Region.from-vertex-array vertices}
+    {return region}
+  }
+  
+  {doc-next
+    {purpose
+        Compute a {docref DisplacementMesh} from the current completion percentage
+        of the animation
+        and use the {docref DisplacementMesh}'s edges to set the window shape
+        for {ctext self.{docref-abbr BezierViewAnimator.borderless-view}}.
+    }
+    {parameter warp-completion,
+        The percentage of completion of the warp operation.
+        If this parameter is 0.0,
+        then the {ctext start-mesh} {docref DisplacementMesh} is used.
+        If this parameter is 1.0,
+        then the {ctext end-mesh} {docref DisplacementMesh} is used.
+        Intermediate values of this parameter cause the {docref DisplacementMesh}
+        to be calculated by Bezier interpolation using the control meshes
+        that were passed to the constructor of this class.
+    }
+    {parameter (fw, fh),
+        The width and height of the window contents in 3D space
+        if they are not warped.
+        These parameters should equal the values returned by the
+        {docref-abbr BezierViewAnimator.compute-3d-sizes} method.
+    }
+    {return-vals
+        The {docref DisplacementMesh} that results from applying
+        the {param warp-completion} parameter.
+    }
+    {notes
+        This method throws an error if called in an unprivileged applet,
+        because only a privileged applet can set a window's shape.
+    }
+  }
+  {method protected {set-view-warp warp-completion:double, fw:Distance, fh:Distance}:DisplacementMesh
+    {if not {process-privileged?} then
+        {error "Animated transitions that change the window shape can only be used in privileged applets."}
+    }
+    {if warp-completion <= 0.0 then
+        def region = {self.make-warp-region self.start-mesh, fw, fh}
+        {self.borderless-view.set-window-shape region}
+        {return self.start-mesh}
+     elseif warp-completion < 1.0 then
+        def mesh = self.temp-mesh
+        {bezier-interpolate-displacement-mesh
+            self.start-mesh,
+            self.t1-mesh,
+            self.t2-mesh,
+            self.end-mesh,
+            warp-completion,
+            target-mesh = mesh
+        }
+        def region = {self.make-warp-region mesh, fw, fh}
+        {self.borderless-view.set-window-shape region}
+        {return mesh}
+     else
+        {self.borderless-view.set-window-shape null}
+        {return self.end-mesh}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Set up to perform an animated open or close transition on an
+        {docref AnimatedView}, creating and initializing all the needed
+        3D objects.
+    }
+    {parameter v,
+        The {docref AnimatedView} on which the animation will be performed.
+    }
+    {parameter pmap,
+        The full {docref Pixmap} that contains the full-size contents
+        of the {docref AnimatedView} in question.
+    }
+    {parameter (fw, fh),
+        The width and height of the window contents in 3D space
+        if they are not warped.
+        These parameters should equal the values returned by the
+        {docref-abbr BezierViewAnimator.compute-3d-sizes} method.
+    }
+  }
+  {method protected {build-scene v:AnimatedView, pmap:Pixmap, fw:Distance, fh:Distance}:void
+    def bounds = {v.child.get-bounds}
+    def (display-x, display-y) = {v.child.graphic.transform-to-display-coordinates -bounds.lextent, -bounds.ascent}
+    set self.borderless-view =
+        {View
+            owner = v,
+            decorations? = false,
+            visibility = "hidden"
+        }
+    {self.make-scene}
+    def quad-scale = 1m
+    def pset = {self.make-polygon-set pmap, quad-scale}
+    set self.pset = pset
+    {self.scene.add-object pset}
+    {self.borderless-view.set-window-position-and-size display-x, display-y, fw, fh}
+    {self.set-view-warp 0.0, fw, fh}
+    {after 50ms do
+        {self.borderless-view.show}
+        || It is important to raise v above the borderless View because raising v
+        || also gives it the focus, and that keeps the color of v's decorations
+        || consistent with what they were just before the beginning of a close
+        || animation.  But we do this after a short delay because that seems to
+        || reduce the length of the rendering "glitch" that is sometimes caused
+        || by this operation. 
+        {v.raise}
+    }
+  }
+  
+}
+
+{doc-next
+    {purpose
+        Animation for posting an {docref AnimatedView} using a
+        {quote genie out of the bottle} animation effect.
+    }
+    {notes
+        {docref GenieViewCloseAnimator} is the standard close animation
+        for a window that is opened using this animator.
+        Since {docref GenieViewCloseAnimator} changes the opacity of the window,
+        the opacity of the fully displayed window, before beginning the
+        close animation, will be set to 0.999 to avoid a glitch at the
+        beginning of the close animation.
+        See the documentation for {docref-abbr ViewCloseAnimator.needs-translucency?}
+        for further information about this issue.
+        If the use of an opacity of 0.999 is not acceptable,
+        a close animation that does not require this opacity,
+        such as {docref ShrinkViewCloseAnimator},
+        should be specified explicitly.
+        
+        The window shaping that is performed by this animator
+        can only be performed in a privileged applet,
+        so if the applet is not privileged,
+        the constructor for this animation will throw an error.
+    }
+}
+{define-class public GenieViewAnimator {inherits SingleViewOpenAnimator, BezierViewAnimator}
+  
+  {doc-next
+    {purpose
+        Construct a {docref GenieViewAnimator} object.
+    }
+    {parameter (duration, pacing),
+        The duration and pacing for the animation effect.
+        See {docref ViewCommonAnimator.default} for further information
+        about these parameters.
+    }
+    {parameter mesh-size,
+        The width and height of the {docref DisplacementMesh} objects
+        that will be used to control the progress of the animation.
+        Larger numbers for this parameter lead to smoother warping of the old screen,
+        while smaller numbers may increase performance at the expense of a more angular
+        look to the warping.
+        After a certain mesh size is reached, however, the added improvement from
+        further increases in the mesh size is very difficult to notice.
+        
+        The {param mesh-size} parameter is only used if no value is specified
+        for the {param start-mesh} parameter.
+        If a {docref DisplacementMesh} is specified for the {param start-mesh} parameter, then the
+        height and width of that {docref DisplacementMesh} will govern.
+    }
+    {parameter start-mesh,
+        A {docref DisplacementMesh} describing the initial warping of the window
+        during the transition.
+        If no value is explicitly specified for this argument,
+        a regular {docref DisplacementMesh} with height and width equal
+        to {param mesh-size} is used.
+    }
+    {parameter (t1-mesh, t2-mesh),
+        These {docref DisplacementMesh}es specify the control points for a
+        Bezier cubic curve that smoothly transitions from
+        {param start-mesh} to {param end-mesh}.
+        If only {param t1-mesh} is specified,
+        the same {docref DisplacementMesh} is used for {param t2-mesh}.
+        In this case, the shape of the old screen will warp toward{em-dash}but
+        not actually reach{em-dash} this shape as it transitions from
+        {param start-mesh} to {param end-mesh}.
+        If different meshes are specified for {param t1-mesh} and {param t2-mesh},
+        a greater degree of control over the trajectory of the animation
+        is possible.
+    }
+    {parameter end-mesh,
+        A {docref DisplacementMesh} describing the final warping of the window
+        in the transition.
+        By default this mesh is a {docref DisplacementMesh} that maps all
+        coordinates to the same point,
+        such as is returned by {docref make-point-displacement-mesh}.
+        Callers may want to specify this {docref DisplacementMesh}
+        (as well as {param t1-mesh} and {param t2-mesh})
+        explicitly
+        to control the (x, y) coordinates of the final point into which the
+        old screen vanishes.
+    }
+  }
+  {constructor public {default
+                          duration:Time = 0.5s,
+                          pacing:#{proc-type {double}:double} = null,
+                          mesh-size:int = 30,
+                          end-mesh:DisplacementMesh =
+                              {make-regular-displacement-mesh mesh-size, mesh-size},
+                          t1-mesh:DisplacementMesh =
+                              {make-genie-displacement-mesh end-mesh},
+                          t2-mesh:DisplacementMesh = t1-mesh,
+                          start-mesh:DisplacementMesh = {make-point-displacement-mesh end-mesh}
+                      }
+    {if not {process-privileged?} then
+        {error "GenieViewAnimator can only be used in a privileged applet."}
+    }
+    {construct-super.SingleViewOpenAnimator duration = duration, pacing = pacing}
+    {construct-super.BezierViewAnimator
+        end-mesh = end-mesh,
+        t1-mesh = t1-mesh,
+        t2-mesh = t2-mesh,
+        start-mesh = start-mesh
+    }
+  }
+  
+  {method public {initialize-view v:AnimatedView, pmap:Pixmap}:Graphic
+    {super.initialize-view v, pmap}
+    set self.pixmap = pmap
+    {v.set-opacity 0.0}
+    {after 0s do
+        {self.build-scene v, pmap, self.full-width, self.full-height}
+    }
+    {return self.overlay}
+  }
+  
+  {method public {update-view v:AnimatedView, completion:double}:void
+    def threshold = 0.75
+    def warp-completion = {min completion / threshold, 1.0}
+    def fade-completion = {max 0.0, (completion - threshold) / (1.0 - threshold)}
+    
+    def mesh = {self.set-view-warp warp-completion, self.full-width, self.full-height}
+    {self.set-pset-warp mesh}
+    
+    {v.set-opacity {min fade-completion, 0.999}}
+    {v.set-window-position-and-size self.x0, self.y0, self.full-width, self.full-height}
+    {self.overlay.set-draw-size self.full-width, self.full-height}
+  }
+  
+  {method public {finish-view v:AnimatedView}:void
+    {v.set-opacity {if self.needs-translucency? then 0.999 else 1.0}}
+    {self.borderless-view.hide}
+    {self.borderless-view.destroy}
+  }
+  
+  {getter public {matched-close-animator}:ViewCloseAnimator
+    {return
+        {GenieViewCloseAnimator
+            duration = self.duration, pacing = self.pacing,
+            start-mesh = self.end-mesh,
+            t1-mesh = self.t2-mesh, t2-mesh = self.t1-mesh,
+            end-mesh = self.start-mesh
+        }
+    }
+  }
+  
+}
+
+{doc-next
+    {purpose
+        Animation for closing an {docref AnimatedView} using a
+        {quote genie into the bottle} animation effect.
+    }
+    {notes
+        This is the standard close animation for a window that is opened
+        using {docref GenieViewAnimator}.
+        
+        Since this animator changes the opacity of an {docref AnimatedView},
+        the opacity of the fully displayed window, before beginning the
+        close animation, will be set to 0.999 to avoid a glitch at the
+        beginning of the close animation.
+        See the documentation for {docref-abbr ViewCloseAnimator.needs-translucency?}
+        for further information about this issue.
+        
+        The window shaping that is performed by this animator
+        can only be performed in a privileged applet,
+        so if the applet is not privileged,
+        the constructor for this animation will throw an error.
+    }
+}
+{define-class public GenieViewCloseAnimator {inherits SingleViewCloseAnimator, BezierViewAnimator}
+  
+  {doc-next
+    {purpose
+        Construct a {docref GenieViewCloseAnimator} object.
+    }
+    {parameter (duration, pacing),
+        The duration and pacing for the animation effect.
+        See {docref ViewCommonAnimator.default} for further information
+        about these parameters.
+    }
+    {parameter mesh-size,
+        The width and height of the {docref DisplacementMesh} objects
+        that will be used to control the progress of the animation.
+        See {docref GenieViewAnimator.default} for further information.
+    }
+    {parameter (start-mesh, t1-mesh, t2-mesh, end-mesh),
+        {docref DisplacementMesh}es describing the warping of the window
+        during the transition.
+        See {docref GenieViewAnimator.default} for further information.
+    }
+  }
+  {constructor public {default
+                          duration:Time = 0.5s,
+                          pacing:#{proc-type {double}:double} = null,
+                          mesh-size:int = 30,
+                          start-mesh:DisplacementMesh =
+                              {make-regular-displacement-mesh mesh-size, mesh-size},
+                          t1-mesh:DisplacementMesh =
+                              {make-genie-displacement-mesh start-mesh},
+                          t2-mesh:DisplacementMesh = t1-mesh,
+                          end-mesh:DisplacementMesh = {make-point-displacement-mesh start-mesh}
+                      }
+    {if not {process-privileged?} then
+        {error "GenieViewCloseAnimator can only be used in a privileged applet."}
+    }
+    {construct-super.SingleViewCloseAnimator duration = duration, pacing = pacing}
+    {construct-super.BezierViewAnimator
+        end-mesh = end-mesh,
+        t1-mesh = t1-mesh,
+        t2-mesh = t2-mesh,
+        start-mesh = start-mesh
+    }
+  }
+  
+  {method public {initialize-view v:AnimatedView, pmap:Pixmap}:Graphic
+    {super.initialize-view v, pmap}
+    set self.pixmap = pmap
+    {after 0s do
+        {self.build-scene v, pmap, self.full-width, self.full-height}
+    }
+    {return self.overlay}
+  }
+  
+  {method public {update-view v:AnimatedView, rcompletion:double}:void
+    def completion = 1.0 - rcompletion
+    def threshold = 0.75
+    def warp-completion = {max 1.0 - completion / threshold, 0.001}
+    def fade-completion = {max 0.0, (completion - threshold) / (1.0 - threshold)}
+    
+    def mesh = {self.set-view-warp warp-completion, self.full-width, self.full-height}
+    {self.set-pset-warp mesh}
+    
+    {v.set-opacity {min fade-completion, 0.999}}
+    {v.set-window-position-and-size self.x0, self.y0, self.full-width, self.full-height}
+    {self.overlay.set-draw-size self.full-width, self.full-height}
+  }
+  
+  {method public {finish-view v:AnimatedView}:void
+    {self.borderless-view.destroy}
+    {super.finish-view v}
+  }
+  
+  {getter public {needs-translucency?}:bool
+    {return true}
+  }
+  
+}
+
+{doc-next
+    {purpose
+        A subclass of {docref View} that can be posted and closed using animated effects.
+    }
+}
+{define-class public AnimatedView {inherits View}
+  
+  || A Frame that holds the current View contents.  Most of the time this will
+  || be the user-level View contents, but during opening and closing animations
+  || it will be a Pixmap that looks like those contents.
+  field private contents-holder:Frame = {Frame horigin = "left", vorigin = "top"}
+  
+  || The object that the caller has specified as the contents of this View.
+  field private view-contents:#Graphic = null
+  
+  field private animator:ViewOpenAnimator
+  field private close-animator:ViewCloseAnimator
+  
+  {doc-next
+    {purpose
+        Construct an {docref AnimatedView} object.
+    }
+    {parameter center?,
+        Specifies whether this {docref AnimatedView} should be positioned so that it is centered
+        over its owner {docref View}, if any.
+        The default value does not cause centering.
+    }
+    {parameter animator,
+        The {docref ViewOpenAnimator} that controls the animation that accompanies
+        the posting of this {docref AnimatedView}.
+    }
+    {parameter close-animator,
+        The {docref ViewCloseAnimator} that controls the animation that accompanies
+        the closing of this {docref AnimatedView}.
+        If this animator is not specified explicitly,
+        an animator that matches the animation provided by {param animator}
+        is used.
+    }
+    {parameter ...,
+        Any additional arguments are passed directly to the
+        {docref View.default} constructor.
+    }
+  }
+  {constructor public {default
+                          center?:bool = false,
+                          animator:ViewOpenAnimator = {GrowViewAnimator},
+                          close-animator:ViewCloseAnimator = animator.matched-close-animator,
+                          ...
+                      }
+    set self.animator = animator
+    set self.close-animator = close-animator
+    {with-compiler-directives allow-slow-spliced-arguments? = true do
+        {construct-super ...}
+    }
+    set animator.needs-translucency? = close-animator.needs-translucency?
+    {self.add-event-handler
+        {on e:WindowClose do
+            {if not e.consumed? then
+                {self.start-close-animation}
+                {e.consume}
+            }
+        }
+    }
+    {self.add-internal self.contents-holder}
+    {self.set-size-from-child}
+    {if center? then
+        {self.center-view}
+    }
+  }
+  
+  {method public {add g:any, ...}:#Visual
+    def gg = g asa Graphic
+    set self.view-contents = gg
+    {return
+        {self.contents-holder.add gg, ...}
+    }
+  }
+  
+  || Create a Pixmap and offscreen Drawable based on the current View contents.
+  {method private {make-pixmap-from g:GetBoundsBox}:(Pixmap, Drawable)
+    def self-bounds = {self.get-bounds}
+    def dc = {self.get-display-context}
+    def (r2d, drawable) =
+        {Renderer2d.create-offscreen
+            self-bounds.width,
+            self-bounds.height,
+            resolution = 1.0 / dc.pixel-size
+        }
+    def bg = {g.background.to-FillPattern}
+    {r2d.render-rectangle 0m, 0m, self-bounds.width, self-bounds.height, fill-pattern = bg}
+    
+    def bounds = {g.get-bounds}
+    def (xr, yr) = {g.get-origin-in-root}
+    def pixel-size = dc.pixel-size
+    def (xp, xo) = {round xr, pixel-size}
+    def (yp, yo) = {round yr, pixel-size}
+    {with-render-properties
+        translation = {Distance2d bounds.lextent + xo, bounds.ascent + yo}
+     on r2d do
+        {g.draw r2d}
+    }
+    
+    def pmap = {drawable.to-Pixmap}
+    || Patch for the bug that the default black color has alpha == 0!! 
+    {for-pixel p:Pixel in pmap do
+        set p = {Pixel.from-uint8 p.red-as-uint8, p.green-as-uint8, p.blue-as-uint8, alpha = 255}
+    }
+    {return pmap, drawable}
+  }
+  
+  {method public {show
+                     force-on-display?:bool = true,
+                     center?:bool = false
+                 }:void
+    {after 0s do
+        def (pmap, drawable) = {self.make-pixmap-from self}
+        def animator = self.animator
+        def overlay = {animator.initialize-view self, pmap}
+        {self.contents-holder.add overlay, replace? = true}
+        
+        def animation-start-time = {DateTime}
+        let last-update-time:Time = -1s
+        def refresh-interval = 1s / 59.5
+        def duration = animator.duration
+        def pacing = animator.pacing
+        def animation-timer =
+            {self.animate
+                interval = 1ms,
+                {on TimerEvent do
+                    def etime = {animation-start-time.elapsed}
+                    {if {floor etime, refresh-interval} > {floor last-update-time, refresh-interval} then
+                        set last-update-time = etime
+                        {if etime < duration then
+                            let completion:double = {min 1.0, etime / duration}
+                            {if-non-null pacing then
+                                set completion = {pacing completion}
+                            }
+                            {animator.update-view self, completion}
+                         else
+                            {animation-timer.disable}
+                            {animator.finish-view self}
+                            {self.contents-holder.add self.view-contents, replace? = true}
+                            {drawable.destroy}
+                        }
+                    }
+                }
+            }
+        {super.show force-on-display? = force-on-display?, center? = center?}
+    }
+  }
+  
+  || Start the animation that is specified for closing this View.
+  {method private {start-close-animation}:void
+    def (pmap, drawable) = {self.make-pixmap-from self}
+    def close-animator = self.close-animator
+    def overlay = {close-animator.initialize-view self, pmap}
+    
+    def animation-start-time = {DateTime}
+    let last-update-time:Time = -1s
+    def refresh-interval = 1s / 59.5
+    def duration = close-animator.duration
+    def pacing = close-animator.pacing
+    def animation-timer =
+        {self.animate
+            interval = 1ms,
+            {on TimerEvent do
+                def etime = {animation-start-time.elapsed}
+                {if {floor etime, refresh-interval} > {floor last-update-time, refresh-interval} then
+                    set last-update-time = etime
+                    {if etime < duration then
+                        let completion:double = {min 1.0, etime / duration}
+                        {if-non-null pacing then
+                            set completion = {pacing completion}
+                        }
+                        {close-animator.update-view self, completion}
+                     else
+                        {animation-timer.disable}
+                        {close-animator.finish-view self}
+                        {drawable.destroy}
+                    }
+                }
+            }
+        }
+  }
+  
+}

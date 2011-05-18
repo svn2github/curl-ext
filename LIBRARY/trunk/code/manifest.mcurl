@@ -13,6 +13,10 @@
     location = "splash-animation/load.scurl"
 }
 
+{component package COM.CURL.EXT.VIEW-ANIMATION,
+    location = "view-animation/load.scurl"
+}
+
 ||--{component file sample-transition-frame.curl,
 ||--    location = "docs/samples/sample-transition-frame.curl"
 ||--}
