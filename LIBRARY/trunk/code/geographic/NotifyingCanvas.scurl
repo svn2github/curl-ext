@@ -79,6 +79,7 @@
   
   {method public {on-pointer-press e:PointerPress}:void
     {e.continue-implicit-pointer-grab self}
+    {e.consume}
   } 
   
   {method public {on-pointer-release e:PointerRelease}:void
