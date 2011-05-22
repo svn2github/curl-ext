@@ -152,6 +152,12 @@ How to handle foreign key fields?
     let ret:bool = {super.become-active forward? = forward?}
     {if ret then
         {if-non-null editor = self.current-editor then
+            def ddl = editor asa DropdownList
+            def lm = ddl.data-model
+            {lm.clear}
+            {for item in {self.create-list-value-array} do
+                {lm.append-quietly item}
+            }
             {editor.become-active forward? = forward?}
         }
     }
@@ -816,7 +822,7 @@ How to handle foreign key fields?
         self.tasks.rs.batch-events? = true
      do
         {self.scheduled.clear}
-        {dump "-- compute-schedule", id}
+||--        {dump "-- compute-schedule", id}
 
         def task-records = {self.tasks.rs.select}
         {if id != 0 then
@@ -948,7 +954,7 @@ How to handle foreign key fields?
             }
             || Compute the end date once the begin date is known
             set dn.data.begin = {self.find-nearest-date dn.data.owner, last}
-            {dump "asap", dn.data.ord, dn.data.begin}
+||--            {dump "asap", dn.data.ord, dn.data.begin}
             {self.compute-end-date dn.data}
         }
     }
@@ -1632,8 +1638,9 @@ INSERT INTO task VALUES (1,0,0,0,0,'Sample Task 1','JP','',1.0,0.0,0.0);
     }
     {self.rs.add-event-handler
         {on e:RecordRemoved do
-            def tr = {self.get-TaskRecord e.record}
-            {self.task-record-map.remove tr.id}
+            || You can't do anything with e.record (r["id"] will throw an
+            || error) so we have to rebuild the task-record-map from scratch
+            {self.rebuild}
         }
     }
     {self.rs.add-event-handler
@@ -1645,21 +1652,24 @@ INSERT INTO task VALUES (1,0,0,0,0,'Sample Task 1','JP','',1.0,0.0,0.0);
 
   {method public open {rebuild}:void
     || This can happen for relatively minor changes, such as expanding
-    || or contracting a node. So just verify that everything is
-    || internally consistent, and add missing items if needed
-    def ids = {new {Set-of int}}
-    {for r:Record in self.rs do
-        def id = r["id"] asa int
-        def (tr, found?) = {self.task-record-map.get-if-exists id}
-        {if not found? then
-            {dump "not found after bulk changes", id}
-            def nr = {self.get-TaskRecord-by-id id}
+    || or contracting a node, so do as little work as possible.
+
+    def recs = {self.rs.select}
+    {if recs.size > self.task-record-map.size then
+        {for r:Record in recs do
+            || This will create new entries if needed
+            {self.get-TaskRecord r}
         }
-        {ids.insert id}
+     elseif self.rs.size < self.task-record-map.size then
+        || Records were deleted
+        def trm = {new {HashTable-of int, TaskRecord}}
+        {for r:Record in recs do
+            def id = r["id"] asa int
+            set trm[id] = self.task-record-map[id]
+        }
+        set self.task-record-map = trm
     }
-    || If this assert fails, it means a task was deleted and not
-    || removed from the map. Perhaps that should be done here.
-    {assert ids.size == self.rs.size}
+    {assert self.rs.size == self.task-record-map.size}
   }
 
   {method public open {new-task}:int

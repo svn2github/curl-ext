@@ -1,15 +1,31 @@
 {curl 7.0 package}
 
+{doc type = package, COM.CURL.EXT.STANDARD
+    {purpose
+        This package imports and re-exports all of the packages in the
+        Curl External Library. Instead of importing individual packages,
+        you can import COM.CURL.EXT.STANDARD instead.
+    }
+}
 {package COM.CURL.EXT.STANDARD,
     {compiler-directives careful? = true}
 }
-{import public * from COM.CURL.EXT.AUTO-TEST}
-{import public * from COM.CURL.EXT.DATA-ACCESS}
+
+
+{import public * from COM.CURL.EXT.BACKGROUND-TASK}
+
 {import public * from COM.CURL.EXT.GRAPHS}
 {import public * from COM.CURL.EXT.CALCULATED-RECORDSET}
-{import public * from COM.CURL.EXT.GANTT}
-{import public * from COM.CURL.EXT.GUI}
-{import public * from COM.CURL.EXT.WORKSHEET}
-{import public * from COM.CURL.EXT.TILED-WINDOWS}
 {import public * from COM.CURL.EXT.GEOGRAPHIC}
 
+{import public * from COM.CURL.EXT.AUTO-TEST}
+{import public * from COM.CURL.EXT.DATA-ACCESS}
+{import public * from COM.CURL.EXT.GUI}
+{import public * from COM.CURL.EXT.GANTT}
+{import public * from COM.CURL.EXT.WORKSHEET}
+
+{import public * from COM.CURL.EXT.TILED-WINDOWS}
+{import public * from COM.CURL.EXT.SPLASH-SCREEN}
+{import public * from COM.CURL.EXT.SPLASH-ANIMATION}
+{import public * from COM.CURL.EXT.VIEW-ANIMATION}
+{import public * from COM.CURL.EXT.TRANSITION-LIBRARY}

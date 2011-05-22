@@ -32,9 +32,13 @@ Deployable Library
 -------------------
  
 The 'deploy' directory contains a preprocessed library for use in
-deployed applications.
+deployed applications. The zip file contains 3 directories:
+  COM.CURL.EXT-Vm.n          Compiled code only, for deployment
+  COM.CURL.EXT-Vm.n-doc      Library with documentation - install in CDE
+  COM.CURL.EXT-Vm.n-src      Library with source - can be used for debuggng
 
-- COM.CURL.EXT-V0.x/manifest.mcurl   	COM.CURL.EXT library manifest
+Each of these directories contains a library manifest at the top level:
+COM.CURL.EXT-Vm.n/manifest.mcurl (the COM.CURL.EXT library manifest)
 
 Documentation
 --------------
@@ -43,8 +47,8 @@ The 'docs-install' directory contains library directories prepared for
 addition to the Curl Documentation Viewer using the IDE 'Install
 Documentation' command.  The directories include both documentation
 and source code, which allows stepping into code in the library.
-
-- COM.CURL.EXT-V0.x-doc/manifest.mcurl  COM.CURL.EXT library definition
+For example, COM.CURL.EXT-Vm.n-doc/manifest.mcurl is the
+COM.CURL.EXT library manifest.
 
 
 =============
@@ -82,15 +86,19 @@ and thus require privilege and web access to succeed.
  CHANGES
 =========
 
-0.4 Release
+0.7 Release (May 2011)
+  o Added package COM.CURL.EXT.VIEW-ANIMATION
+  o Minor bug fixes
 
-  o Added DisclosingFrame - a container that can show either
-    a label or content, with a disclosure triangle to switch
-  o Added NumberDomain, CurrencyDomain, LocaleDateDomain, 
-  o Added CurrencyCell
-  o DefaultDiscloser changed to recognize clicks and fire Adjustment
-    events at self.
-  o Added OrderedSet-of
+0.6 Release (April 2011)
+  o Added package COM.CURL.EXT.SPLASH-SCREEN
+  o Added package COM.CURL.EXT.SPLASH-ANIMATION
+  o Added package COM.CURL.EXT.TRANSITION-LIBRARY
+  o Added package COM.CURL.EXT.GEOGRAPHIC
+  o Added tests, documentation, and fixed bugs in COM.CURL.EXT.WORKSHEET
+  o Refactored some of the Worksheet APIs, espcially the constructor.
+    Added CellSpec and subclasses to improve declarative worksheet
+    construction.
 
 0.5 Release (January 2011)
   o Worksheet
@@ -102,12 +110,11 @@ and thus require privilege and web access to succeed.
     o Pay attention to alternate-row-background
   o JsonRecordSet
 
-0.6 Release (April 2011)
-  o Added package COM.CURL.EXT.SPLASH-SCREEN
-  o Added package COM.CURL.EXT.SPLASH-ANIMATION
-  o Added package COM.CURL.EXT.TRANSITION-LIBRARY
-  o Added package COM.CURL.EXT.GEOGRAPHIC
-  o Added tests, documentation, and fixed bugs in COM.CURL.EXT.WORKSHEET
-  o Refactored some of the Worksheet APIs, espcially the constructor.
-    Added CellSpec and subclasses to improve declarative worksheet
-    construction.
+0.4 Release
+  o Added DisclosingFrame - a container that can show either
+    a label or content, with a disclosure triangle to switch
+  o Added NumberDomain, CurrencyDomain, LocaleDateDomain, 
+  o Added CurrencyCell
+  o DefaultDiscloser changed to recognize clicks and fire Adjustment
+    events at self.
+  o Added OrderedSet-of

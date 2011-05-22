@@ -2397,7 +2397,7 @@ How this evolved:
         {if self.updater-rs != rs then
             {if-non-null updater = self.updater, urs = self.updater-rs then
                 {if {urs.event-handler-present? updater} then
-                    {dump "removing", updater, urs}
+||--                    {dump "removing", updater, urs}
                     {urs.remove-event-handler updater}
                     set self.updater = null
                     set self.updater-rs = null

@@ -1867,9 +1867,9 @@
             GuiTest.test-count, GuiTest.completed-count, GuiTest.failure-count
         }
     {GuiTest.stats-frame.add replace? = true, stats}
-    {dump GuiTest.test-count}
-    {dump GuiTest.completed-count}
-    {dump GuiTest.failure-count}
+||--    {dump GuiTest.test-count}
+||--    {dump GuiTest.completed-count}
+||--    {dump GuiTest.failure-count}
     {if GuiTest.failure-count > 0 then
         {if exit-on-error? then
             {exit 0}

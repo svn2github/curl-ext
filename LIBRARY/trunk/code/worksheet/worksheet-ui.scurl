@@ -388,29 +388,30 @@ How does the edit/update cycle work?
 
 
 {doc-next
-    {purpose Reference to a single cell in a {docref Worksheet}.}
-}
-{define-class public open CellRef {inherits SheetRef}
-
-  {doc-next
     {purpose Compute a hash value for a {docref CellRef}.}
-  }
-  {define-proc public {hash-proc ref:CellRef}:int
+}
+{define-proc public {CellRef-hash-proc ref:CellRef}:int
     let v:int = ref.row * WorksheetModel.max-cols + ref.col
     {if not ref.row-abs? then set v = v * 7}
     {if not ref.col-abs? then set v = v * 111}
     {return {value-hash v}}
-  }
+}
 
-  {doc-next
+{doc-next
     {purpose Compare two {docref CellRef}s and return true if they are equal.}
-  }
-  {define-proc public {equal-proc a:CellRef, b:CellRef}:bool
+}
+{define-proc public {CellRef-equal-proc a:CellRef, b:CellRef}:bool
     {return a.row == b.row and a.col == b.col
         and a.row-abs? == b.row-abs?
         and a.col-abs? == b.col-abs?
     }
-  }
+}
+
+{doc-next
+    {purpose Reference to a single cell in a {docref Worksheet}.}
+}
+{define-class public open CellRef {inherits SheetRef}
+
 
   {doc-next
     {purpose The row number for this cell reference.}
@@ -474,7 +475,7 @@ How does the edit/update cycle work?
   }
 
   {method public open {equal? cr:CellRef}:bool
-    {return {CellRef.equal-proc self, cr}}
+    {return {CellRef-equal-proc self, cr}}
   }
 
   {method public open {resolve target:DataRef}:DataRef
@@ -734,8 +735,8 @@ How does the edit/update cycle work?
     {purpose Compute a hash value for a {docref RangeRef}.}
 }
 {define-proc public {RangeRef-hash-proc ref:RangeRef}:int
-    let h:int = {CellRef.hash-proc ref.cell1}
-    {inc h, {CellRef.hash-proc ref.cell2}}
+    let h:int = {CellRef-hash-proc ref.cell1}
+    {inc h, {CellRef-hash-proc ref.cell2}}
     {return h}
 }
 
@@ -744,8 +745,8 @@ How does the edit/update cycle work?
 }
 {define-proc public {RangeRef-equal-proc a:RangeRef, b:RangeRef}:bool
     {return
-        {CellRef.equal-proc a.cell1, b.cell1}
-        and {CellRef.equal-proc a.cell2, b.cell2}
+        {CellRef-equal-proc a.cell1, b.cell1}
+        and {CellRef-equal-proc a.cell2, b.cell2}
     }
 }
 
@@ -2472,8 +2473,8 @@ How does the edit/update cycle work?
     {purpose A table of the CellRefs used in formulas.}
   }
   field protected cellrefs:{OrderedSet-of CellRef,
-                             key-hash-proc = CellRef.hash-proc,
-                             key-equality-proc = CellRef.equal-proc
+                             key-hash-proc = CellRef-hash-proc,
+                             key-equality-proc = CellRef-equal-proc
                            }
 
   {doc-next
@@ -2518,8 +2519,8 @@ How does the edit/update cycle work?
     set self.embedded-forms = {{ResizableArray-of #EmbeddedRecordForm} rows, 1}
 
     set self.cellrefs = {new {OrderedSet-of CellRef,
-                                 key-hash-proc = CellRef.hash-proc,
-                                 key-equality-proc = CellRef.equal-proc
+                                 key-hash-proc = CellRef-hash-proc,
+                                 key-equality-proc = CellRef-equal-proc
                              }
                         }
     set self.rangerefs = {new {OrderedSet-of RangeRef,

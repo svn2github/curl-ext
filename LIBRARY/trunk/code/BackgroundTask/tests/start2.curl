@@ -21,6 +21,6 @@
     "error",
     {Arguments {{Tuple2-of int, String} 1, "hi"}},
     {on e:BackgroundTaskEvent do
-{dump e.exception}
+        {dump e.exception}
     }
 }

@@ -621,11 +621,11 @@
             {bind value to "application.begin-date" ||
                 in  self.app.settings-store,
                 {format v:String as
-                    {dump "format", v}
+||--                    {dump "format", v}
                     {DateTime.date v}
                 },
                 {parse v:DateTime as
-                    {dump "parse", v}
+||--                    {dump "parse", v}
                     v.info.iso-date
                 }
             },

@@ -750,7 +750,7 @@
     {if self._url == null then
         {try
             let ds:String = {get-persistent-data self.url-key} asa String
-            {dump ds}
+||--            {dump ds}
             let data:JsonObject = {JsonValue-parse ds} asa JsonObject
             set last-url = data["location"] asa String
          catch ex:Exception do || JsonException or KeyNotFoundException or ?
@@ -776,7 +776,7 @@
     {if-non-null location = self.saved-url then
         {try
             let a:any = {location.resolve}
-            {dump location, a}
+||--            {dump location, a}
             {if self.directory? then
                 ||FIXME: what to do?
              else

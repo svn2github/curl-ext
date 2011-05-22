@@ -37,6 +37,8 @@
                     }
 }
 
+{def default-location = {url "data/sample-outline.csv"}}
+
 || -------------------------------------------------------------------------
 
 {define-enum Status
@@ -58,10 +60,12 @@
         {splice ...}
     }
 
-    let location:Url = self.untitled-file-url
+    let location:Url = default-location
     {if location == self.untitled-file-url then
         {if-non-null loc = {file-locator.get-url} then
             set location = loc
+         else
+            set location = default-location
         }
     }
 
@@ -77,12 +81,12 @@
             automatic-columns? = false,
             {RecordGridColumn
                 "title", ||""
-                width = 4in, valign = "top", ||""
+                width = 3.0in, valign = "top", ||""
                 cell-spec = ExpanderCell
             },
             {RecordGridColumn
                 "notes", ||""
-                width = {make-elastic preferred-size = 3in},
+                width = {make-elastic preferred-size = 4in},
                 cell-spec = MultilineStringCell
             },
             {RecordGridColumn

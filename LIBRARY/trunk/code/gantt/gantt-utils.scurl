@@ -166,8 +166,9 @@
                      }
             ||DEBUG
             {if begin > end then
-                {dump "begin > end", tr.name}
-                {breakpoint}
+                set end = begin
+||--                {dump "begin > end", tr.name}
+||--                {breakpoint}
             }
             {self.bar.add-event
                 {EventDisplayInfo 
@@ -1538,7 +1539,7 @@
   }
 
   {method private {init}:void
-    {dump self.project-model}
+||--    {dump self.project-model}
     {if-non-null pm = self.project-model then
         def default-offset-days =
             -{self.spec.displayed-days pm.min-date, pm.begin-date} asa int

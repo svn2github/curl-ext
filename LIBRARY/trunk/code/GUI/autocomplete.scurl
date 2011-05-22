@@ -365,10 +365,10 @@
                 {if-non-null ex = e.exception then
                     ||FIXME: log this? Only complain once? Make it optional?
                     def query = {self.get-query s}.name
-                    {dump "AsyncCompletionProvider.refresh",
-                        query,
-                        ex.message
-                    }
+||--                    {dump "AsyncCompletionProvider.refresh",
+||--                        query,
+||--                        ex.message
+||--                    }
                  else
                     {if not e.canceled? then
                         {type-switch e.stream
@@ -418,7 +418,7 @@
 ||--        {dump response} ||DEBUG
      catch e:Exception do
         ||FIXME: Need to log this, or ignore it
-        {dump "AsyncCompletionProvider.handle-response", e.message}
+||--        {dump "AsyncCompletionProvider.handle-response", e.message}
     }
     set self.opener = null
     def rw = {response.split split-chars = "\n"}

@@ -610,19 +610,21 @@
 
     set self.display-records = 
         {RecordView self.source,
-            sort = "_ord", ||""
-            filter = 
-                {proc {r:Record}:bool
-                    {return not {self.hidden-nodes.member?
-                                    r[self.id-field] asa int
-                                }
-                    }
-||--                    {return not (r["_hide"] asa bool)} ||""
-                }
+            sort = "_ord" ||""
         }
 
     {self.refresh}
-||--    {self.schedule-refresh}
+
+    || Set this filter after refresh because it uses self.hidden-nodes
+    || which is computed by self.refresh.
+    set self.display-records.filter =
+        {proc {r:Record}:bool
+            {return not {self.hidden-nodes.member?
+                            r[self.id-field] asa int
+                        }
+            }
+||--            {return not (r["_hide"] asa bool)} ||""
+        }
   }
 
   {doc-next
@@ -2045,7 +2047,7 @@
         {if ri > 0 then {ords.concat ", "}} ||""
         {ords.concat {format "%d", r[RecordSetTreeModel.pos-field]}} ||""
     }
-    {dump name, ords}
+||--    {dump name, ords}
   }
 
   {doc-next
