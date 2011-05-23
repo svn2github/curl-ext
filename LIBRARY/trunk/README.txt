@@ -56,6 +56,9 @@ Guide. The first subsection is an overview of the packages provided by
 the library with links to more detailed information (where available)
 and sample applets.
 
+You can also run the sample applets directly from 
+COM.CURL.EXT-Vm.n-doc/docs/samples.
+
 =============
  Source Code
 =============
