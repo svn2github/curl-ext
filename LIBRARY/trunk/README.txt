@@ -43,13 +43,18 @@ COM.CURL.EXT-Vm.n/manifest.mcurl (the COM.CURL.EXT library manifest)
 Documentation
 --------------
 
-The 'docs-install' directory contains library directories prepared for
-addition to the Curl Documentation Viewer using the IDE 'Install
-Documentation' command.  The directories include both documentation
-and source code, which allows stepping into code in the library.
-For example, COM.CURL.EXT-Vm.n-doc/manifest.mcurl is the
-COM.CURL.EXT library manifest.
+The "docs install" directory (COM.CURL.EXT-Vm.n-doc) contains library
+directories prepared for addition to the Curl Documentation Viewer
+using the IDE 'Install Documentation' command.  The directories
+include both documentation and source code, which allows stepping into
+code in the library.  For example, COM.CURL.EXT-Vm.n-doc/manifest.mcurl
+is the COM.CURL.EXT library manifest for the "docs install" directory.
 
+If you install the documentation, you will see a new section in the
+Contents pane of the Curl Documentation Viewer called Curl Extensions
+Guide. The first subsection is an overview of the packages provided by
+the library with links to more detailed information (where available)
+and sample applets.
 
 =============
  Source Code
@@ -86,11 +91,9 @@ and thus require privilege and web access to succeed.
  CHANGES
 =========
 
-0.7 Release (May 2011)
+0.6 Release (May 2011)
   o Added package COM.CURL.EXT.VIEW-ANIMATION
   o Minor bug fixes
-
-0.6 Release (April 2011)
   o Added package COM.CURL.EXT.SPLASH-SCREEN
   o Added package COM.CURL.EXT.SPLASH-ANIMATION
   o Added package COM.CURL.EXT.TRANSITION-LIBRARY
