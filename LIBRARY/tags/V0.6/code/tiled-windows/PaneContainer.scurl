@@ -1,0 +1,1246 @@
+||| Copyright (C) 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An Open Curl project.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+
+{doc-next
+    {purpose
+        The top-level graphical container that contains a hierarchy of
+        {docref PaneGroup} and {docref SinglePane} objects.
+    }
+}
+{define-class public open abstract PaneContainer {inherits BaseFrame}
+  
+  {doc-next
+    {purpose
+        The {docref PaneFocusManager} associated with this {docref PaneContainer}.
+    }
+  }
+  field public constant pane-focus-manager:PaneFocusManager = {PaneFocusManager}
+  
+  {doc-next
+    {purpose
+        The docked {docref BasePane} that is currently maximized, if any.
+    }
+    {details
+        At most one docked pane can be maximized at any one time.
+        If there is one, this field points to it.
+        Otherwise, this field contains null.
+    }
+  }
+  field public maximized-docked-pane:#BasePane = null
+  
+  {doc-next
+    {purpose
+        Can the top-level {docref PaneGroup} of this {docref PaneContainer} be replaced?
+    }
+    {details
+        If this value is true, a new top-level {docref PaneGroup} can be spliced in
+        as a parent of this {docref PaneContainer}'s current top-level {docref PaneGroup}.
+        A false value disables this behavior, meaning that the top-level
+        {docref PaneGroup} cannot be changed.
+    }
+  }
+  field protected allow-top-level-splice?:bool = true
+  
+  {doc-next
+    {purpose
+        Construct an empty {docref PaneContainer}.
+    }
+    {parameter ...,
+        Option values to set on the new {docref PaneContainer} can be passed to this
+        constructor as keyword arguments.
+    }
+  }
+  {constructor public {default ...}
+    {construct-super ...}
+  }
+  
+  {doc-next
+    {purpose
+        Inform this {docref PaneContainer} about the existence of a {docref BasePane}
+        that is associated with it.
+    }
+    {parameter pane,
+        The pane to be registered.
+    }
+    {usage
+        This method is called from the default constructor of {docref BasePane}
+        to ensure that every pane is registered as soon as it is created.
+    }
+  }
+  {method public open abstract {register-pane pane:BasePane}:void}
+  
+  {doc-next
+    {purpose
+        Create a {docref FloatingWindow} in which to display a currently detached {docref BasePane}.
+    }
+    {parameter pane,
+        The {docref BasePane} to display in the window.
+    }
+    {parameter state,
+        The {docref PaneState} to set for the pane (either {ctext PaneState.dockable}
+        or {ctext PaneState.floating}).
+    }
+    {details
+        This creates and shows the {docref FloatingWindow}, with {param pane} displayed in it,
+        and updates the bookkeeping fields of {param pane} accordingly.
+    }
+    {override
+        The base implementation of this method in {docref PaneContainer}
+        does some bookkeeping including calling
+        {docref BasePane.note-pane-floated}, so definitions of this method in subclasses
+        should be sure to call {ctext super.float-in-window}.
+    }
+  }
+  {method public open {float-in-window pane:BasePane, state:PaneState}:void
+    set pane.state = state
+    {pane.note-pane-floated}
+  }
+  
+  {doc-next
+    {purpose
+        Dock a currently hidden pane at a heuristically determined location.
+    }
+    {parameter pane,
+        The {docref BasePane} that should be docked.
+    }
+    {details
+        If the {docref-abbr BasePane.path} field of {param pane} contains
+        useful information
+        (because it was initialized that way or because the pane was previously
+        docked),
+        then use it to try to put the pane back where it was or where it
+        belongs.
+    }
+  }
+  {method public open abstract {heuristic-add-pane-from-path pane:BasePane}:void  }
+  
+  {doc-next
+    {purpose
+        Set the top-level {docref PaneGroup} of this {docref PaneContainer}.
+    }
+    {parameter p,
+        The top-level {docref PaneGroup} or individual pane for this {docref PaneContainer}.
+    }
+  }
+  {method public open abstract {set-pane-group p:BasePane}:void}
+  
+  {doc-next
+    {purpose
+        Attach a {docref BasePane} to this {docref PaneContainer} in the {quote maximized} position.
+    }
+    {parameter pane,
+        The pane to be maximized.
+    }
+    {notes
+        It is an error to call this method if another pane is currently maximized.
+    }
+    {override
+        The base implementation of this method in {docref PaneContainer} performs
+        standard bookkeeping on the {docref PaneContainer.maximized-docked-pane} and
+        {docref BasePane.maximized?} fields, so methods that override this
+        should be sure to call {ctext super.attach-maximized-pane}.
+    }
+  }
+  {method public open {attach-maximized-pane pane:BasePane}:void
+    {assert self.maximized-docked-pane == null}
+    set self.maximized-docked-pane = pane
+    set pane.maximized? = true
+  }
+  
+  {doc-next
+    {purpose
+        Detach a {docref BasePane} that is currently maximized in this {docref PaneContainer}.
+    }
+    {parameter pane,
+        The pane to be detached.
+    }
+    {notes
+        It is an error to call this method if {param pane} is not the pane that is currently
+        maximized in this {docref PaneContainer}.
+    }
+    {override
+        The base implementation of this method in {docref PaneContainer} performs
+        standard bookkeeping on the {docref PaneContainer.maximized-docked-pane} and
+        {docref BasePane.maximized?} fields, so methods that override this
+        should be sure to call {ctext super.detach-maximized-pane}.
+    }
+  }
+  {method public open {detach-maximized-pane pane:BasePane}:void
+    {assert self.maximized-docked-pane == pane}
+    set self.maximized-docked-pane = null
+    set pane.maximized? = false
+  }
+  
+  {doc-next
+    {purpose
+        Create a {docref PaneGroup}
+        that will enable a new pane to be docked using the specified {docref DockingAction}.
+    }
+    {parameter action,
+        The {docref DockingAction} that the new parent {docref PaneGroup} must be able to support.
+    }
+    {return-vals
+        The newly created {docref PaneGroup}.
+    }
+    {override
+        This method is provided so it can be overridden by users of this library
+        who wish to specify alternate {docref PaneGroup} classes for use.
+    }
+  }
+  {method protected open abstract {create-pane-group-for-action action:DockingAction}:PaneGroup}
+  
+  {doc-next
+    {purpose
+        Splice in a new parent {docref PaneGroup} for a target {docref BasePane},
+        which will enable a new pane to be docked using the specified {docref DockingAction}.
+    }
+    {parameter target,
+        The {docref BasePane} that will receive a new parent {docref PaneGroup}.
+    }
+    {parameter action,
+        The {docref DockingAction} that the new parent {docref PaneGroup} must be able to support.
+    }
+    {return-vals
+        The new parent {docref PaneGroup} that has been spliced in.
+    }
+  }
+  {method public open abstract {splice-pane-group-for-action
+                                   target:BasePane,
+                                   action:DockingAction
+                               }:PaneGroup
+  }
+  
+  {doc-next
+    {purpose
+        Find the {docref SinglePane}, if any, at the specified coordinates.
+    }
+    {parameter (x, y),
+        The coordinates of interest, relative to the coordinate system of
+        the screen's root window.
+    }
+    {notes
+        This method is called during drag/drop gestures to determine which pane is
+        the target pane for docking.
+    }
+  }
+  {method public open abstract {get-single-pane-at x:Distance, y:Distance}:#SinglePane}
+  
+  {doc-next
+    {purpose
+        Set the size and position of a dragging surrogate {docref View}
+        to reflect the current drop zone in a docking gesture.
+    }
+    {parameter state,
+        The {docref DockingAction} that describes the docking operation that would
+        occur if the drag gesture ended at this point.
+    }
+    {parameter drag-view,
+        The dragging surrogate {docref View}.
+    }
+    {notes
+        This method only tests for docking gestures that are relative to the
+        {docref PaneContainer} itself.
+        Typically these consist of positioning the pointer outside
+        (but not too far outside)
+        one of the four edges of the {docref PaneContainer}.
+    }
+  }
+  {method public open abstract {show-drop-zone
+                                   state:DockingAction,
+                                   drag-view:View
+                               }:void
+  }
+  
+  {doc-next
+    {purpose
+        Compute the {docref DockingAction} that should be performed
+        in response to a drop at the specified position.
+    }
+    {parameter (x, y),
+        The coordinates of the pointer position for the drop, in the
+        coordinate system of the screen's root window.
+    }
+    {parameter e,
+        The most recent {docref GuiInputEvent} in the drag/drop gesture.
+        This can be examined to see which modifier keys are down.
+    }
+    {return-vals
+        A {docref DockingAction} that describes the docking operation
+        that should result from the drop.
+    }
+    {usage
+        This method only applies to docking gestures that are relative to the
+        {docref PaneContainer} itself.
+        Typically these gestures involve dragging to a point just outside the
+        {docref PaneContainer}, which is taken as a request to dock the dragged
+        pane in a (possibly new) top-level {docref PaneGroup},
+        at a position closest to the drop point.
+        Docking gestures within the {docref PaneContainer} are generally
+        handled by the {docref-abbr BasePane.compute-docking-action} method
+        of the {docref SinglePane} that contains the drop point.
+    }
+  }
+  {method public open abstract {compute-docking-action
+                                   x:Distance,
+                                   y:Distance,
+                                   e:GuiInputEvent
+                               }:DockingAction
+  }
+  
+  {doc-next
+    {purpose
+        Dock a pane in a specified relationship to another pane.
+    }
+    {parameter pane,
+        The pane to be docked.
+    }
+    {parameter state,
+        A {docref DockingAction} that describes the desired relationship
+        between {param pane} and {param target}.
+    }
+    {parameter target,
+        The pane relative to which {param pane} should be docked.
+        If this argument is null, then {param pane} should be docked relative
+        to the top-level {docref PaneContainer}.
+    }
+  }
+  {method public open abstract {dock-pane 
+                                   pane:BasePane, 
+                                   state:DockingAction, 
+                                   target:#BasePane
+                               }:void
+  }
+  
+  {doc-next
+    {purpose
+        Display a message in the {docref PaneContainer}'s status line, if there is one.
+    }
+    {parameter text,
+        The message to display.
+    }
+  }
+  {method public open abstract {set-status-text text:String}:void}
+  
+}
+
+{doc-next
+    {purpose
+        Exception thrown when an unknown pane name is seen in the {docref StandardPaneContainer.pane-layout} setter.
+    }
+}
+{define-class public open UnknownPaneNameException {inherits Exception}
+  
+  {doc-next
+    {purpose
+        Construct an {docref UnknownPaneNameException} object.
+    }
+    {parameter message,
+        A human-readable message describing the problem.
+    }
+  }
+  {constructor public {default message:String}
+    {construct-super message}
+  }
+}
+
+{doc-next
+    {purpose
+        The top-level graphical container that contains a hierarchy of
+        {docref PaneGroup} and {docref SinglePane} objects.
+    }
+    {details
+        To customize the appearance, you can use the following
+        {docref-abbr Visual.style-element} values in your style rules.
+        
+        {Table
+            columns = 3,
+            border-width = 1in/300,
+            border-color = "black",
+            horizontal-line-width = 1in/300,
+            vertical-line-width = 1in/300,
+            cell-border-width = 0pt,
+            cell-margin = 2pt,
+            {header-cell style-element},
+            {header-cell Type},
+            {header-cell Description},
+            
+            {ctext StandardPaneContainer}, {docref StandardPaneContainer},
+            {text The {ctext StandardPaneContainer} itself. You can use style rules
+                to set local and nonlocal options.
+            },
+            
+            {ctext StandardPaneContainer/content}, {docref SkinnableFrame},
+            {text The container within which the pane objects are displayed.
+            },
+            
+            {ctext StandardPaneContainer/status-bar}, {docref TextDisplay},
+            {text The status bar.
+            }
+        }
+    }
+}
+{define-class public open StandardPaneContainer {inherits PaneContainer}
+  
+  {doc-next
+    {purpose
+        The standard width of the docking zone at the edges of a pane.
+    }
+  }
+  {let public constant dock-zone-size:Distance = 1cm}
+  
+  {doc-next
+    {purpose
+        A procedure that creates a suitable {docref SinglePane} object with the
+        specified {docref-abbr SinglePane.pane-name}.
+    }
+    {details
+        This procedure is specified when this {docref StandardPaneContainer} is created
+        and is called when the {docref StandardPaneContainer} is asked to show
+        a pane using a name that does not correspond to any already existing
+        {docref SinglePane} associated with that container.
+        
+        This procedure returns null if it does not know how to create a pane
+        with the specified name.
+    }
+  }
+  field protected pane-maker-proc:{proc-type {String}:#SinglePane}
+  
+  {doc-next
+    {purpose
+        A hash table that maps {docref SinglePane} names to the corresponding {docref SinglePane}
+        objects.
+    }
+  }
+  field public constant known-panes:{HashTable-of String, SinglePane} = {new {HashTable-of String, SinglePane}}
+  
+  || The Frame that actually holds the docked panes in this PaneContainer:
+  field constant private pane-group-holder:Frame =
+      {Frame
+        horigin = "left", vorigin = "top",
+        hstretch? = true, vstretch? = true
+      }
+  
+  || The Frame that holds currently maximized pane, if any:
+  field constant private maximized-pane-holder:Frame =
+      {Frame
+        horigin = "left", vorigin = "top",
+        hstretch? = true, vstretch? = true
+      }
+  
+  || The control that displays status messages, if any:
+  field constant private status-bar:#TextDisplay
+  
+||--  field constant private floating-window-menu:#MenuBar
+
+||--  || DEBUGGING
+||--  field public log?:bool = false
+||--  field public-get log-actions:StringArray = {StringArray}
+||--  field public-get log-specs:StringArray = {StringArray}
+||--  {method {log msg:String}:void
+||--    {if self.log? then
+||--        {output "=============================="}
+||--        {output msg}
+||--        {self.log-actions.append msg}
+||--        def spec = self.pane-layout
+||--        {output spec}
+||--        {self.log-specs.append spec}
+||--    }
+||--  }
+  
+  {getter public open {style-element}:String
+    def _style-element = self._style-element
+    {if _style-element == "" then
+        {return "StandardPaneContainer"}
+     else
+        {return _style-element}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Return the base style rules that describe the default style of this object.
+    }
+    {return-vals
+        An array of {docref StyleRule} objects that will be added to the base set of
+        style rules for the current applet
+        (using {docref StyleManager.append-base-style-rule})
+        to produce the default style for {docref StandardPaneContainer} objects.
+    }
+  }
+  {define-proc public {get-base-style-rules}:{Array-of StyleRule}
+    {return
+        {new {Array-of StyleRule},
+            {StyleRule
+                "StandardPaneContainer/status-bar",
+                control-content-background = "#d4d0c8",
+                border-width = 1px,
+                border-style = "sunken",
+                border-color = "#c0c0c0"
+            }
+        }
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Construct an empty {docref StandardPaneContainer}.
+    }
+    {parameter pane-maker-proc,
+        A procedure that will become the value of the {docref-abbr StandardPaneContainer.pane-maker-proc} field.
+        This procedure will be called when a new pane should be created with a specified name.
+        See {docref StandardPaneContainer.pane-maker-proc} for further information.
+    }
+    {parameter allow-top-level-splice?,
+        The default value is true, which allows a new top-level {docref PaneGroup} to be spliced in
+        as a parent of this {docref PaneContainer}'s current top-level {docref PaneGroup}.
+        
+        Specifying a false value disables this behavior, meaning that the top-level
+        {docref PaneGroup} cannot be changed.
+        This is typically the desired behavior when the top-level {docref PaneGroup} is a
+        {docref TablePaneGroup}.
+    }
+    {parameter ...,
+        Option values to set on the new {docref StandardPaneContainer} can be passed to this
+        constructor as keyword arguments.
+    }
+  }
+  {constructor public
+    {empty
+        pane-maker-proc:{proc-type {String}:#SinglePane} =
+            {proc {pane-name:String}:#SinglePane
+                {return null}
+            },
+        allow-top-level-splice?:bool = true,
+||++    floating-window-menu:#MenuBar = null,
+        ...
+    }
+    {construct-super {splice ...}}
+||++set self.floating-window-menu = floating-window-menu
+    set self.pane-maker-proc = pane-maker-proc
+    set self.allow-top-level-splice? = allow-top-level-splice?
+    set self.status-bar =
+        {TextDisplay
+            _style-element = "StandardPaneContainer/status-bar",
+            width = {add-stretch}
+        }
+    {self.add-internal
+        {Dialog
+            {VBox
+                {SkinnableFrame
+                    _style-element = "StandardPaneContainer/content",
+                    {OverlayBox
+                        width = {add-stretch}, height = {add-stretch},
+                        self.pane-group-holder,
+                        self.maximized-pane-holder
+                    }
+                },
+                self.status-bar
+            }
+        }
+    }  
+  }
+  
+  {doc-next
+    {purpose
+        The top-level {docref PaneGroup} in this {docref PaneContainer}.
+    }
+  }
+  field protected-get private-set pane-group-or-null:#PaneGroup = null
+  
+  {method public open {register-pane pane:BasePane}:void
+    {assert pane.root-container == self}
+    {type-switch pane
+     case sp:SinglePane do
+        || Keep track of this pane in case we later need to access it by name.
+        set self.known-panes[sp.pane-name] = sp
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Find or create a {docref SinglePane} with the specified {docref-abbr SinglePane.pane-name}.
+    }
+    {parameter pane-name,
+        The name that the returned pane should have.
+    }
+    {return-vals
+        The desired {docref SinglePane}, either retrieved from
+        {ctext self.{docref-abbr StandardPaneContainer.known-panes}}
+        or created fresh by calling {ctext self.{docref-abbr StandardPaneContainer.pane-maker-proc}}.
+        If a suitable pane could not be found or created, this method returns null.
+    }
+  }
+  {method public open {get-pane pane-name:String}:#SinglePane
+    def (pane, found?) = {self.known-panes.get-if-exists pane-name}
+    {if found? then
+        {return pane}
+    }
+    def new-pane = {self.pane-maker-proc pane-name}
+    {return new-pane}
+  }
+  
+  {method public open {set-pane-group p:BasePane}:void
+    {assert p.root-container == self}
+    {type-switch p
+     case pg:PaneGroup do
+        {self.pane-group-holder.add pg, replace? = true}
+        set self.pane-group-or-null = pg
+        set pg.pane-group = null
+        || Find some pane in the new pane group to get the focus initially.
+        {pg.focus-other-pane pg}
+     else
+        {error "Not implemented yet!"}
+    }
+  }
+  
+  {method public open {attach-maximized-pane pane:BasePane}:void
+    {super.attach-maximized-pane pane}
+    {self.maximized-pane-holder.add pane, replace? = true}
+    set self.pane-group.visible? = false
+    set self.pane-group.enabled? = false
+  }
+  
+  {method public open {detach-maximized-pane pane:BasePane}:void
+    {super.detach-maximized-pane pane}
+    {pane.detach}
+    {unset self.pane-group.visible?}
+    {unset self.pane-group.enabled?}
+  }
+  
+  {doc-next
+    {purpose
+        Write a Curl expression that can be evaluated to recreate this
+        {docref StandardPaneContainer} and all the panes associated with it.
+    }
+    {parameter out,
+        The output stream to which the Curl expression should be written.
+    }
+    {usage
+        This method provides the layout description that is returned by the
+        {docref StandardPaneContainer.pane-layout} getter.
+        
+        The Curl expression written out by this method is intended to be saved
+        (for example, in a file) and set later as a value for the
+        {docref StandardPaneContainer.pane-layout} setter.
+    }
+  }
+  {method protected open {save-state out:TextOutputStream}:void
+    {format out = out, "\{pane-container "}
+    {self.pane-group.save-state out}
+    {if-non-null max-pane = self.maximized-docked-pane then
+        {out.write-one-string ", maximized-pane = "}
+        {max-pane.save-state out}
+    }
+    {for pane in self.known-panes do
+        {if not pane.docked? then
+            {out.write-one-string ", "}
+            {pane.save-state out}
+        }
+    }
+    {out.write-one '\}'}
+  }
+
+  {doc-next
+    {purpose
+        A description of the current pane layout as a {docref String}
+        containing a Curl source expression.
+    }
+    {throws
+        {exception UnknownPaneNameException,
+            Thrown from the {docref-abbr StandardPaneContainer.pane-layout} setter when
+            the layout specification contains a pane name that is not recognized.
+        }
+    }
+  }
+  {getter public {pane-layout}:String
+    def buf = {StringBuf}
+    {self.save-state buf}
+    {return {buf.to-String}}
+  }
+
+  {setter public {pane-layout layout-spec:String}:void
+    let evaluation-package:#OpenPackage = self.saved-state-evaluation-package
+    {if evaluation-package == null then
+        set evaluation-package =
+            {self.make-saved-state-evaluation-package
+                {fn name => {self.get-pane name}}
+            }
+        set self.saved-state-evaluation-package = evaluation-package
+    }
+    || Hide all panes so we start with a clean slate.
+    {for p in self.known-panes do
+        {p.hide}
+    }
+    {self.shown-panes.clear}
+    set self.focus-pane-for-restore = null
+    {evaluate
+        layout-spec,
+        package = {non-null evaluation-package}
+    }
+    || Now show any panes that were floating and hence were not shown when
+    || the top-level PaneGroup was installed.
+    {for p in self.shown-panes do
+        {p.show}
+        {if p.floating? and p.maximized? then
+            {p.maximize}
+        }
+    }
+    {if-non-null focus-pane = self.focus-pane-for-restore then
+        {after 0s do
+            || Give the focus to the correct pane, but only after a delay so the focus
+            || won't be taken away by floating windows that pop up.
+            {focus-pane.request-pane-focus}
+        }
+    }
+    || Done with self.shown-panes, etc., for now, so null them out.
+    {self.shown-panes.clear}
+    set self.focus-pane-for-restore = null
+  }
+  
+  {doc-next
+    {purpose
+        A cached copy of the evaluation package for the {docref-abbr StandardPaneContainer.pane-layout} setter.
+    }
+  }
+  field protected saved-state-evaluation-package:#OpenPackage = null
+  
+  {doc-next
+    {purpose
+        A temporary set of {docref BasePane}s for communication between the
+        {docref-abbr StandardPaneContainer.pane-layout} setter and
+        {docref-abbr StandardPaneContainer.make-saved-state-evaluation-package}.
+    }
+    {details
+        During the execution of the
+        {docref-abbr StandardPaneContainer.pane-layout} setter,
+        this field contains a set of panes that are found not to be hidden.
+    }
+  }
+  field protected shown-panes:{Set-of BasePane} = {new {Set-of BasePane}}
+  
+  {doc-next
+    {purpose
+        Records the {docref BasePane} which should receive the focus
+        at the end of an operation to set the
+        {docref-abbr StandardPaneContainer.pane-layout} setter.
+    }
+  }
+  field protected focus-pane-for-restore:#BasePane = null
+  
+  {doc-next
+    {purpose
+        Create an {docref OpenPackage} for evaluation of the Curl expression
+        returned by the {docref-abbr StandardPaneContainer.save-state} method.
+    }
+    {parameter map,
+        A procedure that maps pane names to {docref SinglePane} objects.
+        The procedure can return null if no suitable {docref SinglePane} object
+        with the given pane name can be found or created.
+    }
+    {return-vals
+        An {docref OpenPackage} object that provides a suitable evaluation
+        environment for the saved state Curl expressions.
+    }
+  }
+  {method protected {make-saved-state-evaluation-package
+                        map:{proc-type {String}:#SinglePane}
+                    }:OpenPackage
+    def op = {OpenPackage}
+    {op.add "pane-container",
+        {proc {top:PaneGroup, maximized-pane:#SinglePane = null, ...:#SinglePane}:void
+            {self.set-pane-group top}
+            {if-non-null maximized-pane then
+                set maximized-pane.hidden? = false
+                {self.attach-maximized-pane maximized-pane}
+            }
+        }
+    }
+    {op.add "single-pane",
+        {proc {pane-name:String = "",
+               hidden?:bool = false,
+               has-focus?:bool = false,
+               ...
+              }:#SinglePane
+            def pane = {map pane-name}
+            {if-non-null pane then
+                || Set the default state unless a different state is explicitly specified.
+                set pane.state = PaneState.dockable
+                {pane.set-state-properties {splice ...}}
+                {if not hidden? then
+                    {self.shown-panes.insert pane}
+                }
+                {if has-focus? then
+                    || Only one pane should be marked as having the focus.
+                    {assert self.focus-pane-for-restore == null}
+                    set self.focus-pane-for-restore = pane
+                }
+             else
+                {throw
+                    {UnknownPaneNameException
+                        {lmessage Unknown pane name '{value pane-name}'.}
+                    }
+                }
+            }
+            {return pane}
+        }
+    }
+    {op.add "dummy-pane",
+        {proc {pane-name:String = ""}:#SinglePane
+            def pane = {DummyPane self, pane-name = pane-name}
+            {return pane}
+        }
+    }
+    {op.add "linear-pane-group",
+        {proc {...}:PaneGroup
+            {return {LinearPaneGroup self, {splice ...}}}
+        }
+    }
+    {op.add "tabbed-pane-group",
+        {proc {...}:PaneGroup
+            {return {TabbedPaneGroup self, {splice ...}}}
+        }
+    }
+    {op.add "table-pane-group",
+        {proc {...}:PaneGroup
+            {return {TablePaneGroup self, {splice ...}}}
+        }
+    }
+    {op.add "create-path",
+        {proc {...:int}:{Array-of int}
+            {return {new {Array-of int}, {splice ...}}}
+        }
+    }
+    {return op}
+  }
+
+  {method public open {get-single-pane-at x:Distance, y:Distance}:#SinglePane
+    let container:Graphic = self.pane-group
+    {if self.maximized-docked-pane != null then
+        || If there is a maximized pane, then that will be the only pane we can return.
+        set container = self.maximized-docked-pane
+    }
+    set (x, y) = {container.transform-from-display-coordinates x, y}
+    let g:#Graphic = {container.find-graphic-at x, y,
+                         {proc {g:Graphic}:bool
+                             {return g isa SinglePane}
+                         }
+                     }
+    {return g asa #SinglePane}
+  }
+  
+  {method public open {compute-docking-action
+                          x:Distance,
+                          y:Distance,
+                          e:GuiInputEvent
+                      }:DockingAction
+    {if not self.allow-top-level-splice? then
+        || If we don't allow replacing the top-level PaneGroup, then there is nothing to do here.
+        {return DockingAction.none}
+    }
+    {if self.maximized-docked-pane != null then
+        || If there is a maximized pane, we can't try to dock relative to it.
+        {return DockingAction.none}
+    }
+    set (x, y) = {self.transform-from-display-coordinates x, y}
+    let grect:GRect = {self.layout.get-cell-bounds}
+    let width:Distance = grect.width
+    let height:Distance = grect.height
+    {if x < 0pt and x > 0pt - StandardPaneContainer.dock-zone-size then
+        {if y >= 0pt and y <= height then {return DockingAction.left}}
+     elseif x > width and x < width + StandardPaneContainer.dock-zone-size then
+        {if y >= 0pt and y <= height then {return DockingAction.right}}
+     elseif y < 0pt and y > 0pt - StandardPaneContainer.dock-zone-size then
+        {if x >= 0pt and x <= width then {return DockingAction.top}}
+     elseif y > height and y < height + StandardPaneContainer.dock-zone-size then
+        {if x >= 0pt and x <= width then {return DockingAction.bottom}}
+    }
+    {return DockingAction.none}
+  }
+
+  {method public open {show-drop-zone
+                          state:DockingAction,
+                          drag-view:View
+                      }:void
+    {self.pane-group.show-drop-zone state, drag-view}
+  }
+  
+  || A cached dummy pane, used for implementing DockingAction.swap:
+  field private dummy-pane-for-swap:#BasePane = null
+
+  {method public open {dock-pane 
+                          pane:BasePane, 
+                          state:DockingAction, 
+                          target:#BasePane
+                      }:void
+    {if state == DockingAction.swap then
+        {if-non-null target then
+            {if self.dummy-pane-for-swap == null then
+                || If this is our first time doing this, create the dummy pane for the swap.
+                set self.dummy-pane-for-swap = {DummyPane self}
+            }
+            def dummy-pane = {non-null self.dummy-pane-for-swap}
+            let maximized-target?:bool = false
+            {if target.maximized? then
+                || The simplest way to swap something with a maximized pane is to temporarily unmaximize
+                || the target pane, then maximize the replacement pane after the swap has been performed.
+                set maximized-target? = true
+                {target.unmaximize}
+            }
+            {target.replace-pane-with dummy-pane}
+            {pane.replace-pane-with target}
+            {dummy-pane.replace-pane-with pane}
+            {if maximized-target? then
+                {pane.maximize}
+            }
+        }
+        {return}
+    }
+    {if state == DockingAction.replace then
+        {if-non-null target then
+            let maximized-target?:bool = false
+            {if target.maximized? then
+                || The simplest way to replace a maximized pane is to temporarily unmaximize
+                || the target pane, then maximize the replacement pane after the replacement.
+                set maximized-target? = true
+                {target.unmaximize}
+            }
+            {pane.detach-this-pane}
+            {target.replace-pane-with pane}
+            set target.hidden? = true
+            {if maximized-target? then
+                {pane.maximize}
+            }
+        }
+        {return}
+    }
+    {pane.detach-this-pane}
+    {if target == null then
+        || If there is no explicit target, then dock the pane relative
+        || to the top-level PaneGroup of this PaneContainer.
+        set target = self.pane-group
+    }
+    {target.dock-pane-near-me pane, state}
+  }
+  
+  {method protected open {create-pane-group-for-action
+                             action:DockingAction
+                         }:PaneGroup
+    def new-pg =
+        {switch action
+         case DockingAction.left, DockingAction.right do
+            {LinearPaneGroup self, orientation = Orientation.horizontal}
+         case DockingAction.top, DockingAction.bottom do
+            {LinearPaneGroup self, orientation = Orientation.vertical}
+         case DockingAction.tab do
+            {TabbedPaneGroup self}
+         else
+            {error {format "Unimplemented docking action %s", action}}   || *temp* RHH
+        }
+    {return new-pg}
+  }
+  
+  {method public open {splice-pane-group-for-action
+                          target:BasePane,
+                          action:DockingAction
+                      }:PaneGroup
+    {assert target.root-container == self}
+    def new-pg = {self.create-pane-group-for-action action}
+    {if-non-null old-pg = target.pane-group then
+        def old-index = {old-pg.find target}
+        def replaced-pane = {old-pg.replace-pane-at-index new-pg, old-index}
+        {assert replaced-pane == target}
+        {new-pg.add-pane-at-index target, 0}
+     else
+        {new-pg.add-pane-at-index target, 0}
+        {self.set-pane-group new-pg}
+    }
+    {return new-pg}
+  }
+  
+  {doc-next
+    {purpose
+        The top-level {docref PaneGroup} in this {docref PaneContainer}.
+    }
+  }
+  {getter public open {pane-group}:PaneGroup
+    {return {non-null self.pane-group-or-null}}
+  }
+  
+  {doc-next
+    {purpose
+        Insert a new {docref PaneGroup} or groups to provide the right kind of group for restoring
+        a previously attached pane.
+    }
+    {parameter group-type,
+        The {docref String} that identifies the desired type of {docref PaneGroup}
+        into which the pane that is being restored should be inserted.
+        This should be the value that will be returned if the
+        {docref-abbr PaneGroup.group-type} getter is called on the newly
+        created {docref PaneGroup} object.
+    }
+    {parameter parent,
+        The existing {docref PaneGroup} that should be the parent of the newly
+        created {docref PaneGroup} or groups.
+    }
+    {parameter index,
+        The index in {param parent} where the newly created hierarchy should be
+        inserted.
+    }
+    {parameter percent,
+        A percentage value to be used for the newly created {docref PaneGroup},
+        relative to the other children of its parent.
+    }
+    {return-vals
+        The newly created {docref PaneGroup}, which will already have been attached
+        to {param parent} at the position specified by {param index}.
+    }
+  }
+  {method protected open {add-group-from-type
+                             group-type:String,
+                             parent:PaneGroup,
+                             index:int,
+                             percent:double = -1.0
+                         }:bool
+    {switch group-type
+     case "tab" do
+        def new-group = {TabbedPaneGroup self, percent = percent}
+        {parent.heuristic-add-pane new-group, index}
+||++    def child = {parent.replace-pane-at-index new-group, index}
+||++    {new-group.add-pane-at-index child, 0}
+||++    {return new-group}
+||--     case "horizontal", "vertical" do
+||--        def orientation = {Orientation name = group-type}
+||--        def new-group = {LinearPaneGroup self, orientation = orientation}
+||--        let top-group:PaneGroup = new-group
+||--        def parent-type = parent.group-type
+||--        {if parent-type == group-type then
+||--            def opposite-orientation = {LinearPaneGroup.opposite-orientation orientation}
+||--            set top-group = {LinearPaneGroup self, orientation = opposite-orientation}
+||--            {top-group.add-pane-at-index new-group, 0}
+||--        }
+||--        def child = {parent.replace-pane-at-index top-group, index}
+||--        {new-group.add-pane-at-index child, 0}
+||--||++    {return top-group}
+     else
+        {error "Not implemented yet!"}  || *temp* RHH
+||--        def parent-type = parent.group-type
+||--        def orientation =
+||--            {switch parent-type
+||--             case "horizontal", "vertical" do
+||--                {LinearPaneGroup.opposite-orientation {Orientation name = parent-type}}
+||--             else
+||--                Orientation.horizontal
+||--            }
+||--        def new-group = {LinearPaneGroup self, orientation = orientation}
+||--||++    let top-group:PaneGroup = new-group
+||--        def child = {parent.replace-pane-at-index new-group, index}
+||--        {new-group.add-pane-at-index child, 0}
+||--||++    {return new-group}
+    }
+    {return true}
+  }
+  
+  {doc-next
+    {purpose
+        Try to dock a currently hidden pane as the nth child of a specified {docref PaneGroup}.
+    }
+    {parameter pane,
+        The {docref BasePane} to be docked.
+    }
+    {parameter pane-group,
+        The {docref PaneGroup} into which {param pane} should be added. 
+    }
+    {parameter path,
+        The path, which is specified as a sequence if child indices starting from the
+        top-level {docref StandardPaneContainer}.
+    }
+    {parameter path-index,
+        The index in {param path} that corresponds to {param pane-group}.
+        The index in {param pane-group} at which {param pane} should be added
+        will generally be
+        {ctext path[path-index]}.
+    }
+    {return-vals
+        True if {param pane} was successfully docked.
+        False if nothing was changed.
+    }
+    {details
+        This method checks whether the type of {docref PaneGroup} that {param pane}
+        was last docked in is compatible with {param pane-group}, and if not,
+        heuristically attempts to reconstruct a {docref PaneGroup} hierarchy that
+        will more faithfully mirror that which existed when {param pane} was undocked.
+        This may result in adding one or more {docref PaneGroup}s to the hierarchy,
+        and if {param path-index} is not already at the end of {param path},
+        this may in turn result in a recursive call to
+        {docref-abbr StandardPaneContainer.heuristic-add-pane-from-path-with-index}
+        to follow the path further, before {param pane} is actually inserted.
+    }
+  }
+  {method protected open {heuristic-add-pane-at-index
+                             pane:BasePane,
+                             pane-group:PaneGroup,
+                             path:{Array-of int},
+                             path-index:int
+                         }:bool
+    let insert-position:int = path[path-index]
+    let append?:bool = false
+    {if insert-position >= pane-group.size then
+        set append? = true
+        set insert-position = pane-group.size
+    }
+    
+    def parent-group-type = pane.parent-group-type
+    {if parent-group-type != "" and parent-group-type != pane-group.group-type then
+        || If we get here, the PaneGroup that the pane was undocked from is not of the
+        || same type as the PaneGroup that we have found at the end of the saved path.
+        def add-success? =
+            {self.add-group-from-type parent-group-type, pane-group, insert-position, percent = pane.percent}
+        {if not add-success? then {return false}}
+        set pane-group = pane-group[insert-position] asa PaneGroup
+        set insert-position = 0
+    }
+    {pane-group.heuristic-add-pane pane, insert-position}
+    {return true}
+  }
+  
+  {doc-next
+    {purpose
+        Try to dock a currently hidden pane at a location heuristically determined
+        using a specified path.
+    }
+    {parameter pane,
+        The {docref BasePane} to be docked.
+    }
+    {parameter pane-group,
+        The {docref PaneGroup} that corresponds to the current {param path-index} value.
+        When {param path-index} is 0, this should be the top-level {docref PaneGroup}
+        in this {docref StandardPaneContainer}.
+    }
+    {parameter path,
+        The path, which is specified as a sequence if child indices starting from the
+        top-level {docref StandardPaneContainer}.
+    }
+    {parameter path-index,
+        The index in {param path} where we should start following the path.
+        The next step in the path will generally be taken by looking at the
+        {ctext path[path-index]}'th child of {param pane-group}.
+    }
+    {return-vals
+        True if {param pane} was successfully docked.
+        False if nothing was changed.
+    }
+  }
+  {method protected open {heuristic-add-pane-from-path-with-index
+                             pane:BasePane,
+                             pane-group:PaneGroup,
+                             path:{Array-of int},
+                             path-index:int
+                         }:bool
+    {if path-index >= path.size - 1 then
+        def success? =
+            {self.heuristic-add-pane-at-index pane, pane-group, path, path-index}
+        {return success?}
+    }
+    let index:int = path[path-index]
+    {if index >= pane-group.size then
+        def success? =
+            {self.heuristic-add-pane-at-index pane, pane-group, path, path-index}
+        {return success?}
+    }
+    || Guard against the case where the top-level PaneGroup is empty.
+    {if index < 0 then
+        {pane-group.add-pane-at-index pane, 0}
+        {return true}
+    }
+    let next:BasePane = pane-group[index]
+    {type-switch next
+     case pg:PaneGroup do
+        || Found another PaneGroup, so recurse to process the next element of path.
+        {if path-index == path.size - 2 and pane.parent-group-type != "" and pane.parent-group-type != pg.group-type then
+            || We're at the second-from-last stop in the path and the type of the final
+            || container in the path disagrees with the type of the next container we're
+            || looking at.  In this case, the container that is mentioned in the path has
+            || been spliced out and, coincidentally, there is another container now at its
+            || level in the hierarchy.  The right thing to do is to stop at this point and
+            || let a container of the desired type be spliced in.
+            def success? =
+                {self.heuristic-add-pane-at-index pane, pane-group, path, path-index}
+            {return success?}
+        }
+        def success? =
+            {self.heuristic-add-pane-from-path-with-index pane, pg, path, path-index + 1}
+        {if success? then {return true}}
+        || The above didn't work out, so just try the generic approach below.
+     else
+        || If we get here, some PaneGroups that existed when the pane was floated
+        || must have since been pruned out, so we'll just add the pane to the
+        || deepest pane group along the path that was found.
+        || TODO: It might be possible to improve the behavior in this case
+        || by re-creating PaneGroups along the original path so we can add
+        || the pane at the same level that it previously occupied.
+    }
+    def success? =
+        {self.heuristic-add-pane-at-index pane, pane-group, path, path-index}
+    {return success?}
+  }
+  
+  {method public open {heuristic-add-pane-from-path pane:BasePane}:void
+    def path = pane.path
+    let pane-group:PaneGroup = self.pane-group
+    def success? =
+        {self.heuristic-add-pane-from-path-with-index
+            pane,
+            pane-group,
+            path,
+            0
+        }
+    {assert success?}   || *temp* RHH
+  }
+  
+  {method public open {float-in-window pane:BasePane, state:PaneState}:void
+    set pane.floating-view =
+        {ResizableDecorationlessView
+            pane,
+            true,
+            owner = {self.get-view}
+        }
+    {super.float-in-window pane, state}
+  }
+  
+||--  {method public {enable-status-messages}:void
+||--    {if-non-null sb = self.status-bar then
+||--        set sb.status-messages-enabled? = true
+||--    }
+||--  }
+||--
+||--  {method public {disable-status-messages}:void
+||--    {if-non-null sb = self.status-bar then
+||--        set sb.status-messages-enabled? = false
+||--    }
+||--  }
+
+  {method public open {set-status-text text:String}:void
+    {if-non-null sb = self.status-bar then
+        set sb.value = text
+    }
+  }
+  
+}
+
+{do
+    {StyleManager.append-base-style-rule {splice {StandardPaneContainer.get-base-style-rules}}}
+}

@@ -1,0 +1,371 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0 applet}
+
+{applet manifest = "../manifest.mcurl", locale = "en"}
+
+{import * from CURL.UTIL.OBSERVER}
+{import * from CURL.IO.JSON}
+||--{import * from COM.CURL.EXT.GUI}
+||--{import * from COM.CURL.EXT.DATA-ACCESS}
+||--{import * from CURL.IDE.DOCUMENTATION}
+
+{import * from COM.CURL.EXT.WORKSHEET}
+
+{set-document-properties
+    font-size = 9pt
+}
+
+{title Test various Worksheet components}
+
+{define-proc {test-iter gt:GroupTree, max:int}:int
+    let count:int = 0
+    let last:int = 0
+    def gti = {GroupTreeIterator gt}
+    def results = {VBox}
+    {for i in gti do
+        {inc count}
+        {assert gti.count == count}
+        {if count > max then
+            {break}
+        }
+        {results.add {format "n=%2d i = %2d", count, i}}
+        set last = i
+    }
+    {counts.add results}
+    {return last}
+}
+
+Note: it will assert if it fails.
+
+{def display = {VBox}}
+{def counts = {HBox spacing = 8pt}}
+
+{value
+    def gt = {GroupTree}
+    def g0 = {gt.insert-group {GroupSpec true, 0, 0, 2, expanded? = false}}
+    def g1 = {gt.insert-group {GroupSpec true, 0, 3, 5, expanded? = true}}
+||    01234567890
+|| 0: aaaBBB.....  => 0..34567
+    def table = {Table columns = 3,
+                    cell-margin = 1px, font-size = 9pt,
+                    border-color = "gray", border-width = 1in/300
+                }
+    def last = 8
+    def ip-map = {gt.get-position-map last}
+    def ip = {HBox spacing = 4pt}
+    {for i = 0 below last do
+        {ip.add {Frame width = 18pt, {format "%s:%s", i, ip-map[i]}}}
+    }
+    {table.add "ip-map"}
+    {table.add ip}
+    {table.add "(position given index)"}
+
+    def pi-map = {gt.get-index-map 8}
+    def pi = {HBox spacing = 4pt}
+    {for i = 0 below last do
+        {pi.add {Frame width = 18pt, {format "%s:%s", i, pi-map[i]}}}
+    }
+    {table.add "pi-map"}
+    {table.add pi}
+    {table.add "(index given position)"}
+
+    {for i = 0 below last do
+        {if pi-map[i] < last then
+            {assert ip-map[pi-map[i]] == i}
+        }
+        {if ip-map[i] >= 0 then
+            {assert pi-map[ip-map[i]] == i}
+            {assert {gt.visible? i}}
+         else
+            {assert not {gt.visible? i}}
+        }
+    }
+    table
+}
+
+
+{do
+    {def gt = {GroupTree}}
+    {def g0 = {gt.insert-group {GroupSpec true, 0, 0, 2, expanded? = false}}}
+    {def g1 = {gt.insert-group {GroupSpec true, 0, 3, 5, expanded? = false}}}
+    def m = {gt.get-position-map 7}
+    {test-iter gt, 7}
+}
+
+{def gt = {GroupTree}}
+{test-iter gt, 10}
+
+
+{assert gt.depth == 0}
+{def g0a = {gt.insert-group {GroupSpec true, 0, 0, 4, expanded? = false}}}
+||    01234567890
+|| 0: ggggg......
+{assert gt.depth == 1}
+{assert {test-iter gt, 10} == 13}
+
+{def g0c = {gt.insert-group {GroupSpec true, 0, 6, 10}}}
+||    01234567890
+|| 0: ggggg.GGGGG
+{assert gt.depth == 1}
+{assert {test-iter gt, 10} == 13}
+
+{def g0b = {gt.insert-group {GroupSpec true, 0, 5, 5, expanded? = false}}}
+||    01234567890
+|| 0: gggggGGGGGG
+{assert gt.depth == 1}
+{assert {test-iter gt, 10} == 13}
+
+{def g1a = {gt.insert-group {GroupSpec true, 1, 0, 3}}}
+||    01234567890
+|| 0: gggggGGGGGG
+|| 1: GGGG.......
+{assert gt.depth == 2}
+{assert {test-iter gt, 10} == 13}
+
+{def g1b = {gt.insert-group {GroupSpec true, 1, 5, 5}}}
+||    01234567890
+|| 0: gggggGGGGGG
+|| 1: GGGG.G.....
+{assert gt.depth == 2}
+{assert {test-iter gt, 10} == 13}
+
+{def g1c = {gt.insert-group {GroupSpec true, 1, 6, 8, expanded? = false}}}
+||    01234567890
+|| 0: gggggGGGGGG
+|| 1: GGGG.Gggg..
+{assert gt.depth == 2}
+{assert {test-iter gt, 10} == 15}
+
+{do
+    def gt2 = {GroupTree}
+    {gt2.insert-group {GroupSpec true, 0, 1, 5}}
+    {gt2.insert-group {GroupSpec true, 1, 1, 2}}
+    {gt2.insert-group {GroupSpec true, 1, 4, 5, expanded? = false}}
+    def gti = {GroupTreeIterator gt2}
+    {for i in gti do
+        {dump i, gti.count}
+        {if i > 10 then
+            {break}
+        }
+    }
+
+    def map = {gt2.get-position-map 15}
+    {assert gt.depth == 2}
+||--    {assert {test-iter gt2, 10} == 10}
+}
+
+{do
+    def map = {gt.get-position-map 15}
+    def mdisplay = {VBox}
+    {for mi key i in map do
+        {mdisplay.add {format "%d -> %d", i, mi}}
+    }
+    {counts.add mdisplay}
+    {assert map.size == 15}
+}
+
+|| Add an overlapping group at the same level
+{let error?:bool = false}
+{try
+    {def g1x = {gt.insert-group {GroupSpec true, 1, 6, 10}}}
+ catch e:Exception do
+    {display.add "(Expected) " & e.message}
+    set error? = true
+}
+{assert error?}
+
+|| Add at excessive depth
+{set error? = false}
+{try
+    {def g1x = {gt.insert-group {GroupSpec true, 4, 6, 10}}}
+ catch e:Exception do
+    {display.add "(Expected) " & e.message}
+    set error? = true
+}
+{assert error?}
+
+|| Add with bad overlap
+{set error? = false}
+{try
+    {def g1x = {gt.insert-group {GroupSpec true, 1, 3, 8}}}
+ catch e:Exception do
+    {display.add "(Expected) " & e.message}
+    set error? = true
+}
+{assert error?}
+
+|| Add at too far away
+{set error? = false}
+{try
+    {def g1x = {gt.insert-group {GroupSpec true, 1, 11, 12}}}
+ catch e:Exception do
+    {display.add "(Expected) " & e.message}
+    set error? = true
+}
+{assert error?}
+
+
+{let n:int = -1}
+{let count:int = 0}
+{for g in {gt.get-Iterator 0} do
+    {inc count}
+    {assert g.first > n}
+    {assert g.last >= g.first}
+    set n = g.last
+}
+{assert count == 3}
+
+{set n = -1}
+{set count = 0}
+{for g in {gt.get-Iterator 1} do
+    {inc count}
+    {assert g.first > n}
+    {assert g.last >= g.first}
+    set n = g.last
+}
+{assert count == 3}
+
+{value display}
+
+{value counts}
+
+OK
+
+{Worksheet 6, 8,
+    {widths 1.5in, 1.0in, .5in, .5in},
+    {bold A}, {bold B}, {bold C},
+    row = 1, col = 0,  "editable date", {input-cell {DateTime.date}},
+    row = 2, col = 0, "DateField", {value-cell domain = DataSource.date-domain, {DateField}},
+    row = 3, col = 0, "TextField", {TextField}
+
+}
+
+|| Doc Example
+
+|| A procedure to sum a range of cells
+{def sum =
+    {proc {dest:DataRef, src:DataRef}:void
+        let sum:double = 0.0
+        {for v in src do
+||--            {inc sum, {if-non-null v then v asa double else 0.0}}
+            {inc sum, v.as-double}
+        }
+        set dest.value = sum
+    }
+}
+
+|| A procedure to compute the next day from a cell containing a date
+{def next-day =
+    {proc {dest:DataRef, src:DataRef}:void
+        set dest.value = src.value + 1d
+    }
+}
+
+|| A procedure to compute the day name from a cell containing a date
+{def day-name =
+    {proc {dest:DataRef, src:DataRef}:void
+        set dest.value =
+            (src.value asa DateTime).info.locale-weekday
+    }
+}
+
+|| A procedure that concatenates any number of cell values
+{def concat =
+    {proc {dest:DataRef, ...:DataRef}:void
+        def buf = {StringBuf}
+        {for r in ... do
+            {buf.concat r.as-String}
+        }
+        set dest.value = {buf.to-String}
+    }
+}
+
+|| A cell with a formula to compute the next day from the cell above
+{def next-date-cell =
+    {formula-cell
+        domain = DataSource.date-domain, next-day, {RelativeCellRef -1, 0}
+    }
+}
+
+|| A cell with a formula to compute the day name from the cell to the right
+{def day-cell =
+    {formula-cell domain = String, day-name, {RelativeCellRef 0, 1}}}
+
+{Worksheet
+    10, 6,
+    {widths 1.5in, 1in, 1.2in},
+    colspan = 2, {bold Example Worksheet},
+
+    row = 1, col = 0, {row-group 6},
+    {formula-cell domain = String, 
+        concat, {ValueRef "Week of "}, {RelativeCellRef 1, 2}
+    },
+    "Day", "Date", "Hours",
+
+    row = 2, col = 1,
+    {formula-cell domain = String, day-name, {RelativeCellRef 0, 1}},
+    {input-cell {DateTime.date "2010-10-11"}},
+    {input-cell halign = "right", 7},
+
+    row = 3,
+    col = 2, next-date-cell,
+    col = 1, day-cell,
+    col = 3, {input-cell halign = "right", 9},
+
+    row = 4,
+    col = 2, next-date-cell,
+    col = 1, day-cell,
+    col = 3, {input-cell halign = "right", 8},
+
+    row = 5, 
+    col = 2, next-date-cell,
+    col = 1, day-cell,
+    col = 3, {input-cell halign = "right", 9},
+
+    row = 6,
+    col = 2, next-date-cell,
+    col = 1, day-cell,
+    col = 3, {input-cell halign = "right", 4},
+
+    row = 7, col = 2,
+    "Total:", {formula-cell halign = "right", sum, {StringRef "D3:D7"}},
+
+    row = 9, col = 0,
+    row-height = 24pt,
+    {value-cell
+        margin = 0pt,
+        {CommandButton
+            label = "Show Json Data",
+            {on e:Action at cb:CommandButton do
+                {type-switch cb.selection-context
+                 case wks:Worksheet do
+                    {popup-message
+                        title = "Time Sheet Data",
+                        {Frame margin = 6pt,
+                            text-preserve-whitespace? = true,
+                            {JsonValue-to-String 
+                                {wks.model.get-data}, prettify? = true
+                            }
+                        }
+                    }
+                }                    
+            }
+        }
+    }
+}

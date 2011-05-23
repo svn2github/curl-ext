@@ -1,0 +1,164 @@
+|| FIXME: this whole idea seems not that useful.
+|| Perhaps just make into a sample or test case.
+
+||| Maintained by: cwstern
+
+{curl-file-attributes character-encoding = "utf8"}
+
+{doc-next
+    {purpose
+        A matrix of distances between nodes in a graph.
+    }
+}
+{define-class public open {GraphDistanceMatrix-of t:Type, tDistance:Type}
+
+  {doc-next
+    {purpose
+        The base graph for the nodes.
+    }
+  }
+  field public constant graph:{Graph-of t}
+    
+  {doc-next
+    {purpose
+        The proc determining the distances between pairs of nodes.
+    }
+  }
+  field public constant cost-proc:{proc-type {
+                                              {GraphNode-of t},
+                                              {GraphNode-of t}
+                                             }:tDistance
+                                  }
+
+  {doc-next
+    {purpose
+        The value representing an infinite distance between nodes.
+    }
+  }
+  field public constant limit-value:tDistance
+  
+  {doc-next
+    {purpose
+        The value representing the distance from a node to itself.
+    }
+  }
+  field public constant zero-value:tDistance
+  
+  {doc-next
+    {purpose
+        A map of nodes to their indices within the distance matrix.
+    }
+  }
+  field public constant node-index-hash:{HashTable-of {GraphNode-of t}, int}
+
+  {doc-next
+    {purpose
+        An array of nodes, with the indices in this array equal to
+        the indices of their entries within the distance matrix.
+    }
+  }
+  field public constant ordered-nodes:{Array-of {GraphNode-of t}}
+
+  {doc-next
+    {purpose
+        A list of least distance paths between all pairs of nodes.
+    }
+    {details
+        In this matrix, the shortest distance between two nodes
+        {ctext x} and {ctext y} is the entry at position {ctext (x, y)}.
+    }
+  }
+  field public constant distance-matrix:{Array-2-of tDistance}
+
+  field public constant node-order-comparison-proc:#{proc-type
+                                                      {{GraphNode-of t},
+                                                       {GraphNode-of t}
+                                                      }:bool} = null
+  
+  {constructor public {default
+                          graph:{Graph-of t},
+                          cost-proc:{proc-type
+                                        {{GraphNode-of t},
+                                         {GraphNode-of t}
+                                        }:tDistance
+                                    },
+                          zero-value:tDistance,
+                          limit-value:tDistance,
+                          node-order-comparison-proc:
+                          #{proc-type
+                               {{GraphNode-of t},
+                                {GraphNode-of t}
+                               }:bool} = null
+                      }
+    set self.node-index-hash =
+        {new {HashTable-of {GraphNode-of t}, int}}
+    set self.ordered-nodes = {new {Array-of {GraphNode-of t}}}
+    set self.distance-matrix = {new {Array-2-of tDistance}, 0, 0}
+
+    set self.graph = graph
+    set self.cost-proc = cost-proc
+    set self.node-order-comparison-proc = node-order-comparison-proc
+    set self.zero-value = zero-value
+    set self.limit-value = limit-value
+    
+    {for n in graph do
+        {self.ordered-nodes.append n}
+    }
+    {self.compute-costs}
+  }
+
+  {method public open {compute-costs}:void
+    def node-count = self.ordered-nodes.size
+    {self.distance-matrix.set-size node-count, node-count}
+
+    {if-non-null comparison-proc = self.node-order-comparison-proc then
+        {self.ordered-nodes.sort comparison-proc = comparison-proc}
+    }
+    {for node key i in self.ordered-nodes do
+        {self.node-index-hash.set node, i}
+    }
+    
+    {for head key y in self.ordered-nodes do
+        {for tail key x in self.ordered-nodes do
+            {self.distance-matrix.set x, y,
+                {if head == tail then
+                    self.zero-value
+                 elseif {head.has-edge? tail} then
+                    {self.cost-proc head, tail}
+                 else
+                    self.limit-value
+                }
+            }
+        }
+    }
+    def dmatrix = self.distance-matrix
+    {for k = 0 below node-count do
+        {for i = 0 below node-count do
+            {for j = 0 below node-count do
+                def current-val = {dmatrix.get i, j}
+                def ik-step = {dmatrix.get i, k}
+                def kj-step = {dmatrix.get k, j}
+                {if ik-step != self.limit-value and
+                    kj-step != self.limit-value
+                 then
+                    def compare-val = ik-step + kj-step
+                    {if current-val > compare-val then                
+                        {dmatrix.set i, j, compare-val}
+                    }
+                }
+            }
+        }
+    }
+  }
+
+  {method public open {get-distance
+                          head:{GraphNode-of t},
+                          tail:{GraphNode-of t}
+                      }:tDistance
+    def head-index = {self.node-index-hash.get head}
+    def tail-index = {self.node-index-hash.get tail}
+    {return {self.distance-matrix.get head-index, tail-index}}
+  }
+  
+}
+

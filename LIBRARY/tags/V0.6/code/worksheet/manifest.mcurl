@@ -1,0 +1,93 @@
+{curl 7.0 manifest}
+{curl-file-attributes character-encoding = "windows-latin-1"}
+{manifest COM.CURL.EXT.WORKSHEET}
+
+||--{delegate-to COM.CURL.WSDK,
+||--    location = "COM.CURL.WSDK.2.0/manifest.mcurl"
+||--}
+
+{delegate-to COM.CURL.EXT,
+    location = "../manifest.mcurl"
+}
+
+
+{component file t-expandarray.curl,
+    location = "t-expandarray.curl"
+}
+
+{component package COM.CURL.EXT.DATA-ACCESS,
+    location = "../GUI/load-DATA-ACCESS.scurl",
+    version = "1.0",
+    translations-file = "translations.ctd",
+    resource-directory = "curl://install/curl-resources",
+    default-locale = "en"
+}
+
+{component package COM.CURL.EXT.WORKSHEET,
+    location = "load.scurl"
+}
+
+{component file t-basics.curl,
+    location = "t-basics.curl"
+}
+
+{component file t-custom-cells.curl,
+    location = "t-custom-cells.curl"
+}
+
+{component file t-form_grid.curl,
+    location = "t-form+grid.curl"
+}
+
+{component file t-groups.curl,
+    location = "t-groups.curl"
+}
+
+{component file t-mortgage.curl,
+    location = "t-mortgage.curl"
+}
+
+{component file t-recorddata.curl,
+    location = "t-recorddata.curl"
+}
+
+{component file t-row-groups.curl,
+    location = "t-row-groups.curl"
+}
+
+{component file t-rs-wks.curl,
+    location = "t-rs-wks.curl"
+}
+
+{component file t-ruler.curl,
+    location = "t-ruler.curl"
+}
+
+{component file all-tests.html,
+    location = "all-tests.html"
+}
+
+{component file applets.html,
+    location = "applets.html"
+}
+
+{component file demo-expenses.curl,
+    location = "demo-expenses.curl"
+}
+
+{component file t-debug.curl,
+    location = "t-debug.curl"
+}
+
+{component file t-model.curl,
+    location = "t-model.curl"
+}
+
+||--{component file start.curl,
+||--    location = "start.curl"
+||--}
+
+
+
+
+

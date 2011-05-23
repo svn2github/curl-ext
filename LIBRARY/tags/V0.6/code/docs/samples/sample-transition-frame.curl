@@ -1,0 +1,693 @@
+||| Copyright (C) 1998-2011, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An Open Curl project.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+{curl 7.0 applet}
+{curl-file-attributes character-encoding = "windows-latin-1"}
+{applet manifest = "../../manifest.mcurl",
+    {compiler-directives careful? = true}
+}
+
+||| This is a sample applet that illustrates the use of the
+||| COM.CURL.EXT.TRANSITION-LIBRARY package.  The applet displays a
+||| TransitionFrame containing a variety of panes showing user-interface
+||| screens, charts, etc., along with several groups of controls
+||| that determine the transitions to be used when switching between
+||| panes in the TransitionFrame.
+|||
+||| The radio button group labeled Transition Type selects the style of
+||| transition to use, and the Transition Duration slider controls the
+||| duration of the animated transition, in seconds.  The Pacing radio
+||| button group controls whether the transition proceeds at a steady
+||| pace or proceeds more slowly at the beginning (Ease In) and/or the
+||| end (Ease Out).  "Custom" pacing is a more exaggerated version of
+||| Ease In & Out.
+
+{import * from COM.CURL.EXT.TRANSITION-LIBRARY}
+{import * from CURL.GUI.CHARTS}
+
+
+|| Define a data set used by the charts and RecordGrid screens:
+
+{let records:RecordSet =
+    {RecordSet        
+        {RecordFields            
+            {RecordField "Month", domain = String},
+            {RecordField "HDD-06", domain = int},
+            {RecordField "CDD-06", domain = int},
+            {RecordField "kWh-05", caption = "kWh 2005", domain = int},
+            {RecordField "kWh-06", caption = "kWh 2006", domain = int}
+        },
+        {RecordData Month = "January", HDD-06 = 28, CDD-06 = 0, kWh-05 = 977, kWh-06 = 1148},
+        {RecordData Month = "February", HDD-06 = 34, CDD-06 = 0, kWh-05 = 1166, kWh-06 = 1067},
+        {RecordData Month = "March", HDD-06 = 26, CDD-06 = 0, kWh-05 = 954, kWh-06 = 910},
+        {RecordData Month = "April", HDD-06 = 15, CDD-06 = 0, kWh-05 = 961, kWh-06 = 786},
+        {RecordData Month = "May", HDD-06 = 8, CDD-06 = 1, kWh-05 = 950, kWh-06 = 818},
+        {RecordData Month = "June", HDD-06 = 2, CDD-06 = 5, kWh-05 = 766, kWh-06 = 785},
+        {RecordData Month = "July", HDD-06 = 0, CDD-06 = 11, kWh-05 = 988, kWh-06 = 1031},
+        {RecordData Month = "August", HDD-06 = 0, CDD-06 = 7, kWh-05 = 1140, kWh-06 = 1086},
+        {RecordData Month = "September", HDD-06 = 2, CDD-06 = 2, kWh-05 = 1021, kWh-06 = 1019},
+        {RecordData Month = "October", HDD-06 = 11, CDD-06 = 0, kWh-05 = 860, kWh-06 = 841},
+        {RecordData Month = "November", HDD-06 = 16, CDD-06 = 0, kWh-05 = 1041, kWh-06 = 909},
+        {RecordData Month = "December", HDD-06 = 24, CDD-06 = 0, kWh-05 = 1073, kWh-06 = 976}
+    }
+}
+
+{doc-next
+    {purpose
+        Return a pacing function defined via cubic Bezier interpolation.
+    }
+    {parameter (p1, p2),
+        Control points that specify the shape of the pacing function.
+        These parameters should lie between 0 and 1, and generally
+        {param p2} should be greater than or equal to {param p1}.
+    }
+    {return-vals
+        A pacing function that maps an argument between 0 and 1 to
+        a result between 0 and 1, based on the shape
+        dictated by the parameters {param p1} and {param p2}.
+        It will always be the case that the pacing function returns 0
+        when the argument is 0,
+        and returns 1 when the argument is 1.
+    }
+}
+{define-proc {cubic-bezier p1:double, p2:double}:{proc-type {double}:double}
+    {return
+        {proc {t:double}:double
+            def tbar = 1.0 - t
+            {return
+                3.0 * tbar * tbar * t * p1 + t * t * (3.0 * tbar * p2 + t)
+            }
+        }
+    }
+}
+
+
+{value
+    || Create the TransitionFrame for the demo:
+    def tf =
+        {TransitionFrame
+            background = "white",
+            border-color = "blue",
+            border-width = 1px,
+            transition-effect = {CrossFadeTransitionEffect}
+        }
+    
+    || Add the various panes to the TransitionFrame:
+    {tf.add
+        {Dialog
+            {VBox
+                width = 7cm,
+                spacing = 8pt,
+                {GroupBox label = "Login",
+                    {Table
+                        {column-prototype
+                            halign = "right",
+                            width = 2cm,
+                            "User name",
+                            "Password"
+                        },
+                        {column-prototype
+                            {TextField},
+                            {PasswordField},
+                            {HBox
+                                {Fill},
+                                {CheckButton label = "Log in automatically", value = true}
+                            },
+                            {HBox
+                                {Fill},
+                                {CommandButton label = "Log In"}
+                            }
+                        }
+                    }
+                },
+                {GroupBox label = "Identification",
+                    {Table
+                        {column-prototype
+                            halign = "right",
+                            width = 2cm,
+                            "First name",
+                            "Last name"
+                        },
+                        {column-prototype
+                            {TextField},
+                            {TextField}
+                        }
+                    }
+                },
+                {GroupBox label = "Billing information",
+                    {Table
+                        {column-prototype
+                            halign = "right",
+                            width = 2cm,
+                            "Division",
+                            "Account number"
+                        },
+                        {column-prototype
+                            {DropdownList
+                                "Engineering", "Finance", "Operations"
+                            },
+                            {TextField}
+                        }
+                    }
+                }
+            }
+        }
+    }
+    {tf.add
+        {RecordGrid
+            width = {add-stretch},
+            height = {add-stretch},
+            record-source = records
+        }
+    }
+    {tf.add
+        {LayeredChart
+            width = 25cm,
+            height = 12cm,
+            left-axis = {ChartAxis
+                            {ChartDataSeries records, "kWh-06"}
+                        },
+            right-axis = {ChartAxis 
+                             {ChartDataSeries records, "CDD-06"},
+                             {ChartDataSeries records, "HDD-06"}
+                         },
+            {LineLayer
+                records,
+                "kWh-06",
+                x-axis-data =
+                    {ChartDataSeries records, "Month"},
+                {ChartDataSeries records, "CDD-06"},
+                {ChartDataSeries records, "HDD-06"}
+            }
+        }
+    }
+    {tf.add
+        {LayeredChart
+            width = 25cm,
+            height = 12cm,
+            left-axis = 
+                {ChartAxis
+                    {ChartDataSeries records, "kWh-05"},
+                    axis-label = "Kilowatt hours"
+                },
+            {BarLayer
+                {ChartDataSeries records, "kWh-05"},
+                {ChartDataSeries records, "kWh-06"},
+                x-axis-data = {ChartDataSeries records, "Month"}
+            }
+        }
+    }
+    {tf.add
+        {PieChart
+            width = 18cm,
+            height = 12cm,
+            {PieSet
+                {ChartDataSeries records, "kWh-06"},
+                label-data = {ChartDataSeries records, "Month"}
+            }
+        }
+    }
+    {tf.add
+        {LayeredChart
+            width = 25cm,
+            height = 12cm,
+            {BubbleLayer
+                records,
+                "kWh-06",
+                scatter-shape = "ellipse",
+                x-axis-data =
+                    {ChartDataSeries records, "Month"},
+                primary-size-data =
+                    {ChartDataSeries records, "CDD-06"},
+                secondary-size-data =
+                    {ChartDataSeries records, "HDD-06"}
+            }
+        }
+    }
+    {tf.add
+        {Frame
+            background = "red", margin = 1in,
+            {hcenter {vcenter {huge font-size = 72pt, Red}}}
+        }
+    }
+    
+    || Create the RadioButton group for choosing which pane to display
+    || in the TransitionFrame:
+    def rbhbox = {HBox spacing = 8pt}
+    {rbhbox.add
+        {RadioButton
+            label = "User information",
+            radio-value = 0
+        }
+    }
+    {rbhbox.add
+        {RadioButton
+            label = "Record data",
+            radio-value = 1
+        }
+    }
+    {rbhbox.add
+        {RadioButton
+            label = "Line graph",
+            radio-value = 2
+        }
+    }
+    {rbhbox.add
+        {RadioButton
+            label = "Bar graph",
+            radio-value = 3,
+            value = true
+        }
+    }
+    {rbhbox.add
+        {RadioButton
+            label = "Pie chart",
+            radio-value = 4,
+            value = true
+        }
+    }
+    {rbhbox.add
+        {RadioButton
+            label = "Bubble chart",
+            radio-value = 5,
+            value = true
+        }
+    }
+    {rbhbox.add
+        {RadioButton
+            label = "Red screen",
+            radio-value = 6,
+            value = true
+        }
+    }
+    def rframe =
+        {RadioFrame
+            rbhbox,
+            {on ValueChanged do
+                {tf.set-active-screen rframe.value}
+            }
+        }
+    || Initially, display the first pane in the TransitionFrame:
+    set rframe.value = 0
+    {tf.set-active-screen 0}
+    
+    || update-transition is a placeholder for a procedure, defined below,
+    || that updates the transition-effect option value of the TransitionFrame
+    || to reflect the settings currently specified by the user.
+    let update-transition:#{proc-type {}:void} = null
+    
+    || Create the radio buttons for selecting the transition pacing:
+    def prbhbox = {HBox spacing = 8pt, valign = "top"}
+    {prbhbox.add
+        {RadioButton
+            label = "Linear",
+            radio-value = null,
+            value = true
+        }
+    }
+    {prbhbox.add
+        {RadioButton
+            label = "Ease In",
+            radio-value = {cubic-bezier 0, 0.5}
+        }
+    }
+    {prbhbox.add
+        {RadioButton
+            label = "Ease Out",
+            radio-value = {cubic-bezier 0.5, 1}
+        }
+    }
+    {prbhbox.add
+        {RadioButton
+            label = "Ease In & Out",
+            radio-value = {cubic-bezier 0, 1}
+        }
+    }
+    {prbhbox.add
+        {RadioButton
+            label = "Custom",
+            radio-value =
+                {value
+                    || By composing two cubic Bezier curves here, this
+                    || pacing function attains a more exaggerated ease-in,
+                    || ease-out profile.
+                    def ease-in-out = {cubic-bezier 0, 1}
+                    def time-map = {cubic-bezier 0.03, 0.97}
+                    {proc {t:double}:double
+                        {return {ease-in-out {time-map t}}}
+                    }
+                }
+        }
+    }
+    def prframe =
+        {RadioFrame
+            prbhbox,
+            {on ValueFinished do
+                {update-transition}
+            }
+        }
+    
+    || Create the radio buttons for selecting the transition effect.
+    || The radio-value for each RadioButton is a procedure or
+    || constructor that takes a duration and a pacing function as
+    || keyword arguments and returns a value of type TransitionEffect,
+    || suitable for being set as the transition-effect option value of
+    || the TransitionFrame.
+    def trbhbox = {HBox spacing = 8pt, valign = "top"}
+    {trbhbox.add
+        {VBox
+            {RadioButton
+                label = "Cross-Fade",
+                radio-value = CrossFadeTransitionEffect
+            },
+            {RadioButton
+                label = "Explode",
+                radio-value = ExplodeTransitionEffect
+            },
+            {RadioButton
+                label = "Implode",
+                radio-value = ImplodeTransitionEffect
+            },
+            {RadioButton
+                label = "Squeeze",
+                radio-value = BezierDisplacementTransitionEffect
+            },
+            {RadioButton
+                label = "Pincushion",
+                radio-value =
+                    {proc {duration:Time = 0.3s, pacing:#{proc-type {double}:double} = null}:TransitionEffect
+                        def start-mesh = {make-regular-displacement-mesh 30, 30}
+                        {return
+                            {BezierDisplacementTransitionEffect
+                                duration = duration, pacing = pacing,
+                                start-mesh = start-mesh,
+                                t1-mesh = {make-pincushion-displacement-mesh start-mesh},
+                                end-mesh = {make-point-displacement-mesh start-mesh, x = 0.5, y = 0.5}
+                            }
+                        }
+                    }
+            }
+        }
+    }
+    {trbhbox.add
+        {VBox
+            {RadioButton
+                label = "3D Spin",
+                radio-value = Spin3dTransitionEffect
+            },
+            {RadioButton
+                label = "Spin Around",
+                radio-value = Spin180TransitionEffect
+            },
+            {RadioButton
+                label = "Page Turn",
+                radio-value = StiffPageTurnTransitionEffect
+            },
+            {RadioButton
+                label = "3D Page Turn",
+                radio-value = PageTurnTransitionEffect
+            }
+        }
+    }
+    {trbhbox.add
+        {VBox
+            {RadioButton
+                label = "Wipe Down",
+                radio-value =
+                    {proc {duration:Time = 0.3s, pacing:#{proc-type {double}:double} = null}:TransitionEffect
+                        {return {WipeTransitionEffect duration = duration, pacing = pacing, direction = "down"}}
+                    }
+            },
+            {RadioButton
+                label = "Wipe Up",
+                radio-value =
+                    {proc {duration:Time = 0.3s, pacing:#{proc-type {double}:double} = null}:TransitionEffect
+                        {return {WipeTransitionEffect duration = duration, pacing = pacing, direction = "up"}}
+                    }
+            },
+            {RadioButton
+                label = "Wipe Right",
+                radio-value =
+                    {proc {duration:Time = 0.3s, pacing:#{proc-type {double}:double} = null}:TransitionEffect
+                        {return {WipeTransitionEffect duration = duration, pacing = pacing, direction = "right"}}
+                    }
+            },
+            {RadioButton
+                label = "Wipe Left",
+                radio-value =
+                    {proc {duration:Time = 0.3s, pacing:#{proc-type {double}:double} = null}:TransitionEffect
+                        {return {WipeTransitionEffect duration = duration, pacing = pacing, direction = "left"}}
+                    }
+            }
+        }
+    }
+    {trbhbox.add
+        {VBox
+            {RadioButton
+                label = "Slide Out Down",
+                radio-value =
+                    {proc {duration:Time = 0.3s, pacing:#{proc-type {double}:double} = null}:TransitionEffect
+                        {return {SlideOutTransitionEffect duration = duration, pacing = pacing, direction = "down"}}
+                    }
+            },
+            {RadioButton
+                label = "Slide Out Up",
+                radio-value =
+                    {proc {duration:Time = 0.3s, pacing:#{proc-type {double}:double} = null}:TransitionEffect
+                        {return {SlideOutTransitionEffect duration = duration, pacing = pacing, direction = "up"}}
+                    }
+            },
+            {RadioButton
+                label = "Slide Out Right",
+                radio-value =
+                    {proc {duration:Time = 0.3s, pacing:#{proc-type {double}:double} = null}:TransitionEffect
+                        {return {SlideOutTransitionEffect duration = duration, pacing = pacing, direction = "right"}}
+                    }
+            },
+            {RadioButton
+                label = "Slide Out Left",
+                radio-value =
+                    {proc {duration:Time = 0.3s, pacing:#{proc-type {double}:double} = null}:TransitionEffect
+                        {return {SlideOutTransitionEffect duration = duration, pacing = pacing, direction = "left"}}
+                    }
+            }
+        }
+    }
+    {trbhbox.add
+        {VBox
+            {RadioButton
+                label = "Slide In Down",
+                radio-value =
+                    {proc {duration:Time = 0.3s, pacing:#{proc-type {double}:double} = null}:TransitionEffect
+                        {return {SlideInTransitionEffect duration = duration, pacing = pacing, direction = "down"}}
+                    }
+            },
+            {RadioButton
+                label = "Slide In Up",
+                radio-value =
+                    {proc {duration:Time = 0.3s, pacing:#{proc-type {double}:double} = null}:TransitionEffect
+                        {return {SlideInTransitionEffect duration = duration, pacing = pacing, direction = "up"}}
+                    }
+            },
+            {RadioButton
+                label = "Slide In Right",
+                radio-value =
+                    {proc {duration:Time = 0.3s, pacing:#{proc-type {double}:double} = null}:TransitionEffect
+                        {return {SlideInTransitionEffect duration = duration, pacing = pacing, direction = "right"}}
+                    }
+            },
+            {RadioButton
+                label = "Slide In Left",
+                radio-value =
+                    {proc {duration:Time = 0.3s, pacing:#{proc-type {double}:double} = null}:TransitionEffect
+                        {return {SlideInTransitionEffect duration = duration, pacing = pacing, direction = "left"}}
+                    }
+            }
+        }
+    }
+    {trbhbox.add
+        {VBox
+            {RadioButton
+                label = "Split Slide V",
+                radio-value =
+                    {proc {duration:Time = 0.3s, pacing:#{proc-type {double}:double} = null}:TransitionEffect
+                        {return {SplitSlideTransitionEffect
+                                    duration = duration, pacing = pacing,
+                                    orientation = "vertical"
+                                }
+                        }
+                    }
+            },
+            {RadioButton
+                label = "Split Slide H",
+                radio-value =
+                    {proc {duration:Time = 0.3s, pacing:#{proc-type {double}:double} = null}:TransitionEffect
+                        {return {SplitSlideTransitionEffect duration = duration, pacing = pacing, orientation = "horizontal"}}
+                    }
+            },
+            {RadioButton
+                label = "Open Door V",
+                radio-value =
+                    {proc {duration:Time = 0.3s, pacing:#{proc-type {double}:double} = null}:TransitionEffect
+                        {return {DoorOpenTransitionEffect duration = duration, pacing = pacing, orientation = "vertical"}}
+                    }
+            },
+            {RadioButton
+                label = "Open Door H",
+                radio-value =
+                    {proc {duration:Time = 0.3s, pacing:#{proc-type {double}:double} = null}:TransitionEffect
+                        {return {DoorOpenTransitionEffect duration = duration, pacing = pacing, orientation = "horizontal"}}
+                    }
+            }
+        }
+    }
+    {trbhbox.add
+        {VBox
+            {RadioButton
+                label = "Shrink",
+                radio-value = ShrinkTransitionEffect
+            },
+            {RadioButton
+                label = "Drain Out",
+                radio-value =
+                    {proc {duration:Time = 0.3s, pacing:#{proc-type {double}:double} = null}:TransitionEffect
+                        {return
+                            {ShrinkTransitionEffect
+                                duration = duration, pacing = pacing,
+                                rotation = 360deg,
+                                x-percent = 0.8,
+                                y-percent = 0.8
+                            }
+                        }
+                    }
+            },
+            {RadioButton
+                label = "Grow",
+                radio-value = GrowTransitionEffect
+            },
+            {RadioButton
+                label = "Spin In",
+                radio-value =
+                    {proc {duration:Time = 0.3s, pacing:#{proc-type {double}:double} = null}:TransitionEffect
+                        {return
+                            {GrowTransitionEffect
+                                duration = duration, pacing = pacing,
+                                rotation = 360deg,
+                                x-percent = 0.1,
+                                y-percent = 0.8
+                            }
+                        }
+                    }
+            }
+        }
+    }
+    {trbhbox.add
+        {VBox
+            {RadioButton
+                label = "Push Down",
+                radio-value =
+                    {proc {duration:Time = 0.3s, pacing:#{proc-type {double}:double} = null}:TransitionEffect
+                        {return {PushTransitionEffect duration = duration, pacing = pacing, direction = "down"}}
+                    }
+            },
+            {RadioButton
+                label = "Push Up",
+                radio-value =
+                    {proc {duration:Time = 0.3s, pacing:#{proc-type {double}:double} = null}:TransitionEffect
+                        {return {PushTransitionEffect duration = duration, pacing = pacing, direction = "up"}}
+                    }
+            },
+            {RadioButton
+                label = "Push Right",
+                radio-value =
+                    {proc {duration:Time = 0.3s, pacing:#{proc-type {double}:double} = null}:TransitionEffect
+                        {return {PushTransitionEffect duration = duration, pacing = pacing, direction = "right"}}
+                    }
+            },
+            {RadioButton
+                label = "Push Left",
+                radio-value =
+                    {proc {duration:Time = 0.3s, pacing:#{proc-type {double}:double} = null}:TransitionEffect
+                        {return {PushTransitionEffect duration = duration, pacing = pacing, direction = "left"}}
+                    }
+            }
+        }
+    }
+    def dslider =
+        {Slider
+            domain = {StandardDoubleDomain min-allowable = 0.0, max-allowable = 3.0},
+            value = 0.3,
+            major-tick-spacing = 0.5,
+            minor-tick-spacing = 0.1
+        }
+    def trframe =
+        {RadioFrame
+            trbhbox,
+            {on ValueFinished do
+                {update-transition}
+            }
+        }
+    {dslider.add-event-handler
+        {on ValueFinished do
+            {update-transition}
+        }
+    }
+    
+    || Now that the variable trframe is actually defined, replace the
+    || placeholder definition of update-transition with the real definition.
+    set update-transition =
+        {proc {}:void
+            {with-compiler-directives allow-any-calls? = true, allow-implicit-any-casts? = true do
+                set tf.transition-effect =
+                    {trframe.value duration = dslider.value * 1s, pacing = prframe.value}
+            }
+        }
+    
+    || Set cross-fade as the initially selected transition effect.
+    set trframe.value = CrossFadeTransitionEffect
+    
+    || Assemble the graphic hierarchy that contains the
+    || various controls that govern the transition effect.
+    def thbox =
+        {HBox spacing = 24pt, valign = "top",
+            {VBox spacing = 4pt,
+                {Fill height = 2pt},
+                trframe,
+                {hcenter "Transition Type"},
+                {Fill}
+            },
+            {VBox spacing = 10pt,
+                {VBox spacing = 2pt,
+                    dslider,
+                    {hcenter "Transition Duration"}
+                },
+                {VBox spacing = 2pt,
+                    prframe,
+                    {hcenter "Pacing"}
+                }
+                
+            }
+        }
+    
+    || Assemble and return the graphic hierarchy that contains the
+    || transition effect controls as well as the TransitionFrame itself.
+    {VBox spacing = 4pt,
+        thbox,
+        {Fill height = 4pt},
+        rframe,
+        tf
+    }
+}

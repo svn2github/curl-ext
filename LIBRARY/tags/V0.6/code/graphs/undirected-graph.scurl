@@ -1,0 +1,103 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl-file-attributes character-encoding = "utf8"}
+
+{doc-next
+    {purpose
+        A graph, or series of nodes (vertices) connected by edges.
+    }
+}
+{define-class public abstract shared open {UndirectedGraph-of t:Type}
+  {inherits {Graph-of t}}
+  
+  {method public abstract open {create-node data:t}:{UndirectedGraphNode-of t}}
+  
+  {method public open {get-all-edges}:{Array-of
+                                          {Tuple2-of
+                                              {GraphNode-of t},
+                                              {GraphNode-of t}
+                                          }
+                                      }
+    def visited-set = {new {Set-of {GraphNode-of t}}}
+    def working-array = 
+        {new
+            {Array-of
+                {Tuple2-of
+                    {GraphNode-of t},
+                    {GraphNode-of t}
+                }
+            }
+        }
+    {self.visit-nodes
+        {proc {n:{GraphNode-of t}}:void
+            {visited-set.insert n}
+            {for successor in n do
+                {if {visited-set.member? successor} then
+                    {continue}
+                }
+                {working-array.append
+                    {new
+                        {Tuple2-of {GraphNode-of t}, {GraphNode-of t}},
+                        n,
+                        successor
+                    }
+                }
+            }
+        }
+    }
+    {return working-array}
+  }
+  
+}
+
+{doc-next
+    {purpose
+        A single node in a graph, containing some value of the
+        parameterized type.
+    }
+}
+{define-class public shared abstract open {UndirectedGraphNode-of t:Type}
+  {inherits {GraphNode-of t}}
+    
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter data,
+        The data associated with this node.
+    }
+    {parameter graph,
+        The graph of which this node will be a member.
+    }
+    {notes
+        Nodes should not generally be constructed directly.
+        Instead, call {docref Graph-of.create-node},
+        which should then construct a {ctext GraphNode-of}.
+    }
+  }
+  {constructor public {default data:t, graph:{UndirectedGraph-of t}}
+    {construct-super data, graph}
+  }
+  
+  {secondary-constructor public {default data:t, graph:{UndirectedGraph-of t}}
+    set self.data = data
+    set self.graph = graph
+  }
+  
+}
+

@@ -1,0 +1,51 @@
+||| Copyright (C) 2009, Sumisho Computer Systems Corp.  All Rights Reserved.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+
+{curl 6.0, 7.0 package}
+{package COM.CURL.EXT.BACKGROUND-TASK.MANDLEBROT-SAMPLE}
+{def package max-iteration = 1250}
+
+|| Calculate what points are inside the Mandlebrot set for the provided
+|| square of pixels.
+{define-proc public {calculate-rectangle
+                        min-x:double, min-y:double,
+                        increment:double,
+                        count:int
+                    }:{Array-of bool}
+    def ret = {new {Array-of bool}.from-size, count * count, false}
+    let x0:double = min-x
+    let y0:double = min-y
+    let ret-index:int
+    {for i = 0 below count do
+        set y0 = min-y
+        {for j = 0 below count do
+            || For each pixel in the square do:
+            let x:double = x0, y:double = y0
+            let iteration:int
+            || Calculate iterations until escape.
+            {while ( x*x + y*y <= (2.0*2.0) and iteration < max-iteration) do
+                def xtemp = x*x - y*y + x0
+                set y = 2*x*y + y0
+                set x = xtemp
+                set iteration = iteration + 1
+            }
+            set ret[ret-index] = (iteration == max-iteration)
+            {inc ret-index}
+            set y0 = y0 + increment
+        }
+        set x0 = x0 + increment
+    }
+    {return ret}
+}

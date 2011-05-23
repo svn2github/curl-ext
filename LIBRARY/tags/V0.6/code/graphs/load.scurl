@@ -1,0 +1,58 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 6.0, 7.0 package}
+{curl-file-attributes character-encoding = "utf8"}
+
+{doc type = package, COM.CURL.EXT.GRAPHS
+    {purpose
+        This package provides parameterized, directed graphs.
+    }
+}
+
+{package COM.CURL.EXT.GRAPHS}
+
+{include "graph.scurl"}
+
+{include "undirected-graph.scurl"}
+{include "directed-graph.scurl"}
+
+{include "weighted-graph.scurl"}
+{include "weighted-directed-graph.scurl"}
+{include "weighted-undirected-graph.scurl"}
+
+{include "default-directed-graph.scurl"}
+{include "default-undirected-graph.scurl"}
+{include "default-weighted-directed-graph.scurl"}
+{include "default-weighted-undirected-graph.scurl"}
+
+{include "exceptions.scurl"}
+
+{doc-next
+    {purpose
+        A shortened synonym for {docref DefaultDirectedGraph-of}.
+    }
+}
+{define-alias public Digraph-of = DefaultDirectedGraph-of}
+
+||FIXME: deploy says: graphs/load.scurl:52[9]: Two doc-nexts in a row
+||--{doc-next
+||--    {purpose
+||--        A shortened synonym for {docref DefaultDirectedGraphNode-of}.
+||--    }
+||--}
+{define-alias public DigraphNode-of = DefaultDirectedGraphNode-of}

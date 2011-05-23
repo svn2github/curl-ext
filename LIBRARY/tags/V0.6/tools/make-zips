@@ -1,0 +1,33 @@
+#! /bin/bash
+TODAY=`date +%m%d`
+SRCROOT="../build/DEPLOYED"
+pushd $SRCROOT/deploy
+DDIRS=( `ls` )
+popd
+DDIR=${DDIRS[${#DDIRS[@]} - 1]}
+DIST="CURL-EXT-$TODAY"
+DISTDIR="$SRCROOT/$DIST"
+echo "Packing $DDIR from $SRCROOT into $DIST"
+DISTSRC="$DISTDIR/$DDIR-src/"
+DISTDOC="$DISTDIR/$DDIR-doc/"
+FLAGS="-av"
+if test -d "$DISTDIR" ; then
+    echo "-- $DISTDIR already exists: Updating only"
+    FLAGS="-uav"
+else
+    mkdir -p "$DISTDIR"
+    mkdir -p "$DISTSRC"
+    mkdir -p "$DISTDOC"
+fi
+rsync "$FLAGS" "$SRCROOT/src/" "$DISTSRC"
+rsync "$FLAGS" "$SRCROOT/deploy/$DDIR" "$DISTDIR/"
+rsync "$FLAGS" "$SRCROOT/docs-install/$DDIR/" "$DISTDOC"
+ls -l "$DISTDIR"
+cd "$SRCROOT"
+DSTZIP="$DIST.zip"
+if test -f "$DSTZIP" ; then
+    mv "$DSTZIP" "old-$DSTZIP"
+fi
+zip -r "$DSTZIP" "$DIST"
+ls -l "$DIST"
+ls -lrt *.zip

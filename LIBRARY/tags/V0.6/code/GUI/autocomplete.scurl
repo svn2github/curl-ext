@@ -1,0 +1,952 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+|# To Do
+
+  o Should the StringCellProvider look at the filtered records?
+    If it doesn't, and you choose a value that is filtered out, the
+    record would disappear.
+
+  o Better to separate host and query in AsyncCompletionProvider to
+    make it easier to switch hosts?
+
+#|
+
+{doc-next
+    {purpose Return an array of the distinct values in one column of
+        a {docref RecordSet}.
+    }
+    {details
+        This procedure is used to generate a list of the distinct
+        values in a column in a {ctext RecordSet}. If {param prefix}
+        is specified, names that do not start with the prefix string
+        are omitted. If {param remove-blank?} is true, any empty
+        string value will also be omitted. The resulting list is
+        sorted if {param sort?} is true.
+
+        Since the type of data in a column is not always a {ctext
+        String}, the {docref Domain.format} method is used to generate
+        the strings for the list.
+    }
+    {parameter rs, The {docref RecordSet} containing the data rows.}
+    {parameter field-name, Identifies the column to be examined.}
+    {parameter prefix, The returned list contains only strings that
+        begin with the specified prefix string, ignoring case
+        differences.
+    }
+    {parameter sort?, If true, the returned list is sorted alphabetically.
+    }
+}
+{define-proc public {unique-values-in-column
+                        rs:RecordSet,
+                        field-name:String,
+                        prefix:String = "",
+                        sort?:bool = true,
+                        remove-blank?:bool = true
+                    }:StringArray
+    let records:{Array-of Record} = {rs.select}
+    let values:Set = {Set}                     || Set of unique values
+    let value-list:StringArray = {StringArray} || Values in order seen
+    let fd:Domain = rs.fields[field-name].domain
+    {for r:Record in records do
+        let fv:String = {fd.format r[field-name]}
+        {if fv == "" and remove-blank? then
+            {continue}
+        }
+        {if not {values.member? fv} and {fv.prefix? prefix, ignore-case? = true}
+         then
+            {value-list.append fv}
+            {values.insert fv}
+        }
+    }
+    {if sort? then
+        {value-list.sort}
+    }
+    {return value-list}
+}
+
+
+|| The MenuPaneUI consumes tab key presses, so we need this subclass
+|| to handle them.
+{define-class package AutocompleteMenuPaneUI
+  {inherits SkinnableMenuPaneUI}
+
+  {constructor package {default
+                           control-skin:#MenuPaneSkin = null,
+                           control-feel:#MenuPaneFeel = null,
+                           ...
+                       }
+
+    {construct-super.SkinnableMenuPaneUI 
+        control-skin = control-skin,
+        control-feel = control-feel,
+        {splice ...}
+    }
+  }
+
+  {method public open {on-key-press e:KeyPress}:void
+    {type-switch self.control
+     case mp:AutocompleteMenuPane do
+        {if (e.value == KeyPressValue.tab) then
+            {super.on-key-press e}
+            {mp.hide}
+            set e.consumed? = false
+            {mp.text-field.ui-object.handle-event e}
+         elseif (e.value == KeyPressValue.backspace) then
+            def tf = mp.text-field
+            let rng:StringDataModelWritableRange = tf.selected-range
+            {if rng.anchor > 0 then
+                {dec rng.anchor, 1}
+                {rng.delete-range}
+            }
+            {e.consume}
+         elseif (e.value == KeyPressValue.enter) then
+            {if mp.opened? then
+                let active?:bool = false
+                {mp.walk-items
+                    {proc {item:MenuItem}:void
+                        {if item.item-active? then 
+                            set active? = true
+                        }
+                    }
+                }
+                {if active? then
+                    {super.on-key-press e}
+                 else
+                    {super.on-key-press e}
+                    {mp.hide}
+                    set e.consumed? = false
+                    {mp.text-field.ui-object.handle-event e}
+                }
+            }
+         else
+            {super.on-key-press e}
+        }
+     else
+        {error {hlmessage 
+                   AutocompleteMenuPaneUI must be used with AutocompleteMenuPane
+               }
+        }
+    }
+  }
+}
+
+
+{doc-next
+    {purpose A {docref MenuPane} to be used for an {docref AutocompleteMixin}
+        such as an {docref AutocompleteTextField}.
+    }
+    {details This object forwards most key press events to the associated
+        {docref BaseTextField} to allow editing even when the menu is 
+        showing. The only keys not forwarded are up, down, and enter,
+        which are used to navigate the menu, or close it.
+    }
+}
+{define-class package AutocompleteMenuPane {inherits MenuPane}
+
+  {doc-next
+    {purpose A pointer to the {docref AutocompleteTextField} that associated
+        with this {docref AutocompleteMenuPane}.
+    }
+  }
+  field protected text-field:BaseTextField
+
+  {constructor package {default
+                           text-field:BaseTextField
+                       }
+    {construct-super
+        ui-object = {AutocompleteMenuPaneUI},
+        skin = {ShadedSkinSpec "white", "white"},
+||--        use-look-and-feel? = false,
+        vscroll? = true
+    }
+    set self.text-field = text-field
+
+    || Forward most key events on the MenuPane to the text-field
+    {self.add-event-handler
+        {on e:KeyPress at mp:MenuPane do
+            {if not
+                (e.value == KeyPressValue.up or 
+                 e.value == KeyPressValue.enter or 
+                 e.value == KeyPressValue.down
+                )
+             then 
+                {self.text-field.ui-object.handle-event e}
+            }
+        }
+    }
+  }
+}
+
+
+{doc-next
+    {purpose Base class for providing completions to an 
+        {docref AutocompleteTextField}. 
+    }
+    {details
+        The subclass {docref AsyncCompletionProvider} provides
+        completions via asynchronous requests to an HTTP server.
+        Other interesting possibilities would be
+        {itemize
+            {item file based}
+            {item {docref RecordSet} based}
+            {item Some kind of client-side search or computation}
+        }
+    }
+}
+{define-class abstract public open AutocompleteProvider
+
+  {doc-next
+    {purpose Maximum number of results to be returned.}
+  }
+  field public-get protected-set max-results:int
+
+  {doc-next
+    {purpose Initialize a new {docref AutocompleteProvider}.}
+  }
+  {constructor public {default max-results:int}
+    set self.max-results = max-results
+  }
+
+  {doc-next
+    {purpose
+        The {docref AutocompleteTextField} will call this when it is time to
+        update the dropdown menu with new completions. 
+    }
+    {override
+        Overrides should compute the completions based on
+        {ctext acf.text-field.value},
+        and then call
+        {param acf}.{ctext populate-from-strings} or 
+        {param acf}.{ctext populate-from-items}.
+
+        Use {docref AutocompleteMixin.populate-from-items} if your
+        {docref AutocompleteProvider} subclass constructs
+        {docref MenuAction}s directly. Call {docref 
+        AutocompleteMixin.populate-from-strings} if your subclass
+        produced completion strings. The {docref
+        AutocompleteMixin.label-creation-proc} will then be used to
+        generate the labels for {docref ManuAction}s in the dropdown
+        menu.
+
+        Note that a subclass does not have to populate the dropdown
+        menu immediately. It can query a server and populate the
+        menu later, after a response has been received.
+    }
+  }
+  {method abstract public open {refresh acf:AutocompleteMixin}:void}
+
+}
+
+{doc-next
+    {purpose Query a server for completions, asynchronously.}
+}
+{define-class public open AsyncCompletionProvider
+  {inherits AutocompleteProvider}
+
+  {doc-next
+    {purpose Format string for generating the server query.}
+    {details
+        This string is a {docref format} string with exactly two slots
+        for values to be filled in. One value is the current contents
+        of the {docref AutocompleteTextField}. The other is the value
+        of {docref-abbr AutocompleteTextField.max-results}.  For
+        example, a typical value is something like this:
+        {blockquote
+            {ctext "http://scripts.example.com/autocomp.php?prefix=%s&max=%s"}
+        }
+
+        When the format string is used, the first value passed
+        to {ctext format} is the contents of the field and the second
+        is the {param max-results} value. If it is necessary to
+        reverse these in the query string, you can use the
+        special {ctext '!'}  format syntax as shown here:
+        {blockquote
+            {ctext "http://scripts.example.com/autocomp.php?max=%2!s!&prefix=%1!s!"}
+        }
+        This tells the {ctext format} macro to use the second value in the
+        first slot and the first value in the second slot.
+    }
+  }
+  field public-get protected-set query:String
+
+  {doc-next {purpose Object used to handle asynchronous i/o.}}
+  field protected opener:#AsyncFileOpener
+
+  {doc-next
+    {purpose Construct a new {docref AsyncCompletionProvider}.
+    }
+    {parameter query, Provides the initial value for {docref
+        AutocompleteProvider.query}.
+    }
+    {parameter max-results, Provides the initial value for {docref
+        AutocompleteProvider.max-results}.
+    }
+  }
+  {constructor public {default
+                          query:String,
+                          max-results:int = 0
+                      }
+    {construct-super max-results}
+    set self.query = query
+  }
+
+  {doc-next
+    {purpose
+        Construct the query for the server.  Override this to change
+        interpretation of {docref-abbr AutocompleteProvider.query}.
+    }
+    {details
+        The default implementation simply uses {docref format} to
+        insert {param val} and {ctext self.max-results} into 
+        {docref AsyncCompletionProvider.query} and return it as a url:
+        {ctext {url {format self.query, val, self.max-results}}}
+    }
+  }
+  {method public open {get-query val:String}:Url
+||DEBUG
+||--    def q = {format self.query, val, self.max-results}
+||--    {dump q}
+    {return {url {format self.query, val, self.max-results}}}
+  }
+
+  {doc-next
+    {purpose Request a new set of complettions from the server.}
+    {details
+        The current contents of self are used to build a query to the
+        server (using {docref-abbr AutocompleteTextField.get-query}).
+        When the asynchronous response is received from the server,
+        the method {docref-abbr AutocompleteTextField.handle-response}
+        will be invoked.
+    }
+    {override
+        Usually no need to override. Override {docref
+        AutocompleteTextField.get-query} to change how the query is
+        computed. Override {docref
+        AutocompleteTextField.handle-response} to change how the
+        response is interpreted.
+    }
+  }
+  {method public open {refresh acf:AutocompleteMixin}:void
+
+    def tf = acf asa BaseTextField
+
+    || Cancel any request currently in progress
+    {if-non-null opener = self.opener then
+        def cancelled? = {opener.cancel}
+        set self.opener = null
+    }
+
+    def s = tf.value
+    {if s.size < 2 then
+        || Not enough to build the completions list, so make it go away.
+        {acf.populate-from-strings {StringArray}}
+        {return}
+    }
+
+    set self.opener =
+        {async-read-open
+            {self.get-query s},
+            {on e:AsyncFileOpenEvent do
+                {if-non-null ex = e.exception then
+                    ||FIXME: log this? Only complain once? Make it optional?
+                    def query = {self.get-query s}.name
+||--                    {dump "AsyncCompletionProvider.refresh",
+||--                        query,
+||--                        ex.message
+||--                    }
+                 else
+                    {if not e.canceled? then
+                        {type-switch e.stream
+                         case tis:TextInputStream do
+                            {self.handle-response acf, tis}
+                        }
+                    }
+                }
+            }
+        }
+  }
+
+  {doc-next
+    {purpose Use the response from the server to build a new set of
+        items in the autocomplete dropdown menu.
+    }
+    {details
+        The default implementation will create a {docref StringArray}
+        where each string contains one line of the response. These
+        strings are passed to {docref
+        AutocompleteTextField.populate-from-strings}, which will
+        rebuild the menu.
+    }
+    {override Override this method to parse the response from the
+        server in some special way. An override can produce an array
+        of strings and call {docref
+        AutocompleteTextField.populate-from-strings}. This allows
+        a {docref-abbr AutocompleteTextField.label-creation-proc} to
+        be used to customize the items. Alternatively, an override can
+        build an array of {docref MenuAction}s and call
+        {docref AutocompleteTextField.populate-from-items}.
+        Note that each {ctext MenuAction} must have an {docref Action}
+        event handler that sets the value of the associated text
+        field to the completion string represented by that item.
+        Use {docref AutocompleteMixin.text-field} to obtain the
+        text field.
+    }
+  }
+  {method protected open {handle-response
+                             acf:AutocompleteMixin,
+                             tis:TextInputStream
+                         }:void
+    def words = {StringArray}
+    let response:String = ""
+    {try
+        set response = {{tis.read-one-string}.to-String}
+||--        {dump response} ||DEBUG
+     catch e:Exception do
+        ||FIXME: Need to log this, or ignore it
+||--        {dump "AsyncCompletionProvider.handle-response", e.message}
+    }
+    set self.opener = null
+    def rw = {response.split split-chars = "\n"}
+    {for word in rw do
+        {if word.size > 0 then
+            {words.append word}
+        }
+    }
+    {acf.populate-from-strings words}
+  }
+}
+
+
+{doc-next
+    {purpose Mixin to create a {docref BaseTextField} subclass with 
+        a suggested list of completions.
+    }
+    {details
+        This class must be mixed with a {docref BaseTextField} (or
+        a subclass). It updates the completion list on a
+        {docref ValueChanged} event and hides the menu on a
+        {docref ValueFinished} event. It manipulates the value
+        and selection to implement automatic completion.
+    }
+}
+{define-class abstract public open AutocompleteMixin {inherits Visual}
+
+  {doc-next
+    {purpose A pionter to the {docref AutocompleteMenuPane} associated with
+        this {docref AutocompleteTextField}.
+    }
+  }
+  field protected mp:AutocompleteMenuPane =
+      {uninitialized-value-for-type AutocompleteMenuPane}
+
+  {doc-next
+    {purpose The source for suggested completions.}
+  }
+  field public provider:AutocompleteProvider
+
+  {doc-next
+    {purpose A procedure used to generate one label in the dropdown list
+        from one item in the server response.
+    }
+    {details This method is called from
+        {docref AutocompleteTextField.populate-from-strings} for one
+        string at a time. The strings are typically obtained from a
+        server and parsed by {docref
+        AutocompleteTextField.handle-response}.
+    }
+  }
+  field public label-creation-proc:{proc-type
+                                     {item:String, acf:AutocompleteMixin
+                                     }:Graphic
+                                   }
+
+  {doc-next
+    {purpose The height of the dropdown containing completions.}
+    {details The default value of 0pt means the height will vary
+        according to the number of items in the menu.
+    }
+  }
+  {local-option public dropdown-height:Distance = 0pt}
+
+  {doc-next
+    {purpose The width of the dropdown containing completions.}
+    {details The default value of 0pt means the width of the dropdown
+        will match the width of the {docref AutocompleteTextField}.
+    }
+  }
+  {local-option public dropdown-width:Distance = 0pt}
+
+||--    {parameter value, The initial value of the control.}
+||--    {parameter prompt, A string to be shown in the field when there is no value.}
+||--    {parameter max-chars, The maximum size of the value, in characters.}
+||--    {parameter ui-object, Provides the initial value for {docref
+||--        TextField.ui-object}.
+||--    }
+  {doc-next
+    {purpose Initialize an {docref AutocompleteTextField}.}
+    {parameter provider, An object that will provide completions on demand.}
+    {parameter label-creation-proc, Provides the initial value for
+        {docref AutocompleteTextField.label-creation-proc}.
+    }
+  }
+  {constructor public {default
+                          provider:AutocompleteProvider,
+                          label-creation-proc:{proc-type
+                                                  {item:String, acf:AutocompleteMixin
+                                                  }:Graphic
+                                              }
+                      }
+    {construct-super
+        {on ValueChanged at acf:AutocompleteMixin do
+            {self.provider.refresh acf}
+        },
+        {on ValueFinished at acf:AutocompleteMixin do
+            {self.mp.hide}
+        }
+    }
+    set self.provider = provider
+    set self.label-creation-proc = label-creation-proc
+  }
+
+  {getter public open {text-field}:BaseTextField
+    {type-switch self
+     case tf:BaseTextField do
+        {return tf}
+     else
+        {error {hlmessage 
+                   AutocompleteMixin must be mixed with BaseTextField
+                   (or a subclass).
+               }
+        }
+    }
+  }
+
+  || Generate the menu. Override to handle the server response as you please
+  {doc-next
+    {purpose Rebuild the menu using {param strings} as labels.}
+    {details A {docref MenuAction} is created from each string in
+        {param strings}. These are then passed to {docref 
+        AutocompleteTextField.populate-from-items}.
+
+        The {ctext MenuAction}s are created by calling {docref
+        AutocompleteTextField.label-creation-proc}.
+    }
+  }
+  {method public open {populate-from-strings strings:StringArray}:void
+    {if strings.size == 0 then
+        {self.mp.hide}
+        {return}
+    }
+    def match = {strings[0].trim-clone}
+    {if strings.size == 1 then
+        {if match == self.text-field.value then
+            {self.mp.hide}
+            {return}
+        }
+    }
+
+    def vsize = self.text-field.value.size
+    let rng:StringDataModelWritableRange = self.text-field.selected-range
+    {if {match.prefix? self.text-field.value} then
+        set self.text-field.value = match
+    }
+    set rng.anchor = vsize ||{min vsize, match.size}
+    set rng.point = self.text-field.value.size
+
+    def items = {new {Array-of MenuItem}}
+    {for string in strings do
+        {if string.size <= vsize then
+            {continue}
+        }
+        def ma =
+            {MenuAction
+||--                width = {add-stretch},
+                add-icon-space? = false,
+                add-key-space? = false,
+                label = {self.label-creation-proc string, self},
+                {on Action do
+                    {self.text-field.set-value-with-events string}
+                }
+            }
+
+        || Hack: Remove unwanted objects, spacings, and margins so the
+        || label created here fills all of the space
+        set ma.margin = 0pt
+        set ma.spacing = 0pt
+        let ci:int = 0
+        {for cg:Graphic in ma.graphical-children do
+            {inc ci}
+            {if ci == 1 then
+                {type-switch cg
+                 case box:HBox do
+                    set box.spacing = 0pt
+                }
+             elseif ci == 2 then
+                {if cg isa Frame then
+                    set cg.width = 0pt
+                }
+            }
+        }
+        {items.append ma}
+    }
+    {self.populate-from-items items}
+  }
+
+  {doc-next
+    {purpose Rebuild and then display the dropdown menu from {param items}.
+        If {param items} is empty, hide the dropdown.
+    }
+  }
+  {method public open {populate-from-items items:{Array-of MenuItem}}:void
+    {if items.size != self.mp.size then
+        || Force new View to get new size
+        {self.mp.hide}
+    }
+    {if items.size == 0 then
+        || In this case the menu must have been hidden, so just return.
+        {return}
+    }
+
+    || Rebuild the menu
+    {self.mp.clear}
+    {for item in items do
+        {self.mp.add item}
+    }
+
+    {self.show-dropdown}
+  }
+
+  {doc-next
+    {purpose Show the associated {docref AutocompleteMenuPane} and start
+        the menu traversal.
+    }
+  }
+  {method protected open {show-dropdown}:void
+    {self.set-menu-size}
+    {self.mp.show-adjacent
+        self,
+        {self.text-field.layout.get-bounds},
+        alongside? = false,
+        start-traversal? = true
+    }
+  }
+
+  {doc-next
+    {purpose Adjust the menu size according the properties
+        {docref-abbr AutocompleteMixin.dropdown-width} and
+        {docref-abbr AutocompleteMixin.dropdown-height}.
+    }
+  }
+  {method protected open {set-menu-size}:void
+    {unset self.mp.height}
+    {if self.dropdown-height != 0cm then
+        set self.mp.height = 
+            {proc {g:Graphic, e:OriginElastic}:OriginElastic
+                {if-non-null layout = self.mp.layout then
+                    let max-size:Distance = self.dropdown-height
+                    def hp = layout.cell-height-preference
+                    let g-size:Distance = hp.preferred-size
+                    {if g-size > max-size then
+                        let total:Elastic =
+                            {e.set-elastic-parameters 
+                                preferred-size = max-size,
+                                minimum-size = max-size
+                            }
+                        {return {e.set-total total}}
+                    }
+                }
+                {return e}
+            }
+    }
+
+    def dropdown-width = self.dropdown-width
+    set self.mp.width =
+        {if dropdown-width == 0cm then
+            def rect = {self.text-field.layout.get-cell-bounds}
+            {ensure-min-size rect.width}
+         else
+            dropdown-width
+        }
+  }
+}
+
+{doc-next
+    {purpose TextField with suggested list of completions.}
+    {details
+        To use an {docref AutocompleteTextField} you need to supply
+        an {docref AutocompleteProvider}. If an
+        AsyncCompletionProvider is used, the applet will be making
+        HTTP requests. This means that the provider must refer to the
+        same server that the applet came from, or the applet must be
+        privileged.
+
+        Here is an example of how to use these classes.
+
+        {for-example
+            {curl-code
+                {import * from COM.CURL.EXT.GUI}
+
+                title = "Automatic Completions Using Asynchronous HTTP",
+
+                {let vframe:Frame =
+                    {Frame border-width = 1px, border-color = "gray", margin = 1px,
+                        width = 1in, height = 15pt, vorigin = 0.8
+                    }
+                }
+                
+                || Change this to your server
+                {def host = "http://wwwin.curl.com/~mgordon"}
+                
+                {AutocompleteTextField
+                    {AsyncCompletionProvider host & "/words-prefix.php?value=%s&max=%s"},
+                    dropdown-width = 2in, 
+                    dropdown-height = 1in,
+                    {on ValueFinished at acf:TextField do
+                        {vframe.add replace? = true, acf.value}
+                    }
+                }
+            }
+        }
+    }
+}
+{define-class public open AutocompleteTextField
+  {inherits TextField, AutocompleteMixin}
+
+  {doc-next
+    {purpose Initialize an {docref AutocompleteTextField}.}
+    {parameter provider, An object that will provide completions on demand.}
+    {parameter value, The initial value of the control.}
+    {parameter prompt, A string to be shown in the field when there is 
+        no value.
+    }
+    {parameter max-chars, The maximum size of the value, in characters.}
+    {parameter ui-object, Provides the initial value for {docref
+        TextField.ui-object}.
+    }
+    {parameter label-creation-proc, Provides the initial value for
+        {docref AutocompleteTextField.label-creation-proc}.
+    }
+  }
+  {constructor public {default
+                          provider:AutocompleteProvider,
+                          value:#String = null,
+                          prompt:#String = null,
+                          max-chars:int = -1,
+                          ui-object:#TextFieldUI = null,
+                          label-creation-proc:
+                          {proc-type {item:String, acf:AutocompleteMixin
+                                     }:Graphic
+                          } =
+                              {proc {item:String, acf:AutocompleteMixin}:Graphic
+                                  {return
+                                      {Label
+                                          border-spec =
+                                              {BorderSpec left-margin = 2pt},
+                                          margin = 1pt,
+                                          item
+                                      }
+                                  }
+                              },
+                          ...
+                      }
+    {construct-super.TextField
+        value = value,
+        prompt = prompt,
+        max-chars = max-chars,
+        ui-object = ui-object,
+        {splice ...}
+    }
+
+    {construct-super.AutocompleteMixin provider, label-creation-proc}
+    set self.mp = {AutocompleteMenuPane self}
+  }
+}
+
+||FIXME: move to load-GUI and make public
+|| Helper function to remove the border-width and 
+|| margin on all Graphics in a hierarchy.
+{define-proc package {remove-margins-in-ui-object g:Graphic}: void
+    {visit-subtree
+        g,
+        {proc {g:Graphic}:void
+            set g.border-width = 0pt
+            set g.margin = 0pt
+        }
+    }
+}
+
+|| Helper function to traverse the graphical hierarchy
+{define-proc package {visit-subtree 
+                         g:Graphic, 
+                         action-proc:{proc-type {Graphic}:void}
+                     }:void
+    {action-proc g}
+    {type-switch g
+     case b:Box do
+        {for child:Graphic in b.graphical-children do
+            {visit-subtree child, action-proc}
+        }
+    }
+}
+
+{doc-next
+    {purpose TextField with suggested list of completions.}
+}
+{define-class public open SRGAutocompleteTextField
+  {inherits SRGTextField, AutocompleteMixin}
+
+  {doc-next
+    {purpose Initialize an {docref SRGAutocompleteTextField}.}
+    {parameter cell, The {docref AutocompleteStringCell} that
+        contains this object.
+    }
+    {parameter label-creation-proc, Provides the initial value for
+        {docref AutocompleteMixin.label-creation-proc}.
+    }
+  }
+  {constructor public {default
+                          cell:AutocompleteStringCell,
+                          label-creation-proc:
+                          {proc-type {item:String, acf:AutocompleteMixin
+                                     }:Graphic
+                          } =
+                              {proc {item:String, acf:AutocompleteMixin}:Graphic
+                                  {return
+                                      {Label
+                                          border-spec =
+                                              {BorderSpec left-margin = 2pt},
+                                          margin = 1pt,
+                                          item
+                                      }
+                                  }
+                              },
+                          ...
+                      }
+    def provider = {StringCellProvider cell, 7}
+    {construct-super.AutocompleteMixin provider, label-creation-proc}
+    {construct-super.SRGTextField}
+    set self.mp = {AutocompleteMenuPane self}
+  }
+}
+
+
+{doc-next
+    {purpose Provide completions based on other values in the same column.}
+}
+{define-class public open StringCellProvider {inherits AutocompleteProvider}
+
+  {doc-next
+    {purpose The {docref RecordGridCell} containing the entry.}
+  }
+  field protected cell:RecordGridCell
+
+  {doc-next
+    {purpose Initialize a new {docref StringCellProvider}.}
+  }
+  {constructor public {default cell:RecordGridCell, max-results:int}
+    {construct-super max-results}
+    set self.cell = cell
+  }
+
+  {doc-next
+    {purpose
+        The {docref AutocompleteTextField} will call this when it is time to
+        update the dropdown menu with new completions. 
+    }
+    {override
+        Overrides should compute the completions and call
+        {param acf}.populate-from-strings or {param acf}.populate-from-items.
+    }
+  }
+  {method public open {refresh acf:AutocompleteMixin}:void
+    {if-non-null record = self.cell.record then
+        ||FIXME: better to use self.cell.grid.records (filtered view)?
+        {if-non-null rs = record.record-set then
+            {acf.populate-from-strings
+                {unique-values-in-column 
+                    rs, self.cell.field.name, prefix = acf.text-field.value
+                }
+            }
+            {return}
+        }
+    }
+    {acf.populate-from-strings {StringArray}}
+  }
+}
+
+||FIXME: could use a parameterized class for parameters like
+||       provider, max-results
+{doc-next
+    {purpose A {docref StandardStringCell} subclass that provides
+        a menu of choices based on other values in the same column.
+    }
+    {usage
+        To use this type of cell simply specify the class name
+        for the {docref RecordGridCell.cell-spec}
+        {for-example
+            {curl-code
+                {RecordGridColumn  width = 1.0in, "First",
+                    cell-spec = AutocompleteStringCell
+                }
+            }
+        }
+    }
+}
+{define-class public open AutocompleteStringCell {inherits StandardStringCell}
+
+  {constructor public {default}
+    {construct-super}
+  }
+
+  {method protected open {create-editor}:TextField
+    {return {SRGAutocompleteTextField self}}
+  }
+
+||--  {method public open {refresh-data}:void
+||--    {super.refresh-data}
+||--    {if-non-null editor = self.current-editor then
+||--        let actf:AutocompleteMixin = editor asa AutocompleteMixin
+||--||--        set actf.mp = {AutocompleteMenuPane editor}
+||--||--        set actf.mp.text-field = actf
+||--    }
+||--  }
+
+||--  {method public open {note-grid-focus-out}:void
+||--    {if-non-null editor = self.current-editor then
+||--        || force pending change to happen immediately.
+||--        {if editor.pending-value? then
+||--            {editor.handle-event {ValueFinished}}
+||--            set editor.pending-value? = false
+||--        }
+||--    } 
+||--    {super.note-grid-focus-out}
+||--  }
+  
+||--  {method public open {on-key-press ev:KeyPress}:void
+||--    {super.on-key-press ev}
+||--    {if-non-null editor = self.current-editor then
+||--        {type-switch ev
+||--         case rgkp:RecordGridKeyPress do
+||--            {if not rgkp.upwards? then
+||--                {editor.ui-object.handle-event ev}
+||--                set ev.test-recorded? = true
+||--            }
+||--        }
+||--    }
+||--  }
+}

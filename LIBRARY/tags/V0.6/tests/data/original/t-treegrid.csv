@@ -1,0 +1,17 @@
+Created 2010-09-15 13:17:54.303000 -0700
+_id,_pid,_ord,_expand?,_depth,_ln,_rn,_hide,title,notes,status
+10,0,1,false,0,1,8,false,This node is collapsed. Click the triangle at the left to expand it.,,ToDo
+11,0,5,true,0,9,14,false,Use the buttons at the right to add nodes,,ToDo
+12,15,10,true,1,20,27,false,You can also drag and drop,,ToDo
+13,0,14,false,0,15,16,false,Note: the Save button only works with a local file!,,ToDo
+14,0,15,false,0,17,18,false,This is just a test.,,ToDo
+15,0,8,true,0,19,30,false,Moving nodes,,ToDo
+16,15,9,true,1,28,29,false,Use the buttons at the right to indent/un-indent,,ToDo
+19,10,4,false,1,2,3,true,A.3,,ToDo
+18,10,3,false,1,4,5,true,A.2,,ToDo
+17,10,2,false,1,6,7,true,A.1,,ToDo
+20,11,6,false,1,10,11,false,Add Node will add a sibling,,ToDo
+22,11,7,false,1,12,13,false,Add Child will add a child of the current node,,ToDo
+1,12,11,false,2,21,22,false,Drag the marker at the left,,ToDo
+2,12,12,false,2,23,24,false,"If you drop above another marker, the node is inserted above",,ToDo
+3,12,13,false,2,25,26,false,Drop in the lower half to insert below,,ToDo

@@ -1,0 +1,178 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0 applet}
+
+{applet manifest = "../manifest.mcurl", locale = "en"}
+
+{import * from COM.CURL.EXT.WORKSHEET}
+{import * from CURL.GUI.CHARTS}
+
+{set-document-properties
+    font-family = "Calibri, Cordia, Arial",
+    font-size = 10pt
+}
+
+|| -------------------------------------------------------------------------
+
+{title heading? = false, Insert/Delete Applet}
+
+{let op:int = 0}
+{let row:int = 0}
+{let col:int = 3}
+{let count:int = 1}
+{def row-field =
+    {TextField
+        value = {String row},
+        width = 36pt,
+        {on ValueChanged at tf:TextField do
+            set row = {tf.value.to-int}
+        }
+    }
+}
+{def col-field =
+    {TextField
+        value = {String col},
+        width = 36pt,
+        {on ValueChanged at tf:TextField do
+            set col = {tf.value.to-int}
+        }
+    }
+}
+{def count-field =
+    {TextField
+        value = {String count},
+        width = 36pt,
+        {on ValueChanged at tf:TextField do
+            set count = {tf.value.to-int}
+        }
+    }
+}
+{HBox spacing = 3pt,
+    "row:", row-field,
+    "",  "col:", col-field,
+    "",  "count:", count-field
+}
+
+{let rc-prefix:String = ".."}
+{define-proc {init-rc r:int, c:int}:Graphic
+    {return
+        {Frame margin = 2pt,
+||--            width = {make-elastic},
+            {format "%sR%sC%s", rc-prefix, r, c}
+        }
+    }
+}
+
+
+{value
+    def rcount = 2
+    def ccount = 3
+    def rcg = 
+        {RowColGrid rcount, ccount,
+            vertical-grid-line-width = 2px,
+            horizontal-grid-line-width = 3px,
+            grid-line-color = "cornflowerblue",
+            border-width = 1px, border-color = "gray"
+        }
+    {for ri = 0 below rcount do
+        {for ci = 0 below ccount do
+            {rcg.add-cell ri, ci, {init-rc ri, ci}}
+        }
+    }
+    {after 2s do
+        {rcg.insert-cols 1, -1}
+    }
+    rcg
+}
+
+
+{value
+    def wks =
+        {Worksheet 4, 5,
+            frozen-cols = 2,
+            row-selector-width = 3mm,
+            name = "left-grid",||DEBUG
+||--            height = 1in,
+||--            width = 3in,
+            border-width = 1px, border-color = "gray",
+            grid-line-color = "lime",
+            horizontal-grid-line-width = 2pt,
+            vertical-grid-line-width = 3pt
+        }
+    let add-cell = 
+        {proc {row:int, col:int}:void
+            def g =
+                {Frame
+                    margin = 5px,
+                    width = {make-elastic},
+                    background = "yellow",
+                    {format "R%sC%s/%s", row, col, op}
+                }
+            {wks.init-cell row = row, col = col, {wks.make-cell-spec g}}
+        }
+    {add-cell 0, 0}
+    {add-cell 0, 1}
+    {add-cell 1, 0}
+    {add-cell 1, 1}
+    {add-cell 2, 2}
+
+    {HBox valign = "top", spacing = 6pt,
+        {Frame
+||--            width = 5in, height = 3in,
+            halign = "left", valign = "top",
+            background = "beige",
+            wks
+        },
+        {CommandButton
+            label = {bold - Row},
+            tooltip = "Delete rows",
+            {on Action do
+                {inc op}
+                {wks.insert-rows row, -count}
+            }
+        },
+        {CommandButton
+            label = {bold - Col},
+            tooltip = "Delete columns",
+            {on Action do
+                {inc op}
+                {wks.insert-cols col, -count}
+            }
+        },
+        {CommandButton
+            label = {bold + Row},
+            tooltip = "Add rows",
+            {on Action do
+                {inc op}
+                {wks.insert-rows row, count}
+            }
+        },
+        {CommandButton
+            label = {bold + Col},
+            tooltip = "Add columns",
+            {on Action do
+                {inc op}
+                {wks.insert-cols col, count}
+            }
+        },
+        {CommandButton
+            label = "Insert",
+            bound-command = {wks.get-command "Worksheet.insert"}
+        }
+    }
+}

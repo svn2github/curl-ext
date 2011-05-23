@@ -1,0 +1,187 @@
+||| Copyright (C) 2009, Sumisho Computer Systems Corp.  All Rights Reserved.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+
+{curl 6.0, 7.0 applet}
+{applet manifest="manifest.mcurl"}
+{import * from COM.CURL.EXT.BACKGROUND-TASK, location = "../load.scurl"}
+
+{let test-count:int = 6 + 1 + 4 + 3 + 3 + 1}
+{define-class public Label {inherits Frame}
+  {constructor public {default s:String}
+    {construct-super s}
+  }
+  {method public {set-text s:String}:void
+    {self.clear}
+    {self.add s}
+  }
+}
+{def l = {Label test-count & " tests running"}}
+{value l}
+{define-proc public {done-test}:void
+    {dec test-count}
+    {l.set-text test-count & " tests running"}
+}
+
+{define-class public Unserializable
+  field f:int = 1
+}
+
+{do
+|| Test canceling and queue sizes
+def queue3 = {BackgroundTaskQueue max-threads = 2, max-idle-threads = 2}
+def start = {DateTimeData}
+let test1-count:int = 6
+{for i = 0 below 6 do
+    let j = i
+    def a =
+    {BackgroundTaskQueue.async-start-task
+        "sleep",
+        {Arguments 10s},
+        queue = queue3,
+        {on e:BackgroundTaskEvent do
+            def elapsed = {start.elapsed}
+            {if j != 3 and j != 4 then
+                {assert e.result.size == 0 and not e.canceled?}
+                {if j < 2 then
+                    {assert elapsed > 9s and elapsed < 20s}
+                 else
+                    {assert elapsed > 19s and elapsed < 29s}
+                }
+             else
+                {assert elapsed < 9s}
+                {assert e.canceled?}
+            }
+            {done-test}
+            {dec test1-count}
+            {if test1-count == 0 then
+                || test BackgroundTaskQueue.destroy
+                {BackgroundTaskQueue.async-start-task
+                    "sleep",
+                    {Arguments 10s},
+                    queue = queue3,
+                    {on e:BackgroundTaskEvent do
+                        {assert e.canceled?}
+                        {done-test}
+                    }
+                }
+                {after 2s do {queue3.destroy}}
+            }
+        }
+    }
+    || Cancel 3 & 4, leave 0-2 & 5 to run
+    {if j == 3 or j == 4 then {assert {a.cancel}}}
+}
+
+|| Test loading a package with just a selector
+{BackgroundTaskQueue.async-start-task
+    "echo-args1",
+    {Arguments {Array 200, "hi", true}},
+    package-selector =
+        {make-package-selector
+            "COM.CURL.EXT.TEST.PACKAGE1",
+            location={url "package.scurl"}
+        },
+    {on e:BackgroundTaskEvent do
+        {assert e.result[0] == 200 and e.result[1] == "hi" and e.result[2]}
+        {done-test}
+    }
+}
+|| Test loading a package with a manifest
+{BackgroundTaskQueue.async-start-task
+    "echo-args2",
+    {Arguments {Array -20000, "hi", false}},
+    package-selector =
+        {make-package-selector
+            "COM.CURL.EXT.TEST.PACKAGE2"
+        },
+    manifest = {import-manifest {url "manifest2.mcurl"}},
+    {on e:BackgroundTaskEvent do
+        {assert e.result[0] == -20000 and e.result[1] == "hi" and not e.result[2]}
+        {done-test}
+    }
+}
+|| Test loading a package from the default manifest
+{BackgroundTaskQueue.async-start-task
+    "echo-args3",
+    {Arguments {Array 200, "hi", true}},
+    package-selector =
+        {make-package-selector
+            "COM.CURL.EXT.TEST.PACKAGE3"
+        },
+    {on e:BackgroundTaskEvent do
+        {assert e.result[0] == 200 and e.result[1] == "hi" and e.result[2]}
+        {done-test}
+    }
+}
+|| Test getting syntax errors
+{BackgroundTaskQueue.async-start-task
+    "hi",
+    {Arguments},
+    package-selector =
+        {make-package-selector
+            "COM.CURL.EXT.TEST.FAKE-PACKAGE",
+            location =
+                {abs-url
+                    |"curl://string/{curl "| & curl-version-number-2 &
+                    |" package}"| &
+                    |"{package COM.CURL.EXT.TEST.FAKE-PACKAGE}{xyzzy}"|
+                }
+        },
+    {on e:BackgroundTaskEvent do
+        {assert e.exception != null and
+            {e.exception.message.find-string "SyntaxError"} >= 0}
+        {done-test}
+    }
+}
+|| Test max-idle-threads = -1 and proc names with dots.
+def queue1 = {BackgroundTaskQueue max-threads = 2, max-idle-threads = -1}
+{for i = 0 below 3 do
+{BackgroundTaskQueue.async-start-task
+    "CURL.LANGUAGE.STRINGS.decode-characters",
+    {Arguments {ByteVec 65, 66, 67, 68}, "ascii"},
+    package-selector = {make-package-selector "CURL.LANGUAGE.STRINGS"},
+    queue = queue1,
+    {on e:BackgroundTaskEvent do
+        {assert e.done? and e.result[0] == 4 and e.result[1] == "ABCD"}
+        {done-test}
+    }
+}
+}
+|| Test max-idle-threads > 0 and procs that throw an Exception.
+def queue2 = {BackgroundTaskQueue max-threads = 2, max-idle-threads = 1}
+{for i = 0 below 3 do
+{BackgroundTaskQueue.async-start-task
+    "error",
+    {Arguments "bork"},
+    queue = queue2,
+    {on e:BackgroundTaskEvent do
+        {assert e.exception != null and {e.exception.message.find-string "bork"} >= 0}
+        {done-test}
+    }
+}
+}
+
+{BackgroundTaskQueue.async-start-task
+    "hi",
+    {Arguments {Unserializable}},
+    queue = queue2,
+    {on e:BackgroundTaskEvent do
+        {assert e.exception != null and
+            {e.exception.message.find-string "Unserializable"} >= 0}
+        {done-test}
+    }
+}
+
+}

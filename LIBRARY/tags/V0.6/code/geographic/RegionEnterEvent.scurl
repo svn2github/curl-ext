@@ -1,0 +1,11 @@
+||| Maintained by: kodan
+
+{define-class public RegionEnterEvent {inherits GuiEvent}
+
+  field public area-shape:AreaShape
+
+  {constructor public {default country-shape:AreaShape}
+    {construct-super}
+    set self.area-shape = country-shape
+  }
+}

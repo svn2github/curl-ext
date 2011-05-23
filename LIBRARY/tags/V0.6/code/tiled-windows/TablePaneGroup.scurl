@@ -1,0 +1,388 @@
+||| Copyright (C) 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An Open Curl project.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+
+{curl-file-attributes character-encoding = "windows-latin-1"}
+
+
+{doc-next
+    {purpose
+        A {docref PaneGroup} based on {docref Table} that arranges its child panes
+        in a tabular arrangement of equal-sized spaces.
+    }
+    {details
+        To customize the appearance, you can use the following
+        {docref-abbr Visual.style-element} values in your style rules.
+        
+        {Table
+            columns = 3,
+            border-width = 1in/300,
+            border-color = "black",
+            horizontal-line-width = 1in/300,
+            vertical-line-width = 1in/300,
+            cell-border-width = 0pt,
+            cell-margin = 2pt,
+            {header-cell style-element},
+            {header-cell Type},
+            {header-cell Description},
+            
+            {ctext TablePaneGroup}, {docref TablePaneGroup},
+            {text The {ctext TablePaneGroup} itself.
+            },
+            
+            {ctext TablePaneGroup/table}, {docref Table},
+            {text The {docref Table} object that is the parent of the individual cells.
+            },
+            
+            {ctext TablePaneGroup/cell-frame}, {docref SkinnableFrame},
+            {text Each {docref SkinnableFrame} object that contains
+                a child {docref BasePane} object in a table cell.
+            }
+        }
+    }
+}
+{define-class public open TablePaneGroup {inherits PaneGroup}
+  
+  {doc-next
+    {purpose
+        The {docref Table} object that underlies this pane group.
+    }
+  }
+  field protected constant table:Table
+  
+  {doc-next
+    {purpose The number of rows in this {docref TablePaneGroup}.}
+  }
+  field protected constant nrows:int
+  
+  {doc-next
+    {purpose The number of columns in this {docref TablePaneGroup}.}
+  }
+  field protected constant ncolumns:int
+  
+  {doc-next
+    {purpose
+        An array of {docref Frame} objects, one for each cell in the {docref TablePaneGroup}.
+    }
+  }
+  field protected constant cells:{Array-2-of Frame}
+  
+  {doc-next
+    {purpose
+        An array of dummy panes that can be swapped in if the corresponding table cells
+        are empty.
+    }
+  }
+  field protected constant dummy-panes:{Array-2-of #BasePane}
+  
+  {getter public open {style-element}:String
+    def _style-element = self._style-element
+    {if _style-element == "" then
+        {return "TablePaneGroup"}
+     else
+        {return _style-element}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Return the base style rules that describe the default style of this object.
+    }
+    {return-vals
+        An array of {docref StyleRule} objects that will be added to the base set of
+        style rules for the current applet
+        (using {docref StyleManager.append-base-style-rule})
+        to produce the default style for {docref TablePaneGroup} objects.
+    }
+  }
+  {define-proc public {get-base-style-rules}:{Array-of StyleRule}
+    {return
+        {new {Array-of StyleRule},
+            {StyleRule
+                "TablePaneGroup/cell-frame",
+                border-width = 1px
+            }
+        }
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Construct a {docref LinearPaneGroup} object.
+    }
+    {parameter root-container,
+        The {docref PaneContainer} that will contain this {docref LinearPaneGroup}.
+    }
+    {parameter nrows,
+        The number of rows of panes.  The default is 2.
+    }
+    {parameter ncolumns,
+        The number of columns of panes.  The default is 2.
+    }
+    {parameter percent,
+        The {quote percentage} to be used when this object is added to a
+        {docref LinearPaneGroup}.
+        See {docref BasePane.percent} for further information.
+    }
+    {parameter ...,
+        A list of {docref BasePane} objects that are initially in this group.
+    }
+  }
+  {constructor public {default
+                          root-container:PaneContainer,
+                          nrows:int = 2,
+                          ncolumns:int = 2,
+                          percent:double = -1.0,
+                          ...:BasePane
+                      }
+    set self.nrows = nrows
+    set self.ncolumns = ncolumns
+    set self.table =
+        {Table
+            _style-element = "TablePaneGroup/table",
+            halign = "left", valign = "top"
+        }
+    {construct-super root-container, ...}
+    set self.percent = percent
+    {self.add-internal self.table}
+    
+    set self.cells = {new {Array-2-of Frame}, nrows, ncolumns}
+    set self.dummy-panes = {new {Array-2-of #BasePane}, nrows, ncolumns}
+    {for i = 0 below nrows do
+        {for j = 0 below ncolumns do
+            def frame =
+                {SkinnableFrame
+                    _style-element = "TablePaneGroup/cell-frame",
+                    width = {make-elastic}, height = {make-elastic},
+                    hstretch? = true, vstretch? = true
+                }
+            set self.cells[i, j] = frame
+            {self.table.add
+                {cell-prototype
+                    row = i, column = j,
+                    frame
+                }
+            }
+            set self.dummy-panes[i, j] = null
+        }
+    }
+    
+    || Now actually install the panes in the frames that should hold them.
+    let row:int = 0
+    let column:int = 0
+    {for pane key i in self.base-panes do
+        {if row >= nrows then
+            {error "Too many panes added to TablePaneGroup"}
+        }
+        {self.cells[row, column].add pane}
+        {pane.mark-as-docked}
+        {if pane.dummy? then
+            set self.dummy-panes[row, column] = pane
+        }
+        set column = column + 1
+        {if column >= ncolumns then
+            set column = 0
+            set row = row + 1
+        }
+    }
+  }
+  
+  {getter public open {can-splice-out?}:bool
+    || Table containers are intended never to be spliced out.
+    {return false}
+  }
+  
+  {doc-next
+    {purpose
+        Convert an index to row/column values in this table.
+    }
+    {parameter index,
+        The integer index to convert.
+    }
+    {return-vals
+        The corresponding row and column values.
+        The cells are numbered from left to right within the same row,
+        and then down to the next row.
+    }
+  }
+  {method protected open {index-to-row-column index:int}:(row:int, column:int)
+    def row = index div self.ncolumns
+    def column = index mod self.ncolumns
+    {return row, column}    
+  }
+  
+  {method public {add-pane-at-index pane:BasePane, index:int}:void
+    {if index < self.base-panes.size then
+        {assert {self.table-position-empty? index}}
+        {self.base-panes.remove index}
+    }
+    {self.insert-pane-at-index pane, index}
+  }
+  
+  {doc-next
+    {purpose
+        Internal method to insert a pane at a specified position.
+    }
+    {parameter pane,
+        The pane to be inserted.
+    }
+    {parameter index,
+        The index at which it is to be inserted (which determines the row and column).
+    }
+    {usage
+        This method is only called when the previous contents of the table slot
+        that is designated by {param index} have been removed,
+        leaving the list of child panes of this table temporarily one short,
+        and inconsistent with the {ctext self.cells} array.
+        
+        Ordinary addition of a pane, which should replace a pane previously at the
+        same location, should be carried out by calling the
+        {docref-abbr PaneGroup.add-pane-at-index} method instead.
+    }
+  }
+  {method protected open {insert-pane-at-index pane:BasePane, index:int}:void
+    {super.add-pane-at-index pane, index}
+    def (row, column) = {self.index-to-row-column index}
+    {self.cells[row, column].add pane, replace? = true}
+  }
+  
+  {method public open {heuristic-add-pane pane:BasePane, index:int}:void
+    {if not {self.table-position-empty? index} then
+        || If the position in the table where "pane" will be added already has
+        || another pane in it, hide the other pane first.
+        {self.base-panes[index].hide}
+    }
+    {self.add-pane-at-index pane, index}
+  }
+  
+  {method public open {try-add-pane-near-me
+                          pane:BasePane,
+                          action:DockingAction
+                      }:bool
+    {return false}
+  }
+  
+  {method public open {try-add-pane-near-target
+                          pane:BasePane,
+                          target:BasePane,
+                          action:DockingAction
+                      }:bool
+    || CHECKME: Does this need to change, at least for implementing swaps?
+    {return false}
+  }
+  
+  {method public open {remove-pane child:BasePane, for-replace?:bool}:void
+    def child-index = {self.find child}
+    def table = self.table
+    
+    || Compute the path to save in the child pane.
+    {child.store-path}
+    || Compute the percentage value to save in the child pane.
+    set child.percent = {child.get-percent-before-undocking}
+    
+    || Then finally remove the child from us.
+    {child.detach}
+    {super.remove-pane child, for-replace?}
+    
+    || We always need to keep the same number of child panes in a Table container, or else
+    || the correspondence between index values and (row, column) coordinates will get messed
+    || up.  So when we delete a pane, we add a dummy pane in its place.
+    def dummy-pane = {self.get-dummy-pane-at-index child-index}
+    {self.insert-pane-at-index dummy-pane, child-index}
+  }
+  
+  {doc-next
+    {purpose
+        Get the dummy pane that should be used if the indicated table slot is empty.
+    }
+    {parameter index,
+        The index of the table slot in question.
+    }
+    {return-vals
+        The dummy pane that is used in this table when the table slot at {param index}
+        does not have an application-defined pane in it.
+    }
+  }
+  {method protected open {get-dummy-pane-at-index index:int}:BasePane
+    def (row, column) = {self.index-to-row-column index}
+    {if self.dummy-panes[row, column] == null then
+        set self.dummy-panes[row, column] = {DummyPane self.root-container}
+    }
+    def dummy-pane = {non-null self.dummy-panes[row, column]}
+    {return dummy-pane}    
+  }
+  
+  {doc-next
+    {purpose
+        Determine whether a specified table slot is empty.
+    }
+    {parameter index,
+        The index of the table position to be tested (which determines the row and column).
+    }
+    {return-vals
+        True if the table position designated by {param index} is currently occupied by
+        a dummy pane.
+        False if the table position is occupied by a different {docref BasePane}.
+    }
+  }
+  {method protected open {table-position-empty? index:int}:bool
+    {return self.base-panes[index].dummy?}
+  }
+  
+  {method public {replace-pane-at-index pane:BasePane, index:int}:BasePane
+    def old-pane = self.base-panes[index]
+    {if not old-pane.dummy? then
+        {old-pane.detach-this-pane for-replace? = true}
+    }
+    {self.add-pane-at-index pane, index}
+    {return old-pane}
+  }
+  
+  {method public open {filter-docking-action
+                          state:DockingAction,
+                          target-pane:BasePane
+                      }:(state:DockingAction, target-pane:BasePane)
+    {assert target-pane.pane-group == self}
+    {switch state
+     case DockingAction.none, DockingAction.replace do
+        || These two cases require no further action.
+        {return state, target-pane}
+    }
+    || Treat all other docking gestures as requests to swap.
+    set state = DockingAction.swap
+    def index = {self.find target-pane}
+    {if index >= 0 and state == DockingAction.swap and {self.table-position-empty? index} then
+        || But if "swapping" with an empty cell, then use the replace operation instead.
+        set state = DockingAction.replace
+    }
+    {return state, target-pane}
+  }
+  
+  {method public {save-state out:TextOutputStream}:void
+    {format out = out, "\n\{table-pane-group nrows = %d, ncolumns = %d", self.nrows, self.ncolumns}
+    {self.write-state-info out}
+    {for child in self.base-panes do
+        {out.write-one-string ", "}
+        {child.save-state out}
+    }
+    {out.write-one-string "\}"}
+  }
+  
+}
+
+{do
+    {StyleManager.append-base-style-rule {splice {TablePaneGroup.get-base-style-rules}}}
+}

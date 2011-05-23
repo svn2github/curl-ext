@@ -1,0 +1,43 @@
+||| Maintained by: kodan
+
+{define-class abstract public ShapeRecord
+
+  field public shape-type:int
+
+  {constructor public {default}
+    ||set self.shape-type = shape-type
+  }
+
+  {factory public {from-Record record:Record}:ShapeRecord
+    {return 
+        {switch record["shape-type"]
+         |# TO DO
+         case 0  do {NullShapeRecord.from-Record record}
+         #|
+         case 1  do {PointShapeRecord.from-Record record}
+         case 3  do {PolyLineShapeRecord.from-Record record}
+         case 5  do {PolygonShapeRecord.from-Record record}
+         |# TO DO   
+         case 8  do {MultiPointShapeRecord.from-Record record}
+         case 11 do {PointZShapeRecord.from-Record record}
+         case 13 do {PolyLineZShapeRecord.from-Record record}
+         case 15 do {PolygonZShapeRecord.from-Record record}
+         case 18 do {MultiPointZShapeRecord.from-Record record}
+         case 21 do {PointMShapeRecord.from-Record record}
+         case 23 do {PolyLineMShapeRecord.from-Record record}
+         case 25 do {PolygonMShapeRecord.from-Record record}
+         case 28 do {MultiPointMShapeRecord.from-Record record}
+         case 31 do {MultiPatchShapeRecord.from-Record record}
+         #|
+         else
+            {output "error : shape-type=" & record["shape-type"]}
+            {exit}
+        }
+    }
+  }
+
+  {method abstract public {to-RecordData}:RecordData}
+  {method abstract public {to-polygons}:{Array-of {Array-of Double2d}}}
+  
+
+}

@@ -1,0 +1,700 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+|| TODO: add some index checking to produce more useful errors earlier.
+
+|| TODO: consider whether there are any ways to get actual data
+|| types into this system, and reduce the "any" operations.
+|| Sure, the Record system works off of them, but there's a lot
+|| of casting involved in any update cycle. It's less the overhead
+|| than the pain on the user side. So if we could do something like
+|| ValueControl-of, where you can get -asa-any but also a typed value,
+|| that would be handy. Possibly difficult or impossible to implement,
+|| and possibly more of a pain to the user in the end than just using any...
+
+|| TODO: In the manager, since updates happen via events, exceptions
+|| coming out of there might be hard for the user to deal with.
+|| And leaving internal state locked up is particularly bad because
+|| the manager is a singleton, so an unhandled exception could turn off
+|| all updates for the applet. Plus it frequently calls back into
+|| user-provided code, which could do arbitrarily bad things...
+|| Can't and shouldn't try to handle all cases, but some of the more
+|| obvious exceptions and those involving package-protected processes
+|| should probably be better covered, at least.
+
+|| TODO: we could, THEORETICALLY, attempt to make the entire update
+|| cycle (semi?)atomic. There would be overhead to this, certainly,
+|| and it's probably not worth it altogether since something could
+|| still blow up on the actual set step, but it's an interesting thought.
+||
+|| TODO: at present, preds not having updated just skips a node's update.
+|| Ideally we should stop execution down the line as well, but
+|| that's not possible in an inexpensive enough way at present,
+|| since we do the full topological sort upfront.
+|| Note that this may not be reasonable / possible.
+
+|| TODO: The abuse of batch-events? by CalculatedRecordSet and
+|| CalculatedFieldManager should be removed, but first we'll need a
+|| very similar-appearing state-tracking and event-mangling system...
+
+|| TODO: seems like we should be able to do more with the epoch.
+
+|| TODO: can we better guard against users leaving links around and
+|| unknowingly leaking memory?
+
+{curl-file-attributes character-encoding = "utf8"}
+
+
+|| Some type aliases for long / parameterized names.
+{def package CFNode = {DirectedGraphNode-of CalculatedField}}
+{def package CFGraph = {DefaultDirectedGraph-of CalculatedField}}
+{def package CFNodeArray = {Array-of CFNode}}
+
+
+{doc-next
+    {purpose
+        Responsible for driving update cycles among a group of
+        {docref CalculatedField}s.
+    }
+    {details
+        {docref CalculatedField}s assigned to different managers
+        cannot interoperate.
+        Attempting to set a {docref CalculatedField} from one
+        {ctext CalculatedFieldManager} as a predecessor of one from
+        another {ctext CalculatedFieldManager} will result in an
+        exception.
+    }
+}
+{define-class public open CalculatedFieldManager {inherits EventTarget}
+  
+  || The current update epoch: a monotonically increasing cycle stamp.
+  field package epoch:int = -1
+  field package next-epoch:int = 0
+  
+  || Whether we are waiting to process an update.
+  field package computation-pending?:bool
+  || Whether we're stuck waiting for a CalculatedRecordSet to become
+  || available before starting a new computation cycle.
+  field package computation-start-blocked?:bool
+  || Whether we need a new computation.
+  field package computation-needed?:bool
+  || Whether an update is running now.
+  field package in-computation?:bool
+  || Whether we need to stop an update early, probably because we need to
+  || repeat it from an earlier step.
+  field package computation-aborting?:bool
+  || Whether somebody called disconnect-all during a computation cycle,
+  || meaning we need to service that request after aborting.
+  field private _clear-during-computation?:bool
+    
+  || All CalculatedRecordSets that this manager is handling nodes for.
+  field package attached-record-sets:{Set-of CalculatedRecordSet} =
+      {new {Set-of CalculatedRecordSet}}
+  
+  || All RecordSets that this manager is observing,
+  || and the fields it is observing them for.
+  field package watched-record-sets:{HashTable-of
+                                      RecordSet,
+                                      {Set-of CalculatedField}
+                                    } =
+      {new {HashTable-of RecordSet, {Set-of CalculatedField}}}
+  
+  || All nodes that have requested an update but not yet finished an update.
+  field package update-requested-at:{Set-of CFNode} = {new {Set-of CFNode}}
+  
+  || The node update sequence.
+  field private working-update-sequence:CFNodeArray  = {new CFNodeArray}
+  field private working-sequence-valid?:bool
+  || All record sets involved in the update.
+  field private working-update-sets:{Set-of RecordSet} =
+      {new {Set-of RecordSet}}
+  
+  || A shared event handler we drop on all watched record sets.
+  field package watcher-proc:EventHandler
+  
+  || The directed graph of (nodes containing) CalculatedFields.
+  field private digraph:CFGraph = {new CFGraph}
+  
+  || ======== ========= CONSTRUCTORS AND FACTORIES ======== ========
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+  }
+  {constructor public {default}
+    {construct-super}
+    set self.watcher-proc =
+        {on e:RecordSetEvent at rs:RecordSet do
+            {self.note-event-at-watched-record-set e, rs}            
+        }
+  }
+  
+  || ======== ========= EVENT HANDLING ======== ========
+  
+  {method public open {handle-event event:Event}:void
+    {super.handle-event event}
+    {type-switch event
+     case e:CalculatedFieldUpdateRequest do
+        set self.computation-pending? = false
+        {self.attempt-update}
+    }
+  }
+  
+  || ======== ========= UPDATE MANAGEMENT ======== ========
+  
+  {doc-next
+    {purpose
+        Whether this manager is presently attempting to update.
+    }
+  }
+  {getter public open {updating?}:bool
+    {return self.in-computation?}
+  }
+  
+  {method private {get-next-epoch}:int
+    {inc self.next-epoch}
+    {if self.next-epoch <= 0 then
+        {throw
+            {CalculatedFieldUpdateEpochException
+                {hlmessage "Update epoch overflow."}
+            }
+        }
+    }
+    {return self.next-epoch}
+  }
+  
+  {method package {recompute}:void
+    
+    {if not self.computation-needed? then
+        set self.computation-needed? = true
+    }
+    
+    {if self.in-computation? then
+        set self.computation-aborting? = true
+    }
+    
+    {if not self.computation-pending? and
+        not self.computation-start-blocked?
+     then
+        || Enqueue an update request.
+        def next-epoch = {self.get-next-epoch}
+        def request-event = {CalculatedFieldUpdateRequest} 
+        {self.enqueue-event request-event}
+        set self.computation-pending? = true
+    }
+    
+  }
+  
+  || Just a simple test and with wrapper.
+  {method package {attempt-update}:void
+    {if self.in-computation? then
+        {throw
+            {CalculatedFieldException
+                {hlmessage
+                    "Attempted to start an update while already updating."
+                }
+            }
+        }
+    }
+    {with self.in-computation? = true do
+        {self.internal-attempt-update}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        {docref-abbr CalculatedField.disconnect}s all
+        {docref CalculatedField}s within this manager.
+    }
+    {details
+        Calling this method effectively clears out the manager,
+        but it can still be used thereafter
+        (with new {docref CalculatdField}s).
+        
+        This method should not be called while an update is running.
+    }
+  }
+  || FIXME: but actually it has special code to deal with being called
+  || during an update. Do we want to keep that? Keep that quiet?
+  {method public open {disconnect-all}:void
+    {if self.in-computation? then
+        set self.computation-aborting? = true
+        set self._clear-during-computation? = true
+     else
+        {self.internal-clear}
+    }
+  }
+  
+  {method private {internal-clear}:void
+    def node-array = {new {Array-of CFNode}}
+    {for node in self.digraph do
+        {node-array.append node asa CFNode}
+    }
+    {for node in node-array do
+        {node.data.disconnect force? = true}
+    }
+    {for rs in self.attached-record-sets do
+        {rs.detach-from-manager}
+    }
+    set self._clear-during-computation? = false
+  }
+  
+  || Check to see if we can update, then launch the update cycle.
+  {method private {internal-attempt-update}:void
+    
+    set self.epoch = {self.get-next-epoch}
+    
+    || Try to run an update cycle.
+    || For certain known exceptions, attempt to abort and clean up
+    || before throwing the exception, to give us the best chance of recovery.
+    || Otherwise, we may leave with transient state and attached
+    || record sets locked and then we're basically toast.
+    let abort-to-exception:#Exception
+    {try
+        {self.perform-computation-cycle}
+     catch e:GraphCycleException do
+        set self.computation-aborting? = true
+        set abort-to-exception = e
+     catch e:CalculatedFieldException do
+        set self.computation-aborting? = true
+        set abort-to-exception = e        
+    }
+    
+    || Deal with the possible outcomes for perform-computation-cycle.
+    {if self.computation-start-blocked? then
+        || If we failed to acquire the required "locks",
+        || then there's nothing to be done here.
+        
+     elseif not self.computation-aborting? then
+        || If we succeeded, then clear the update state.
+        set self.computation-needed? = false
+        {self.update-requested-at.clear}
+        def finish-event = {CalculatedFieldUpdateFinished self.epoch}
+        {for rs in self.working-update-sets do
+            {rs.handle-event finish-event}
+        }
+        {self.handle-event finish-event}
+        
+     else
+        || We aborted; let everyone know about that so they can clean up.
+        def abort-event = {CalculatedFieldUpdateAborted self.epoch}
+        {for rs in self.working-update-sets do
+            {rs.handle-event abort-event}
+        }
+        {self.handle-event abort-event}
+    }
+    
+    || In any event, clear out the working update lists.
+    {self.working-update-sequence.clear}
+    {self.working-update-sets.clear}
+    set self.working-sequence-valid? = false
+    
+    || We either didn't abort or we just finished aborting.
+    set self.computation-aborting? = false
+    
+    || If we aborted because of an exception and held it, rethrow it now.
+    {if-non-null abort-to-exception then
+        {throw abort-to-exception}
+    }
+    
+    {if self._clear-during-computation? then
+        {self.internal-clear}
+    }
+    
+  }
+  
+  || Update all nodes in the requested set, and either abort or finish.
+  {method private {perform-computation-cycle}:void
+    
+    || Clear the working lists.
+    def update-sequence = self.working-update-sequence
+    {update-sequence.clear}
+    def update-sets = self.working-update-sets
+    {update-sets.clear}
+    
+    || Sort the nodes into update order.
+    || NOTE: an exception here will be caught by internal-attempt-update.
+    {CFNode.topological-sort-subgraph
+        self.update-requested-at,
+        out = update-sequence
+    }
+    
+    || Find all the RecordSets that we will be working with.
+    {for node in update-sequence do
+        || Note that we use record != null to indicate that we need
+        || to pay attention to the attached RecordSet.
+        {if-non-null rec = node.data.record,
+            rs = node.data.record-set
+         then
+            {if not {update-sets.member? rs} then
+                {update-sets.insert rs}
+                || If we're already updating everybody, break.
+                {if update-sets.size == self.attached-record-sets.size then
+                    {break}
+                }
+            }
+        }
+    }
+    
+    set self.working-sequence-valid? = true
+    
+    || Psuedo-lock each RecordSet to avoid events we can't handle now.
+    || If we can't lock, then abort and wait to try again.
+    {for rs in update-sets do
+        {if rs.batch-events? then
+            set self.computation-start-blocked? = true
+            {return}
+        }
+    }
+    
+    set self.computation-start-blocked? = false
+    
+    || Send start events to all attached RecordSets in the update list.
+    def start-event = {CalculatedFieldUpdateStart self.epoch}
+    {for rs in update-sets do
+        {rs.handle-event start-event}
+    }
+    || ... and to ourself.
+    {self.handle-event start-event}
+    
+    || Prepare each node for updating; this may cause nodes that need to
+    || recompute their predecessors to add or remove,
+    || potentially causing us to abort.
+    || FIXME: why are we stamping all the positions before preparing?
+    {for n key i in update-sequence do
+        set n.data.update-sequence-position = i
+    }
+    {for n in update-sequence do
+        {n.data.prepare-for-update}
+    }
+    
+    {if self.computation-aborting? then {return}}
+    
+    || NOTE: we might append nodes to the sequence while we're working
+    || through it, so don't use a pre-fixed range loop.
+    let counter:int = -1
+    {while true do
+        {inc counter}
+        {if counter < update-sequence.size then
+            def data = update-sequence[counter].data
+            {with data.in-update? = true do
+                {data.update}
+            }
+            {if self.computation-aborting? then {return}}
+         else
+            {break}
+        }
+    }
+    
+    || Clear any transient state out.
+    {for n in update-sequence do
+        {n.data.update-finished}
+    }
+    
+  }
+  
+  || ======== ========= RecordSet MANAGEMENT ======== ========
+  
+  {doc-next
+    {purpose
+        Create a new {docref CalculatedRecordSet}
+        associated with this manager.
+    }
+    {parameter fields,
+        See {docref RecordSet.fields}.
+    }
+    {parameter modifiable?,
+        See {docref RecordSet.modifiable?}.
+    }
+    {parameter ...,
+        See {docref RecordSet.default}.
+    }
+  }
+  {method public open {create-record-set
+                          fields:RecordFields,
+                          modifiable?:bool = true,
+                          ...:Object
+                      }:CalculatedRecordSet
+    {return
+        {CalculatedRecordSet
+            self,
+            fields,
+            modifiable? = modifiable?,
+            ...
+        }
+    }
+  }
+    
+  {method package {attach-record-set record-set:CalculatedRecordSet}:void
+    {if not {self.attached-record-sets.member? record-set} then
+        {self.attached-record-sets.insert record-set}
+        {record-set.note-manager-attached}
+    }
+  }
+  
+  || Currently only empty record sets should be detached.
+  {method package {detach-record-set record-set:CalculatedRecordSet}:void
+    {self.attached-record-sets.remove record-set, error-if-missing? = false}
+    {record-set.note-manager-detached}
+  }
+  
+  || Set an event funnel on the given RecordSet.
+  {method package {watch-record-set
+                      record-set:RecordSet,
+                      observing-field:CalculatedField
+                  }:void
+    let (cf-set:{Set-of CalculatedField}, exists?:bool) =
+        {self.watched-record-sets.get-if-exists record-set}
+    {if not exists? then
+        def new-set = {new {Set-of CalculatedField}}
+        set cf-set = new-set
+        {self.watched-record-sets.set record-set, new-set}
+        {record-set.add-event-handler self.watcher-proc}
+    }
+    {cf-set.insert observing-field}
+  }
+  
+  || Remove an event funnel from the given RecordSet.
+  {method package {unwatch-record-set
+                      record-set:RecordSet,
+                      observing-field:CalculatedField
+                  }:void
+    let (cf-set:{Set-of CalculatedField}, exists?:bool) =
+        {self.watched-record-sets.get-if-exists record-set}
+    {if exists? then
+        {cf-set.remove observing-field}
+        {if cf-set.empty? then
+            {record-set.remove-event-handler self.watcher-proc}
+        }
+    }
+  }
+  
+  {method package {note-event-at-watched-record-set
+                      event:RecordSetEvent,
+                      record-set:RecordSet
+                  }:void
+    {if self.watched-record-sets.empty? or
+        self.in-computation?
+     then
+        {return}
+    }
+    || Send the event to every field watching that record set.
+    def (rs, exists?) = {self.watched-record-sets.get-if-exists record-set}
+    {if exists? then
+        {for cf in rs do
+            {cf.note-event-at-record-set event}
+        }
+    }
+  }
+  
+  || Note that an attached RecordSet just set its batch-events? = false.
+  {method package {batch-released-at-record-set record-set:RecordSet}:void
+    {if self.computation-start-blocked? then
+        set self.computation-start-blocked? = false
+        {self.recompute}
+    }
+  }
+  
+  || ======== ========= CalculatedField MANAGEMENT ======== ========
+  
+  {method package {create-node new-field:CalculatedField}:CFNode
+    def new-node = {self.digraph.create-node new-field}
+    {return new-node asa CFNode}
+  }
+  
+  {method package {add-field new-field:CalculatedField}:void
+    
+    {if-non-null manager = new-field.manager then
+        {if manager == self then
+            || We should never add a field twice.
+            {throw
+                {CalculatedFieldException
+                    {hlmessage "Attempted to re-add field to same manager."}
+                }
+            }
+         else
+            || We don't support swapping managers.
+            {throw
+                {CalculatedFieldWrongManagerException
+                    {hlformat
+                        "Fields cannot change managers: old %s, new %s.",
+                        new-field.manager,
+                        self
+                    }
+                }
+            }
+        }
+    }
+        
+    set new-field.manager = self
+    set new-field.last-update-epoch = -1
+    
+    || Start watching the target record set, or attach a CRS.
+    {if-non-null rs = new-field.record-set then
+        {if new-field.requires-record-set-events? then
+            {self.watch-record-set rs, new-field}
+         else
+            {type-switch rs
+             case crs:CalculatedRecordSet do
+                {self.attach-record-set crs}
+            }
+        }
+    }
+    
+    {new-field.request-update}
+  }
+  
+  || Remove the CF from our known lists.
+  || This should only be called by nodes that have already broken all edges.
+  {method package {remove-field field-to-remove:CalculatedField}:void
+    
+    def n = field-to-remove.node
+    
+    {if not field-to-remove.manager == self then
+        {throw
+            {CalculatedFieldWrongManagerException
+                {hlformat
+                    "Removing field from incorrect manager: %s, %s.",
+                    field-to-remove.manager,
+                    self
+                }
+            }
+        }
+    }
+    
+    
+    {if n.connected? then
+        {throw
+            {CalculatedFieldException
+                {hlmessage
+                    Cannot remove a CalculatedField with edges remaining.
+                }
+            }
+        }
+    }
+    
+    || Remove it from any pending update, if present.
+    {self.update-requested-at.remove n, error-if-missing? = false}
+    
+    || Stop watching its record set, if necessary.
+    {if field-to-remove.requires-record-set-events? then
+        {if-non-null rs = field-to-remove.record-set then
+            {self.unwatch-record-set rs, field-to-remove}
+        }
+    }
+    
+    || Remove it from the directed graph.
+    {self.digraph.delete-node n}
+    
+    || If we're still updating, but this node isn't on the list,
+    || then we can just keep going (since it has no edges).
+    {if self.in-computation? and
+        not self.computation-aborting? and
+        self.working-sequence-valid?
+     then
+        || FIXME: this is slow. OTOH, people shouldn't be removing fields
+        || schedule for update during this phase anyway, so perhaps this
+        || is fine, or perhaps we should just recompute without checking.
+        {if {self.working-update-sequence.find n} >= 0 then
+            || We don't support removing from the active update list,
+            || so we'll have to abort.
+            {self.recompute}
+        }
+    }
+    
+  }
+  
+  {method package {request-update-for-field field:CalculatedField}:void
+    
+    || We need to record this update request in all cases, because we
+    || might later abort, so just modifying the working list is not enough.
+    def node = field.node
+    {self.update-requested-at.insert node}
+    
+    {self.recompute}
+    
+    || FIXME: the following code attempts to avoid unnecessary updates,
+    || but may be too error-prone and result in little savings anyway.
+||--    {if self.in-computation? then
+||--        {if field.last-update-epoch == self.epoch then
+||--            || A field that was already updated just asked for an update.
+||--            {if node.sink? then
+||--                || If it's a terminal node, and we already updated it,
+||--                || then it's OK to just update it again from predecessors
+||--                || that we know are good.
+||--                || FIXME: should probably append to the end of the list
+||--                || instead, but right now it's probably not safe to include
+||--                || the same node twice.
+||--                {with field.in-update? = true do
+||--                    {field.update}
+||--                }
+||--             else
+||--                || If no successor has been updated yet, but all successors
+||--                || are in the update list, then it's OK
+||--                || to update immediately and the continue on as normal.
+||--                let ok-to-continue?:bool = true
+||--                {for succ in node.successors do
+||--                    {if succ.data.last-update-epoch == self.epoch or
+||--                        || FIXME: this is an array scan, not a set lookup,
+||--                        || and may make this operation too expensive.
+||--                        {self.working-update-sequence.find succ} == -1
+||--                     then
+||--                        set ok-to-continue? = false
+||--                        {break}
+||--                    }
+||--                }
+||--                {if ok-to-continue? then
+||--                    {with field.in-update? = true do
+||--                        {field.update}
+||--                    }
+||--                 else
+||--                    || Have to abort.
+||--                    {self.recompute}
+||--                }
+||--            }
+||--            
+||--         elseif field.last-update-epoch < self.epoch then
+||--            let ok-to-continue?:bool = false
+||--            || Check to see if this node is already due to be updated.
+||--            {if {self.working-update-sequence.find node} == -1 then
+||--                || If we're not going to update it, but it's a sink, we
+||--                || can just append it to the end up the update list.
+||--                {if node.sink? then
+||--                    {self.working-update-sequence.append node}
+||--                    set ok-to-continue? = true
+||--                }
+||--             else
+||--                set ok-to-continue? = true
+||--            }
+||--            {if not ok-to-continue? then
+||--                {self.recompute}
+||--            }
+||--            
+||--         else
+||--            {error
+||--                {hlmessage "CalculatedField epoch is too large."}
+||--            }
+||--        }
+||--        
+||--     else
+||--        {self.recompute}
+||--    }
+  }
+  
+}
+

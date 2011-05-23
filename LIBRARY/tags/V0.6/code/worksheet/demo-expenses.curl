@@ -1,0 +1,317 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0 applet}
+
+{applet manifest = "../manifest.mcurl", locale = "en"}
+
+{import * from COM.CURL.EXT.WORKSHEET}
+{import * from CURL.GUI.CHARTS}
+{import * from CURL.IO.JSON}
+
+{set-document-properties
+    font-size = 10pt
+}
+
+{title heading? = false, Expense Report Sample}
+
+|| -------------------------------------------------------------------------
+
+{define-proc public {get-new-id rs:RecordSet}:int
+    || Find the highest ID currently in use
+    let last-id:int = 0
+    {for r:Record in rs do
+        let recid:int = r["id"] asa int
+        {if recid > last-id then
+            set last-id = recid
+        }
+    }
+    {return last-id + 1}
+}
+
+{def compute-sum =
+    {proc {dest:DataRef, src:DataRef}:void
+        let sum:double = 0.0
+        {for v in src do
+            {inc sum, v.as-double}
+        }
+        set dest.value = sum
+    }
+}
+
+{def compute-diff =
+    {proc {dest:DataRef, v:DataRef, ...:DataRef}:void
+        let diff:double = v.as-double
+        {for dr in ... do
+            {dec diff, dr.as-double}
+        }
+        set dest.value = diff
+    }
+}
+
+{def expense-fields =
+    {RecordFields
+        {RecordField "id", domain = int},
+        {RecordField "date", domain = DataSource.date-domain},
+        {RecordField "description", domain = String},
+        {RecordField "amount", domain = DataSource.currency-domain},
+        {RecordField "purpose", domain = String}
+    }
+}
+
+{def purpose-fields =
+    {RecordFields
+        {RecordField "id", domain = String},
+        {RecordField "description", domain = String},
+        {RecordField "amount", domain = DataSource.currency-domain}
+    }
+}
+
+{def expenses-ds =
+    {RecordSetDataSource
+        {LocalRecordSet expense-fields,
+            {RecordData id = 1, date = {DateTime.date}, amount = 0}
+            ,
+||--            {RecordData id = 2, date = {DateTime.date}, amount = 0}
+||--            ,
+            {on e:RecordModified do
+                {dump e.index, e.record["date"],e.record["description"]}
+            }
+        }
+    }
+}
+
+{def amount-ref = {expenses-ds.get-ref "amount"}}
+
+
+{def purpose-ds =
+    {RecordSetDataSource
+        {LocalRecordSet purpose-fields,
+            {RecordData id = "A", description = "Internet"},
+            {RecordData id = "B", description = "Books"},
+            {RecordData id = "C", description = "Travel"},
+            {RecordData id = "D", description = "Meals"},
+            {RecordData id = "E", description = "Recruiting"}
+        }
+    }
+}
+
+{def model = {WorksheetModel 16, 7}}
+{def employee-ref = {model.get-ref 2, 3}}
+{def total-ref = {model.get-ref row = 8, col = 4}}
+{def prepaid-ref = {model.get-ref total-ref, row = 1}} || 1 row below total
+
+{def worksheet =
+    {Worksheet
+        model,
+        font-size = 9pt,
+        default-row-height = 18pt,
+        {widths 24pt, 24pt, 72pt, 2.5in, 60pt, 1.5in, 30pt},
+        row = 0, col = 0, row-height = 22pt,
+        {value-cell colspan = 4, margin = 3pt, {big Expense Report}},
+
+        row = 2, col = 0, rowspan = 2, colspan = 2, "Employee Info",
+
+        {value-cell halign = "right", "Name:"},
+        {input-cell ""},
+
+        row = 3, col = 2,
+        {value-cell halign = "right", "Department:"}, {input-cell ""},
+
+        row = 5, col = 1,
+        "Item", "Date", "Description", "Amount", "Purpose",
+
+        || Define a repeating form, once for each expense item
+        row = 6, col = 0,
+        {row-group 1},
+        col = 1,
+        {EmbeddedRecordForm
+            expenses-ds, id-field = "id",
+
+            {FieldSpec "id"},
+            {FieldSpec editable? = true, "date"},
+            {FieldSpec editable? = true, "description"},
+            {FieldSpec editable? = true, halign = "right", "amount"},
+            {FieldSpec editable? = true, "purpose"},
+            {value-cell
+                halign = "center", valign = "center", margin = 0pt,
+                "button",
+                ui-spec =
+                {proc {r:#Record, cv:CellValue}:Visual
+                    {return
+                        {CommandButton
+                            label = {bold color = "crimson", x},
+                            takes-focus? = false,
+                            height = 13pt,
+                            {on Action at cb:CommandButton do
+                                {type-switch cb.data-binding-context
+                                 case rf:RecordForm do
+                                    {if-non-null cr = rf.current-record then
+                                        {cr.delete}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+
+        row = 8, col = 1,
+        {value-cell
+            halign = "center", valign = "center", margin = 0pt,
+            {CommandButton
+                label = {bold font-size = 10pt, font-family = "Arial", +},
+                height = 15pt,
+                {on Action do
+                    def rs = expenses-ds.record-set
+                    def r = {rs.new-record}
+                    set r["id"] = {get-new-id rs}
+                    {rs.append r}
+                    {dump {model.get-data}}
+                }
+            }
+        },
+
+        col = 3, {value-cell halign = "right", "Total:"},
+
+        || Formula to compute the total of all amounts
+        col = 4, {formula-cell
+                     halign = "right", font-weight = "bold",
+                     domain = DataSource.currency-domain,
+                     compute-sum, amount-ref
+                 },
+
+        row = 9, col = 3, {value-cell halign = "right", "Prepaid:"},
+        {currency-cell editable? = true, 0},
+
+        || Show net at the bottom (total expenses less prepaid amount)
+        row = 12, col = 0, colspan = 2, "Total",
+        {formula-cell
+            domain = DataSource.currency-domain, font-weight = "bold",
+            compute-diff, total-ref, prepaid-ref
+        },
+
+        colspan = 2, "Due Employee",
+
+        || Signature area at the bottom
+        row = 14,
+        col = 2,
+        {value-cell colspan = 2, font-size = 16pt, "____________________"}, 
+        {value-cell font-size = 16pt, "__________"},
+
+        row = 15, 
+        col = 0, {value-cell colspan = 2, "Signed"},
+        col = 2, {ref-cell colspan = 2, employee-ref}, "Date"
+    }
+}
+
+{value
+    worksheet
+}
+
+{CommandButton
+    label = "Reload",
+    {on Action do
+        {model.put-data {JsonValue-parse
+|"
+{
+ "data-version":"",
+ "model-name":"",
+ "forms":
+    [
+     {
+      "records":
+        [
+         {
+          "id":"1",
+          "date":"8/30/2010",
+          "description":"First Item",
+          "amount":"$33.00",
+          "purpose":"meals"
+         },
+         {
+          "id":"2",
+          "date":"8/30/2010",
+          "description":"Second Item",
+          "amount":"$1.23",
+          "purpose":"Travel"
+         }
+        ],
+      "ref":"$B$7"
+     }
+    ],
+ "$D$3":"Richard Thompson",
+ "$D$4":"Marketing",
+ "h-ruler-spec":
+    {
+     "orientation":"horizontal",
+     "split-count":0,
+     "specs":
+        [
+         "24pt",
+         "24pt",
+         "72pt",
+         "180pt",
+         "60pt",
+         "72pt",
+         "30pt"
+        ]
+    },
+ "v-ruler-spec":
+    {
+     "orientation":"vertical",
+     "split-count":0,
+     "specs":
+        [
+         "30pt",
+         "18pt",
+         "18pt",
+         "18pt",
+         "18pt",
+         "18pt",
+         "18pt",
+         "18pt",
+         "18pt",
+         "24pt",
+         "18pt",
+         "18pt",
+         "18pt",
+         "18pt",
+         "18pt",
+         "18pt",
+         "18pt",
+         "18pt"
+        ]
+    }
+}
+"|
+                        }
+        }
+    }
+}
+{CommandButton
+    label = "Show Json",
+    {on Action at cb:CommandButton do
+        def data = {JsonValue-to-String
+                       {model.get-data},
+                       prettify? = true
+                   }
+        {dump data}
+    }
+}
+
