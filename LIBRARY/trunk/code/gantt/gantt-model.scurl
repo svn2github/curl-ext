@@ -18,7 +18,6 @@
 {import * from CURL.DATA-ACCESS.CONNECTED} || for TransientAnyDomain
 {import * from CURL.LANGUAGE.REGEXP}
 {import * from CURL.UTIL.OBSERVER}
-{import * from CURL.IDE.PERFORMANCE}
 
 {import * from COM.CURL.EXT.GRAPHS}
 {import * from COM.CURL.EXT.DATA-ACCESS}
