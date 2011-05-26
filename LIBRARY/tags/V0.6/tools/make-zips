@@ -5,11 +5,13 @@ pushd $SRCROOT/deploy
 DDIRS=( `ls` )
 popd
 DDIR=${DDIRS[${#DDIRS[@]} - 1]}
-DIST="CURL-EXT-$TODAY"
+DVER=`expr $DDIR : '.*\(V[0-9.]*\)'`
+# echo $DVER "(" $DDIR ")"
+DIST="CURL-EXT-$DVER"
 DISTDIR="$SRCROOT/$DIST"
 echo "Packing $DDIR from $SRCROOT into $DIST"
-DISTSRC="$DISTDIR/$DDIR-src/"
-DISTDOC="$DISTDIR/$DDIR-doc/"
+DISTSRC="$DISTDIR/$DDIR-src"
+DISTDOC="$DISTDIR/$DDIR-doc"
 FLAGS="-av"
 if test -d "$DISTDIR" ; then
     echo "-- $DISTDIR already exists: Updating only"
@@ -19,9 +21,15 @@ else
     mkdir -p "$DISTSRC"
     mkdir -p "$DISTDOC"
 fi
-rsync "$FLAGS" "$SRCROOT/src/" "$DISTSRC"
+rsync "$FLAGS" "$SRCROOT/src/" "$DISTSRC/"
 rsync "$FLAGS" "$SRCROOT/deploy/$DDIR" "$DISTDIR/"
-rsync "$FLAGS" "$SRCROOT/docs-install/$DDIR/" "$DISTDOC"
+rsync "$FLAGS" "$SRCROOT/docs-install/$DDIR/" "$DISTDOC/"
+if test -d "$DISTDOC"/docs/ja ; then
+    rm -rf "$DISTDOC"/docs/ja
+fi
+if test -d "$DISTSRC"/code/docs/ja ; then
+    rm -rf "$DISTSRC"/code/docs/ja
+fi
 ls -l "$DISTDIR"
 cd "$SRCROOT"
 DSTZIP="$DIST.zip"
