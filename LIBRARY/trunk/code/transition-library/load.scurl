@@ -4731,10 +4731,12 @@
     }
     def active-index = self.current-active-index
     
-    {if self.constructing? then
+    {if self.constructing? or self.display-context == null then
         || If we're still adding screens as part of the initial construction
-        || of this object, skip the animations.
+        || of this object, or the object is not currently attached to a View,
+        || skip the animations.
         {self.update-screen-visibility index}
+        set self.current-active-index = index
         {return true}
     }
     
