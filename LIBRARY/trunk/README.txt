@@ -94,6 +94,10 @@ and thus require privilege and web access to succeed.
  CHANGES
 =========
 
+0.6.1 Release (1 June 2011)
+  o Fix TransitionFrame "badly timed finish layout"
+  o Improve the make-zips script to check for certain .scurl files
+
 0.6 Release (May 2011)
   o Added package COM.CURL.EXT.VIEW-ANIMATION
   o Minor bug fixes

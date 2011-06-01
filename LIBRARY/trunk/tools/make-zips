@@ -12,6 +12,16 @@ DISTDIR="$SRCROOT/$DIST"
 echo "Packing $DDIR from $SRCROOT into $DIST"
 DISTSRC="$DISTDIR/$DDIR-src"
 DISTDOC="$DISTDIR/$DDIR-doc"
+
+PCURLDIR=$SRCROOT/deploy/$DDIR/
+BGTDIR=$SRCROOT/deploy/$DDIR/BackgroundTask
+if ! test -f "$BGTDIR/BackgroundTaskRemoteInterface.scurl" ; then
+    echo "?? $BGTDIR/BackgroundTaskRemoteInterface.scurl missing - check the project file."
+fi
+if ! test -f "$BGTDIR/BackgroundTaskRemoteInterfacePackage.scurl" ; then
+    echo "?? $BGTDIR/BackgroundTaskRemoteInterfacePackage.scurl missing - check the project file."
+fi
+
 FLAGS="-av"
 if test -d "$DISTDIR" ; then
     echo "-- $DISTDIR already exists: Updating only"
