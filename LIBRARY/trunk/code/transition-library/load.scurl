@@ -4391,10 +4391,6 @@
     set self.constructing? = false
   }
   
-  {method public {non-keyword-init-arg a:any}:void
-    {self.add a}
-  }
-  
   {getter public {style-element}:String
     {if self._style-element == "" then
         {return "TransitionFrame"} ||""
