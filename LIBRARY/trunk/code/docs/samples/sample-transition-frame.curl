@@ -102,6 +102,7 @@
             background = "white",
             border-color = "blue",
             border-width = 1px,
+            selection-context = null,        || workaround for bug 33415
             transition-effect = {CrossFadeTransitionEffect}
         }
     
