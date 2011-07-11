@@ -123,7 +123,7 @@
                     ||""((
                     |"{curl "| & curl-version-number-2 & |" applet}
                         {applet manifest = "manifest.mcurl"}
-                        {import * from COM.CURL.SPLASH-APPLET}
+                        {import * from COM.CURL.EXT.SPLASH-SCREEN}
                         {after 0s do {TranslucentSplashScreenSubApplet}}
                     "|
                     ||""))
