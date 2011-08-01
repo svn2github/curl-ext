@@ -1,0 +1,197 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{define-proc {make-sample-record-set}:RecordSet
+    let sample-rs:RecordSet =
+        {RecordSet
+            {RecordFields
+                {RecordField
+                    "id", domain = int
+                },
+                {RecordField
+                    "name", caption = "Name", domain = String
+                },
+                {RecordField
+                    "date", caption = "Date", domain = locale-date-domain
+                },
+                {RecordField
+                    "end-date", caption = "End Date", domain = date-domain
+                },
+                {RecordField 
+                    "duration", caption = "Duration", domain = duration-domain
+                },
+                {RecordField 
+                    "time", caption = "Time", domain = {StandardTimeDomain}
+                },
+                {RecordField 
+                    "amount", caption = "Amount", domain = int
+                },
+                {RecordField 
+                    "fraction", caption = "Fraction", domain = d3-domain
+                },
+                {RecordField 
+                    "notes", caption = "Notes", domain = String
+                }
+            },
+            {RecordData 
+                id = 1,
+                name = "Gene",
+                date = {DateTime.date "2005-04-08"},
+                duration = 1d,
+                time = 8h,
+                amount = 100,
+                fraction = 1/2
+            },
+            {RecordData 
+                id = 2,
+                name = "George",
+                date = {DateTime.date "2006-07-08"},
+                duration = 2d,
+                time = 9h,
+                amount = 1001,
+                fraction = 1/3
+            },
+            {RecordData 
+                id = 3,
+                name = "Gail",
+                date = {DateTime.date "2007-09-08"},
+                duration = 7d,
+                time = 12h,
+                amount = 123456789,
+                fraction = 1/4
+            },
+            {RecordData 
+                id = 4,
+                name = "Fred",
+                date = {DateTime.date "2008-02-18"},
+                duration = 14d,
+                time = 13h,
+                amount = -1234,
+                fraction = 1/5,
+                notes = 
+|"This column uses the MultilineStringCell to allow long strings to be entered and editied."|
+            },
+            {RecordData 
+                id = 5,
+                name = "Elly",
+                date = {DateTime.date "3/4/2009"},
+                duration = 30d,
+                time = 16h,
+                amount = -999999,
+                fraction = 1/6
+            }
+        }
+    {for r:Record in sample-rs do
+        set r["end-date"] = (r["date"] asa DateTime) + r["duration"] asa Time
+    }
+    {return sample-rs}
+}
+
+|| ------------------------------------------------------------------------
+
+{define-enum public LogLevel
+    info, warning, error
+}
+
+{define-class public open CsvLogger
+
+  field public rs:CsvRecordSetB
+
+  {constructor public {default location:Url}
+    set self.rs =
+        {CsvRecordSetB
+            location,
+            autoupdate-interval = .5s,
+            id-field = "id",
+            self.fields
+        }
+  }
+
+  {getter public open {fields}:RecordFields
+    {return
+        {RecordFields
+            {RecordField "id", caption = "id", domain = int},
+            {RecordField "time", caption = "Time", domain = DateTime},
+            {RecordField "level", caption = "Level", domain = LogLevel},
+            {RecordField "message", caption = "Message", domain = String},
+            {RecordField "tags", caption = "Tags", domain = String}
+        }
+    }
+  }
+
+  {method public open {log message:String, level:LogLevel, tags:String}:void
+    {self.rs.append
+        {RecordData
+            time = {DateTime},
+            level = level,
+            message = message,
+            tags = tags
+        }
+    }
+    {self.rs.commit}
+  }
+
+  {method public open {get-viewer}:Graphic
+    def rg =
+        {RecordGrid
+            record-source = self.rs,
+            width = 6.5in,
+            height = 2in,
+            sort = "time",
+            display-navigation-panel? = false,
+            display-filler-column? = true,
+            background = "#f0f0f0",
+            alternate-row-background="#f0f0f0",
+            automatic-columns? = false,
+            {RecordGridColumn  width = 48pt, "level"},
+            {RecordGridColumn  width = 3in, "message"},
+            {RecordGridColumn  width = 72pt, "tags"},
+            {RecordGridColumn  width = 96pt, "time"}
+        }
+
+    def tag-field = {TextField width = 1in}
+    def tag-filter =
+        {proc {r:Record}:bool
+            {if tag-field.value != "" then
+                def tags = r["tags"] asa String
+                {for ftag in {tag-field.value.split} do
+                    {if {tags.find-string ftag} >= 0 then
+                        {return true}
+                    }
+                }
+                {return false}
+            }
+            {return true}
+        }
+    {tag-field.add-event-handler
+        {on ValueFinished at tf:TextField do
+            {set rg.filter = tag-filter}
+        }
+    }
+
+    {return
+        {Dialog
+            margin = 3pt,
+            {VBox
+                spacing = 6pt,
+                {HBox {text Tag Filter:}, tag-field},
+                rg
+            }
+        }
+    }
+  }
+}

@@ -1,0 +1,287 @@
+||| Copyright (C) 2009, Sumisho Computer Systems Corp.  All Rights Reserved.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+
+|| Various classes that hold data for BackgroundTaskQueue or are used
+|| by BackgroundTaskQueue.
+
+
+{define-class public open BackgroundTaskException {inherits Exception}
+  {constructor public {default message:String}
+    {construct-super message}
+  }
+}
+
+{doc-next
+    {purpose
+        {docref Event} sent to handler passed to
+        {docref BackgroundQueue.async-start-task}.
+    }
+}
+{define-class public final BackgroundTaskEvent {inherits AsyncWorkEvent}
+  field private constant _exception:#Exception
+  field private constant _result:#FastArray
+  field private constant _done?:bool
+  field private constant _canceled?:bool
+
+  {getter public {exception}:#Exception
+    {return self._exception}
+  }
+  {getter public {result}:#FastArray
+    {self.check-exception}
+    {return self._result}
+  }
+  {getter public {done?}:bool
+    {self.check-exception}
+    {return self._done?}
+  }
+  {getter public {canceled?}:bool
+    {self.check-exception}
+    {return self._canceled?}
+  }
+
+  {constructor public {default
+                          exception:#Exception,
+                          result:#FastArray,
+                          done?:bool,
+                          canceled?:bool
+                      }
+    || Only one can be null, unless canceled.
+    {assert (exception == null) != (result == null) or canceled?}
+    set self._exception = exception
+    set self._result = result
+    set self._done? = done?
+    set self._canceled? = canceled?
+  }
+}
+
+{api-version-switch
+ case "6.0" do
+
+{import SerializeInputStream from CURL.IO.SERIALIZE}
+
+{let package _process-manifest:#ComponentManifest}
+|| A built-in version of this exists in 7.0
+{define-proc package {get-process-manifest}:ComponentManifest
+    {if _process-manifest == null then
+        || HACK: get manifest from a throwaway SerializeInputStream!
+        || There should be an easy way for users to do this.
+        set _process-manifest =
+            {SerializeInputStream
+                {ByteArrayInputStream {ByteArray}}
+            }.manifest
+    }
+    {return {non-null _process-manifest}}
+}
+}
+
+{doc-next
+  {purpose
+    Class which has information about a subapplet to be used to run background
+    tasks.
+  }
+}
+{define-class package BackgroundThread
+  {doc-next
+    {purpose
+        Subapplet with no graphics that can run background tasks.
+    }
+  }
+  field package constant applet-data:AppletData
+  {doc-next
+    {purpose
+        Proxy with {ctext run-task} method that will call a proc in
+        the subapplet.
+    }
+  }
+  field package constant proxy:BackgroundTaskRemoteInterfaceProxy
+
+  {doc-next
+    {purpose
+        {docref BackgroundTaskWorker} which is handling events and
+        canceling for the task being run on this subapplet.
+    }
+    {notes
+        When {ctext null} means that the thread is idle.
+    }
+  }
+  field package worker:#BackgroundTaskWorker
+
+  {constructor package {default
+                           applet-data:AppletData,
+                           proxy:BackgroundTaskRemoteInterfaceProxy
+                       }
+    set self.applet-data = applet-data
+    set self.proxy = proxy
+  }
+}
+
+|| Non-abstract subclass of EventTarget used by BackgroundTaskWorker.
+{define-class package BackgroundTaskEventTarget {inherits EventTarget}
+}
+
+{define-class package BackgroundTaskWorker {inherits AsyncWorker}
+  field package constant event-target:BackgroundTaskEventTarget
+  field package constant queue:BackgroundTaskQueue
+  field package thread:#BackgroundThread
+  field package task-info:#BackgroundTaskInfo
+
+  {constructor package {default
+                           queue:BackgroundTaskQueue,
+                           thread:#BackgroundThread,
+                           task-info:#BackgroundTaskInfo,
+                           event-handler:EventHandler,
+                           ...:EventHandler
+                       }
+    set self.event-target = {BackgroundTaskEventTarget}
+    set self.queue = queue
+    set self.thread = thread
+    set self.task-info = task-info
+    {self.event-target.add-event-handler event-handler}
+    {for a in ... do
+        {self.event-target.add-event-handler a}
+    }
+  }
+  {getter public open {done?}:bool
+    {return
+        (self.task-info == null and
+         (self.thread == null or self.thread.worker == null))
+    }
+  }
+  {method public open {cancel}:bool
+    {if-non-null task-info = self.task-info then
+        || If still in the queue, we can cancel it by just removing
+        || it from the queue.
+        {if {self.queue.cancel-task task-info} then
+            {return true}
+        }
+    }
+    {if-non-null thread = self.thread then
+        || This will try to kill the subapplet, and it will eventually
+        || die, but it may have run all of the task by then.
+        {self.queue.remove-thread thread}
+        {return true}
+    }
+    {return false}
+  }
+
+  {method protected open {enqueue-event e:BackgroundTaskEvent}:void
+    || Already handled a final event, ignore this new one.  This should
+    || only happen when the subapplet was killed or errored out.
+    {if self.done? then {return}}
+    || TODO: should we try to keep done? false until event is handled?
+    {if e.exception != null or e.done? then
+        set self.task-info = null
+        set self.thread = null
+    }
+    {self.event-target.enqueue-event e}
+  }
+}
+
+|| Holds all of the information about a task that couldn't be
+|| started yet.
+{define-class package BackgroundTaskInfo
+  field package constant worker:BackgroundTaskWorker
+  field package constant proc-name:String
+  field package constant args:Arguments
+  field package constant package-selector:#ComponentSelector
+  field package constant manifest-url:#Url
+  field package constant root-manifest-url:#Url
+  {constructor package {default
+                           worker:BackgroundTaskWorker,
+                           proc-name:String,
+                           args:Arguments,
+                           package-selector:#ComponentSelector,
+                           manifest-url:#Url,
+                           root-manifest-url:#Url
+                       }
+    set self.worker = worker
+    set self.proc-name = proc-name 
+    set self.args = args
+    set self.package-selector = package-selector 
+    set self.manifest-url = manifest-url
+    set self.root-manifest-url = root-manifest-url
+  }
+}
+
+{doc-next
+  {purpose
+    Subclass of {docref AppletData} that passes error notifications
+    to a callback proc.
+  }
+}
+{define-class package BackgroundTaskAppletData
+  {inherits AppletData}
+
+  field private constant error-proc:{proc-type {message:String}:void}
+
+  {constructor package {default
+                           ag:#AppletGraphic,
+                           url:Url,
+                           grant-privilege?:bool = false,
+                           arguments:#Arguments = null,
+                           error-proc:#{proc-type {message:String}:void} = null
+                       }
+    set self.error-proc = 
+        {if-non-null error-proc then
+            error-proc
+         else
+            {proc {message:String}:void}
+        }
+    {api-version-switch
+     case "7.0.0" do
+        {construct-super
+            ag,
+            url,
+            grant-privilege? = grant-privilege?,
+            arguments = arguments
+        }
+     case "6.0" do
+        {construct-super
+            ag,
+            url,
+            grant-privilege? = grant-privilege?
+        }
+    else || 7.0.1+
+        {construct-super.inherit-parent-url
+            ag,
+            url,
+            grant-privilege? = grant-privilege?,
+            arguments = arguments
+        }
+    }
+  }
+
+  {method protected open {unexpected-exit}:void
+    {self.error-proc {lmessage "Applet exited unexpectedly."}}
+    {super.unexpected-exit}
+  }
+
+  || Called if reading the file for the subapplet fails.
+  {method protected open {handle-read-open-failure exception:Exception}:void
+    {self.error-proc exception.message}
+    {super.handle-read-open-failure exception}
+  }
+
+  {method protected open {loading-finished what:String, info:String}:void
+    {switch what
+     case "aborted", "error" do
+        {self.error-proc info}
+     case "death" do
+        {self.error-proc ""}
+    }
+    {super.loading-finished what, info}
+  }
+} 
+

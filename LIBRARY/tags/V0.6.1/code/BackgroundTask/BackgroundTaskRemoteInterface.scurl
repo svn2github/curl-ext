@@ -1,0 +1,348 @@
+||| Copyright (C) 2009, Sumisho Computer Systems Corp.  All Rights Reserved.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+
+{import * from CURL.REMOTE}
+{import get-the-applet, Applet from CURL.ENGINE.APPLET}
+
+{doc-next
+    {purpose
+        The remote interface for the background task subapplet.
+    }
+}
+{define-remote-class public open BackgroundTaskRemoteInterface
+
+  {define-remote-proxy-class public open BackgroundTaskRemoteInterfaceProxy}
+  {define-remote-yxorp-class public open BackgroundTaskRemoteInterfaceHandler}
+
+  {doc-next
+    {purpose
+        Make a {docref BackgroundTaskRemoteInterface}.
+    }
+    {notes
+        Normally something like
+        {docref BackgroundTaskRemoteInterface.make-handler} should be called
+        right after creating this object.
+    }
+  }
+  {constructor public {default}
+  }
+
+  {doc-next
+    {purpose
+        Create and register a {docref BackgroundTaskRemoteInterfaceHandler}
+        to start handling remote queries for this subapplet.
+    }
+  }
+  {method public open {make-handler}:BackgroundTaskRemoteInterfaceHandler
+    || RemoteConnection to the parent applet that will make remote calls over.
+    def rc = {get-the-applet}.inline-remote-connection
+    || Tell RemoteConnection to use full serialization, instead of the simpler
+    || remote marshaling that is limited to numbers, strings and bytes.
+    {rc.use-simple-serialization}
+    || Set up the handler/yxorp that will answer calls.
+    || Uses a whom value of 0, which must match how the proxy in
+    || the applet is registered.
+    {return {BackgroundTaskRemoteInterfaceHandler rc, 0, self}}
+  }
+
+
+  {doc-next
+    {purpose
+        Call a proc with arugments and put the return values into a
+        {docref FastArray}.
+    }
+    {parameter p,
+        An {docref any} with a proc in it.
+    }
+    {parameter args,
+        {docref Arguments} to pass to {param p}.
+    }
+    {notes
+        Uses an any call, which is slow, but as of 7.0 there is no other
+        way to do this.
+        This is limited to a maximum of 8 return values.
+    }
+  }
+  {define-proc package {call-proc
+                           p:any, || Always a proc.
+                           arguments:Arguments
+                       }:FastArray
+    def num-rets = ({type-of p} asa ProcType).num-rets
+    def r = {FastArray.from-size num-rets, null}
+    {with-compiler-directives allow-any-calls? = true do
+        {switch num-rets
+         case 0 do
+            {p {splice arguments}}
+         case 1 do
+            set r[0] = {p {splice arguments}}
+         case 2 do
+            set (r[0], r[1]) = {p {splice arguments}}
+         case 3 do
+            set (r[0], r[1], r[2]) = {p {splice arguments}}
+         case 4 do
+            set (r[0], r[1], r[2], r[3]) = {p {splice arguments}}
+         case 5 do
+            set (r[0], r[1], r[2], r[3], r[4]) = {p {splice arguments}}
+         case 6 do
+            set (r[0], r[1], r[2], r[3], r[4], r[5]) = {p {splice arguments}}
+         case 7 do
+            set (r[0], r[1], r[2], r[3], r[4], r[5], r[6]) =
+                {p {splice arguments}}
+         case 8 do
+            set (r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7]) =
+                {p {splice arguments}}
+         else
+            {error {lmessage Too many return values from proc.}}
+        }
+    }
+    {return r}
+  }
+
+  {doc-next
+    {purpose
+        Look up a proc and call it.
+    }
+  }
+  {define-proc package {run-proc
+                            proc-name:String,
+                            args:Arguments,
+                            package-selector:#ComponentSelector = null,
+                            manifest-url:#Url = null,
+                            root-manifest-url:#Url = null
+                       }:FastArray
+    def package =
+        {if-non-null package-selector then
+            def root-manifest =
+                {if-non-null root-manifest-url then
+                    {import-manifest root-manifest-url}
+                 else
+                    null
+                }
+
+            def manifest =
+                {if-non-null manifest-url then
+                    {api-version-switch
+                     case "6.0" do
+                        {import-manifest manifest-url}
+                     else
+                        {import-manifest
+                            manifest-url,
+                            root-manifest = root-manifest
+                        }
+                    }
+                 else
+                    root-manifest
+                }
+            || Import the package.
+            {if-non-null manifest then
+                {import-package
+                    package-selector,
+                    manifest = manifest
+                }
+             else
+                || Let the default manifest for the subapplet be used.
+                {import-package package-selector}
+            }
+         else
+            || No package selector means use the applet's or script's packages.
+            {get-current-package}
+        }
+    def lookedup-proc =
+        || If looks like a complicated string, but not one that seems bogus.
+        || Note: we could allow complicated code that will be evaluated,
+        || but that is very confusing to use, and it is unclear if we want
+        || the supplied code to provide a proc or just to be run, so we
+        || just disallow it.
+        {if {proc-name.find '.'} >= 0 and
+            {proc-name.find '\{'} < 0 and
+            {proc-name.find-char-class CharClass.whitespace-chars} < 0
+         then
+            || TODO: When is the OpenPackage really needed?
+            def e-package =
+                {type-switch package
+                 case p:OpenPackage do
+                    p
+                 else
+                    {OpenPackage package}
+                }
+            || FIXME: A non-default constructor expression won't work here,
+            || and so can't be used, which seems like a bug.  E.g.
+            || Array.from-size
+            || NOTE: Maybe we should lookup the class type or package name
+            || and then the proc/constructor name ourselves?
+            {evaluate proc-name, package = e-package}
+         else
+            || It is a simple name, just look it up in the package.
+            {package.lookup proc-name, check-imports? = true}
+        }
+    def ret =
+        {type-switch lookedup-proc
+         case t:ClassType do
+            || Note: Is doing the constructor the right thing here?  It could
+            || just be an error, but in the language the class name
+            || does look like a proc.
+            def i = {t.get-instance-maker "default"}
+            {FastArray {i.new {splice args}}}
+         else
+            || Check if it is some sort of proc, if so call it.
+            {if {type-of lookedup-proc} isa ProcType then
+                {{this-class}.call-proc lookedup-proc, args}
+             else
+                {error
+                    {lmessage
+                        Got invalid object type {value {type-of lookedup-proc}}
+                        for {value proc-name}.
+                    }
+                }
+            }
+        }
+    {return ret}
+  }
+
+  {doc-next
+    {purpose
+        Check if the parent of this subapplet is in the same security domain
+        as the subapplet.
+    }
+    {notes
+        Used to make sure that some unrelated applet isn't calling this
+        subapplet to try to do things that they wouldn't be allowed
+        to do, because they are served from a different server.  Also
+        they could be trying to use a grant of privilege to the location
+        of this subapplet that the parent applet doesn't have.
+    }
+  }
+  {method protected open {parent-url-has-same-security?}:bool
+
+    def applet-url = {get-the-applet}.url
+    
+    || If this was run as curl://string then it either security
+    || will grant no permissions, or it is privileged because the parent
+    || applet was.
+    {if applet-url.stem != "curl://string" and
+        || Otherwise make sure that there is a parent, and that it is
+        || from the same web server.
+        || Note: Maybe it would be ok to just check hostname and port,
+        || but allow different sets of http/https urls to match.
+        {get-the-applet}.parent-url != null and
+        {get-the-applet}.parent-url.stem.url != applet-url.stem.url
+     then
+        {return false}
+    }
+    {return true}
+  }
+
+|| FIXME: This needs a better way to send back exceptions, like what the
+|| zuzu code does in LIB/REMOTE/exceptions.scurl.
+  {doc-next
+    {purpose
+        Remote method to run a proc.
+    }
+    {notes
+        See {docref BackgroundTaskQueue.start-async-task} for description of
+        the parameters.
+    }
+  }
+  {remote-method public open {run-task
+                                 proc-name:String,
+                                 args:Arguments,
+                                 package-selector:#SerializableComponentSelector,
+                                 manifest-url:#Url,
+                                 root-manifest-url:#Url
+                             }:(exception:#String, #FastArray)
+    || This includes the full implementation of this method, but
+    || you could instead have a subclass of BackgroundTaskRemoteInteface
+    || that did that.
+    def real-selector =
+        {api-version-switch
+         case "6.0" do
+            {if-non-null package-selector then
+                {package-selector.to-ComponentSelector}
+             else
+                null
+            }
+         else
+            package-selector
+        }
+    {try
+        || Check that it is safe to run code for current parent applet.
+        {if not {self.parent-url-has-same-security?} then
+            {return
+                {lmessage
+                    Subapplet called from a location that has different
+                    security context from the parent applet.
+                },
+                null
+            }
+        }
+        def ret =
+            {{this-class}.run-proc
+                proc-name,
+                args,
+                package-selector = real-selector,
+                manifest-url = manifest-url,
+                root-manifest-url = root-manifest-url
+            }
+        {return null, ret}
+     catch e:SyntaxError do
+        || Get SyntaxError string with location information.
+        {return {lmessage {value {type-of e}.name}: {value e}}, null}
+     catch e:Exception do
+        {return {lmessage {value {type-of e}.name}: {value e.message}}, null}
+    }
+  }
+}
+
+{api-version-switch
+ case "6.0" do
+  || Hack to get ComponentSelector data serialized over.  In 7.0
+  || ComponentSelector is serializable.
+  || Note that this ignores many types of meta data, just version,
+  || name and locations are supported.
+  {define-class public final serializable SerializableComponentSelector
+    field public constant name:String
+    field public constant version:#VersionNumber
+    field public constant locations:{Array-of Url}
+
+    || Ask for compact serialization.
+    {define-serialization compact? = true}
+
+    {constructor public {default s:ComponentSelector}
+        set self.name = {non-null s.name}
+        set self.version = s.version
+        set self.locations = {new {Array-of Url}}
+        {if-non-null lh = s.location-hints then
+            {for l in lh do
+                {self.locations.append l}
+            }
+        }
+    }
+    {method public {to-ComponentSelector}:ComponentSelector
+        def location-arguments = {Arguments}
+        {for l in self.locations do
+            {location-arguments.append l, keyword = "location"}
+        }
+        {return
+            {make-package-selector
+                self.name,
+                version = self.version,
+                {splice location-arguments}
+            }
+        }
+    }
+  }
+ else
+  {def public SerializableComponentSelector = ComponentSelector}
+}

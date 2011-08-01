@@ -1,0 +1,12 @@
+||| Maintained by: kodan
+
+{define-class public NotSupportedTypeException {inherits Exception}
+  
+  field public shape-type:int
+  
+  {constructor public {default message:String, shape-type:int}
+    set self.shape-type = shape-type
+    {construct-super message}
+  }
+  
+}

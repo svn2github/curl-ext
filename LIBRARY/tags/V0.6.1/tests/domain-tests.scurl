@@ -1,0 +1,82 @@
+||| Copyright (C) 1998-2009, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+{import * from CURL.GUI.STANDARD}
+{import * from COM.CURL.EXT.DATA-ACCESS}
+{import * from COM.CURL.EXT.WORKSHEET}
+
+{TestSuite "domains",
+
+    {test-case "DurationDomain",
+        {do
+            def dd = {DurationDomain}
+            {TestCondition.assert dd.default-value == 0s}
+            {TestCondition.assert dd.min-allowable == null}
+            {TestCondition.assert dd.max-allowable == null}
+            {TestCondition.assert dd.allowable-values == null}
+            {TestCondition.assert {dd.parse "0s"} == 0s}
+            {TestCondition.assert {dd.parse "1s"} == 1s}
+            {TestCondition.assert {dd.parse "100000s"} == 100 * 100 * 10s}
+            {TestCondition.assert {dd.parse "168h"} == 7d}
+
+            {TestCondition.assert {dd.format 0s} == "0s"}
+            {TestCondition.assert {dd.format 4h} == "4h"}
+            {TestCondition.assert {dd.format 4d} == "4d"}
+            {TestCondition.assert {dd.format 400d} == "400d"}
+        }
+    },
+    {test-case "get-default-domain",
+        {do
+            {TestCondition.assert
+                {DataSource.get-default-domain 1} == DataSource.double-domain
+            }
+            {TestCondition.assert
+                {DataSource.get-default-domain 1.1} == DataSource.double-domain
+            }
+            {TestCondition.assert
+                {DataSource.get-default-domain ""} == DataSource.string-domain
+            }
+            {TestCondition.assert
+                {DataSource.get-default-domain "10:10"} == DateTime asa Domain
+            }
+            {TestCondition.assert
+                {DataSource.get-default-domain "C7"} == DataSource.string-domain
+            }
+
+            {TestCondition.assert
+                {DataSource.get-default-domain {DateTime}} == DateTime asa Domain
+            }
+            {TestCondition.assert
+                {DataSource.get-default-domain {DateTime.date}} == DataSource.date-domain
+            }
+            {TestCondition.assert
+                {DataSource.get-default-domain "2010-01-01"} == DataSource.date-domain
+            }
+            {TestCondition.assert
+                {DataSource.get-default-domain "2010-01-01 10:10"} == DateTime asa Domain
+            }
+            {TestCondition.assert
+                {DataSource.get-default-domain 1s} == Time asa Domain
+            }
+            {TestCondition.assert
+                {DataSource.get-default-domain true} == bool asa Domain
+            }
+            {TestCondition.assert
+                {DataSource.get-default-domain {bold foo}} == DataSource.any-domain
+            }
+        }
+    }
+}

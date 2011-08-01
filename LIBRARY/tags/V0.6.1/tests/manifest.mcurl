@@ -1,0 +1,110 @@
+||| Copyright (C) 1998-2009, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An Open Curl project.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+{curl 7.0 manifest}
+{manifest COM.CURL.EXT.TESTS}
+
+{delegate-to COM.CURL.CDU,
+||--    || use with adjacent CDU repository
+||--    location = "../../../CDU/trunk/code/manifest.mcurl"
+    || use with svn:externals
+    location = "../lib/CDU/manifest.mcurl"
+}
+
+{delegate-to COM.CURL.EXT,
+    location = "../code/manifest.mcurl"
+}
+
+||--{component package COM.CURL.EXT.TEST-SUPPORT,
+||--    location = "test-support.scurl"
+||--}
+
+{component file start-tests.curl,
+    location = "start-tests.curl"
+}
+
+{component file t-titled-view.curl,
+    location = "t-titled-view.curl"
+}
+
+{component file t-titled-view-all.curl,
+    location = "t-titled-view-all.curl"
+}
+
+{component file t-actf.curl,
+    location = "t-actf.curl"
+}
+
+{component file t-domains.curl,
+    location = "t-domains.curl"
+}
+
+{component file t-treegrid.curl,
+    location = "t-treegrid.curl"
+}
+
+{component file t-geo-graphic-api.curl,
+    location = "t-geo-graphic-api.curl"
+}
+
+{component directory server,
+    location = "server"
+}
+
+{component directory data,
+    location = "data"
+}
+
+{component directory resources,
+    location = "resources"
+}
+
+{component file start.curl,
+    location = "start.curl"
+}
+
+{component file t-BalloonView.curl,
+    location = "t-BalloonView.curl"
+}
+
+{component file t-worksheet.curl,
+    location = "t-worksheet.curl"
+}
+
+{component file worksheet-tests.scurl,
+    location = "worksheet-tests.scurl"
+}
+
+{component file domain-tests.scurl,
+    location = "domain-tests.scurl"
+}
+
+{component file t-autocomplete.xcurl,
+    location = "t-autocomplete.xcurl"
+}
+
+
+
+
+
+
+
+
+
+
+
+
+

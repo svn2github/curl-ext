@@ -1,0 +1,149 @@
+||| Copyright (C) 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An Open Curl project.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+{curl 7.0 package}
+
+{package COM.CURL.EXT.TILED-WINDOWS,
+    {compiler-directives careful? = true}
+}
+
+{import * from CURL.GUI.STANDARD}
+{import * from CURL.UTIL.OBSERVER}
+{import WindowVisibility from CURL.GRAPHICS.WINDOW}
+
+{include
+    "BasePane.scurl",
+    "DragFeedbackFrame.scurl",
+||++"EmptyPaneGroup.scurl",
+||++"MDIPaneGroup.scurl",
+    "PaneContainer.scurl",
+    "PaneDragger.scurl",
+    "PaneFocusManager.scurl",
+    "PaneGroup.scurl",
+    "PaneTitleBar.scurl",
+    "ResizeableDecorationlessView.scurl",
+    "SinglePane.scurl",
+||++"StatusBar.scurl",
+    "TabbedPaneGroup.scurl",
+    "TabDragger.scurl",
+    "TablePaneGroup.scurl",
+    "TiledPaneGroup.scurl"
+}
+
+{doc-next
+    {purpose
+        The location of various image resources used for button labels, etc.
+    }
+}
+{let public constant pane-container-image-dir:Url =
+    {url "resources/images"}
+}
+
+{doc-next
+    {purpose
+        Describes the floating/docked state of a pane.
+    }
+    {details
+        The defined values of this enum are
+        {itemize
+            {item
+                {ctext docked}: The pane is docked.
+            }
+            {item
+                {ctext dockable}: The pane is floating, but if it is dragged over
+                its {docref PaneContainer} in a dockable position
+                (e.g., near an edge of an already docked pane),
+                it will become docked.
+            }
+            {item
+                {ctext floating}: The pane is floating, and will remain floating
+                even if dragged over its {docref PaneContainer}.
+            }
+        }
+    }
+    {notes
+        The hidden vs. showing state of a pane is not encoded in this enum.
+    }
+}
+{define-enum public PaneState
+    docked,
+    dockable,
+    floating
+}
+
+{doc-next
+    {purpose
+        Describes a proposed docking action for a pane.
+    }
+    {details
+        This enum is used for communication between code that interprets user
+        gestures and determines their associated docking action
+        and code that actually implements a docking action.
+        The values of this enum describe how the pane to be docked should
+        relate to the already docked pane that is the {quote target} for the
+        proposed docking action:
+        {itemize
+            {item
+                {ctext none}: No docking action should take place.
+                For example, a pane that is currently floating should remain floating.
+                A currently docked pane will be floated.
+            }
+            {item
+                {ctext over-pane}: Indicates a drop over a pane but not in the
+                active zone for any of the left, right, top, bottom, or tab gestures.
+                Generally this is a synonym for {ctext none}, but certain {docref PaneGroup}s,
+                such as {docref TablePaneGroup}, map this to {ctext swap} instead.
+            }
+            {item
+                {ctext left}: Dock along the left edge of the target pane.
+            }
+            {item
+                {ctext right}: Dock along the right edge of the target pane.
+            }
+            {item
+                {ctext top}: Dock along the top edge of the target pane.
+            }
+            {item
+                {ctext bottom}: Dock along the bottom edge of the target pane.
+            }
+            {item
+                {ctext tab}: Dock into a new tab in the target pane.
+            }
+            {item
+                {ctext replace}: The dragged pane takes the place of the target pane,
+                and the target pane is hidden.
+            }
+            {item
+                {ctext swap}: Interchange the contents of the dragged pane and the target pane.
+            }
+        }
+    }
+}
+{define-enum public DockingAction
+    none,
+    over-pane,
+    left,
+    right,
+    top,
+    bottom,
+    tab,
+    replace,
+    swap
+}
+
+|| Turn this to true to enable various debugging features.
+{let package debugging?:bool = false}
+

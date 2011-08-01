@@ -1,0 +1,89 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl-file-attributes character-encoding = "utf8"}
+
+{doc-next
+    {purpose
+        An edge-weighted, directed graph.
+    }
+}
+{define-class public abstract open {WeightedDirectedGraph-of
+                                     t:Type,
+                                     tWeight:Type
+                                   }
+  {inherits {DirectedGraph-of t}, {WeightedGraph-of t, tWeight}}
+  
+  {method public open {transpose}:void
+    def all-edges = {self.get-all-edges}
+    {for edge in all-edges do
+        def start-node =
+            edge.t0 asa {DefaultWeightedDirectedGraphNode-of t, tWeight}
+        def end-node =
+            edge.t0 asa {DefaultWeightedDirectedGraphNode-of t, tWeight}
+        def weight = {start-node.get-weight-for-edge end-node}
+        {start-node.remove-edge end-node}
+        {end-node.add-edge start-node}
+        {end-node.set-weight-for-edge start-node, weight}
+    }
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        A single node in a directed, weighted graph.
+    }
+}
+{define-class public abstract shared open {WeightedDirectedGraphNode-of
+                                            t:Type,
+                                            tWeight:Type
+                                          }
+  {inherits {DirectedGraphNode-of t}, {WeightedGraphNode-of t, tWeight}}
+  
+  || ======== constructors ========
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter data,
+        The data associated with this node.
+    }
+    {parameter graph,
+        The graph of which this node will be a member.
+    }
+  }
+  {constructor public {default
+                          data:t,
+                          graph:{WeightedDirectedGraph-of t, tWeight}
+                      }
+    {construct-super.{DirectedGraphNode-of t} data, graph}
+    {construct-super.{WeightedGraphNode-of t, tWeight} data, graph}
+  }
+  
+  {secondary-constructor public {default
+                                    data:t,
+                                    graph:{WeightedDirectedGraph-of t, tWeight}
+                                }
+    set self.data = data
+    set self.graph = graph
+  }
+    
+}
+

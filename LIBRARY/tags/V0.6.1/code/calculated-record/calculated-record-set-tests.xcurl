@@ -1,0 +1,190 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0 script}
+{curl-file-attributes character-encoding = "utf8"}
+{script manifest = "../manifest.mcurl"}
+
+{import * from CURL.DATA-ACCESS.BASE}
+{import * from COM.CURL.EXT.CALCULATED-RECORDSET}
+
+|| A small test framework.
+
+{let tests-remaining:int = 0}
+{def test-array = {new {Array-of {proc-type {}:void}}}}
+{def test-name-array = {new {Array-of String}}}
+
+{define-proc package {add-test
+                         test-case-name:String,
+                         p:{proc-type {}:void},
+                         auto-finish?:bool = false
+                     }:void
+    {inc tests-remaining}
+    {if auto-finish? then
+        {test-array.append 
+            {proc {}:void
+                {p}
+                {test-finished test-case-name}
+            }
+        }
+     else    
+        {test-array.append p}
+    }
+    {test-name-array.append test-case-name}
+}
+
+{define-proc package {execute-tests timeout:Time}:void
+    {after timeout do
+        {error "tests timed out"}
+    }
+    {for p key i in test-array do
+        {p}
+    }
+}
+
+{define-proc package {test-finished
+                         test-case-name:String
+                     }:void
+    {dec tests-remaining}
+    {output "test case passed: ", test-case-name}
+    {if tests-remaining == 0 then
+        {exit 0}
+    }
+}
+
+|| Global variables.
+
+{let crs-handles:{Set-of any} = {new {Set-of any}}}
+
+|| Set up alternating chains of regular-filter-regular-filter...
+
+{define-proc package {chain-with-filters}:void
+    
+    def manager = {CalculatedFieldManager}
+    
+    || the record fields
+    def rfs = {RecordFields
+                  {RecordField "index", domain = int, index-type = "unique"},
+                  {RecordField "one", domain = int},
+                  {RecordField "two", domain = int},
+                  {RecordField "three", domain = int},
+                  {RecordField "double", domain = double}
+              }
+    def field-set = {new {Set-of RecordField}}
+    {field-set.insert {rfs.get-by-index 1}}
+    {field-set.insert {rfs.get-by-index 2}}
+    {field-set.insert {rfs.get-by-index 3}}
+    
+    || create a list of record sets, all with the same fields
+    def crs-array = {new {Array-of CalculatedRecordSet}}
+    def record-set-count = 10
+    {for i = 0 below record-set-count do
+        {crs-array.append {CalculatedRecordSet manager, rfs}}
+    }
+    {crs-handles.insert crs-array}
+    
+    || add initial records
+    def record-count = 10
+    {for crs key x in crs-array do
+        {for i = 0 below record-count do
+            {crs.append
+                {if x == 0 then
+                    {RecordData
+                        index = i,
+                        one = i,
+                        two = i,
+                        three = i,
+                        double = i
+                    }
+                 else
+                    {RecordData index = i}
+                }
+            }
+        }
+        {crs.commit}
+    }
+    
+    || pass through values directly
+    def set-from-pred-proc =
+        {proc {cf:CalculatedField}:void
+            {if cf.for-loop-count >= 1 then
+                set cf.value = cf[0].value
+            }
+        }
+    {for crs key x in crs-array do
+        {if x == 0 then {continue}}
+        def prev-crs = crs-array[x - 1]
+        {for i = 0 below record-count do
+            {for f in field-set do
+                || point a filter field at matching cell in the previous RS
+                def new-filter-field =
+                    {RecordFilterCalculatedField
+                        manager,
+                        prev-crs,
+                        {RecordData index = i},
+                        f,
+                        update-proc = set-from-pred-proc                        
+                    }
+                || then point the attached field at that
+                {crs.set-calculated-field
+                    {crs.select-one filter = {RecordData index = i}}
+                    asa CalculatedRecord,
+                    f,
+                    update-proc = set-from-pred-proc,
+                    new-filter-field
+                }
+            }
+        }
+    }
+    
+    || check the result
+    {crs-array[1].add-event-handler
+        {on CalculatedFieldUpdateFinished do
+            {for r = 0 below record-count do
+                {for f in field-set do
+                    let working-val:int = -1
+                    {for crs key x in crs-array do
+                        def rfilter =
+                            {RecordFilter.from-RecordData
+                                {RecordData index = r}
+                            }
+                        def val = {crs.select-one filter = rfilter}[f.name]
+                        {if x == 0 then
+                            set working-val = val
+                         else
+                            {if val != working-val then
+                                {error "record set values do not match"}
+                            }
+                        }
+                    }
+                }
+            }
+            {test-finished "chain-with-filters"}
+            || clean up
+            {manager.disconnect-all}
+        }
+    }
+}
+
+{add-test
+    "chain-with-filters",
+    chain-with-filters
+}
+
+{execute-tests 3s}
+
+{event-loop}

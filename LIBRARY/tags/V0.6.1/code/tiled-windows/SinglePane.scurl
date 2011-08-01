@@ -1,0 +1,508 @@
+||| Copyright (C) 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An Open Curl project.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+{doc-next
+    {purpose
+        A pane that contains a single application-defined content object.
+    }
+    {override
+        This abstract class defines the API for single panes and serves
+        as a superclass for {docref StandardSinglePane} which is the default
+        single pane implementation provided in this library.
+        User code can subclass {docref SinglePane} or {docref StandardSinglePane}
+        if it is desired to provide panes with a different look or feel.
+    }
+}
+{define-class public open abstract SinglePane {inherits BasePane}
+  
+  {doc-next
+    {purpose
+        A unique identifier for this pane.
+    }
+    {details
+        Every {docref SinglePane} associated with a given {docref PaneContainer}
+        should have a distinct pane name.
+    }
+  }
+  field public constant pane-name:String
+  
+  || Record the specified user-readable title for this pane, if any.
+  field private _title:String = ""
+  
+  {doc-next
+    {purpose
+        The user-readable title for this pane, suitable for display
+        in a window title bar.
+    }
+    {details
+        If this property is set to the empty string {ctext ""},
+        then the getter will return the value of
+        {ctext self.{docref-abbr SinglePane.pane-name}}.
+    }
+  }
+  {getter public open {title}:String
+    {return
+        {if self._title == "" then
+            self.pane-name
+         else
+            self._title
+        }
+    }
+  }
+  
+  {setter public open {title new-title:String}:void
+    set self._title = new-title
+  }
+  
+  || Record the specified tab label for this pane, if any.
+  field private _name-for-tab:String = ""
+  
+  {getter public open {name-for-tab}:String
+    {return
+        {if self._name-for-tab == "" then
+            self.title
+         else
+            self._name-for-tab
+        }
+    }
+  }
+  
+  {setter public open {name-for-tab new-name:String}:void
+    set self._name-for-tab = new-name
+  }
+  
+  {doc-next
+    {purpose
+        Construct a {docref SinglePane} object.
+    }
+    {parameter pane-name,
+        The name of the pane.
+        See {docref SinglePane.pane-name}.
+    }
+    {parameter root-container,
+        The {docref PaneContainer} that will be associated with this pane.
+    }
+    {parameter ...,
+        Any additional arguments are passed down to the superclass {docref BasePane} constructor.
+        
+        One of these arguments is the {param register-pane?} keyword argument:
+        see {docref BasePane.default} for further information about this argument.
+    }
+  }
+  {constructor public {default
+                          pane-name:String,
+                          root-container:PaneContainer,
+                          ...
+                      }
+    set self.pane-name = pane-name
+    {construct-super root-container, {splice ...}}
+  }
+  
+  {getter public open {takes-focus?}:bool
+    {return true}
+  }
+  
+  {doc-next
+    {purpose
+        Set the state properties of this pane as specified.
+    }
+    {parameter hidden?,
+        This pane's initial showing/hidden state.
+        See {docref BasePane.hidden?}.
+    }
+    {parameter state,
+        This pane's initial docked vs. floating state.
+        See {docref BasePane.state}.
+    }
+    {parameter (floating-x, floating-y, floating-width, floating-height),
+        The initial default values for this pane's position and size when it is floating.
+        Negative values for the x and y position mean that a heuristic default
+        will be used.
+    }
+    {parameter path,
+        The default path from this pane's root container,
+        through the hierarchy of {docref PaneGroup}s,
+        to the place where this pane should be shown the first time it is shown docked.
+        See {docref BasePane.path}.
+    }
+    {parameter percent,
+        The percentage of this pane's immediately enclosing {docref PaneGroup}
+        that should be used by default for this pane the first time it is shown docked,
+        if that {docref PaneGroup} has a tiled layout in which percentages are meaningful.
+        See {docref BasePane.percent}.
+    }
+    {details
+        This method can be used to specify values for any or all of the state variables
+        for this pane that are set during dock/float/hide operations.
+    }
+    {usage
+        This method is typically called when restoring the state of a pane
+        from a description saved using the {docref-abbr BasePane.save-state} method.
+    }
+  }
+  {method public open {set-state-properties
+                          hidden?:bool = self.hidden?,
+                          maximized?:bool = self.maximized?,
+                          state:PaneState = self.state,
+                          floating-x:Distance = self.floating-x,
+                          floating-y:Distance = self.floating-y,
+                          floating-width:Distance = self.floating-width,
+                          floating-height:Distance = self.floating-height,
+                          path:{Array-of int} = self.path,
+                          parent-group-type:String = self.parent-group-type,
+                          percent:double = self.percent
+                      }:void
+    set self.maximized? = maximized?
+    set self.state = state
+    set self.floating-width = floating-width
+    set self.floating-height = floating-height
+    set self.floating-x = floating-x
+    set self.floating-y = floating-y
+    set self.path = path
+    set self.parent-group-type = parent-group-type
+    set self.percent = percent
+    {if hidden? then
+        {self.hide}
+     else
+        {self.show}
+    }
+  }
+  
+  {method public open {on-pointer-press e:PointerPress}:void 
+    {if e.button == left-button and not e.consumed? then
+        || Any stray, unconsumed clicks on a pane will be treated as requests for the focus.
+        {self.request-pane-focus}
+        {e.consume}
+    }
+    {super.on-pointer-press e}
+  }
+}
+
+{doc-next
+    {purpose
+        Standard implementation of {docref SinglePane} in this library.
+    }
+    {details
+        To customize the appearance, you can use the following
+        {docref-abbr Visual.style-element} values in your style rules.
+        
+        {Table
+            columns = 3,
+            border-width = 1in/300,
+            border-color = "black",
+            horizontal-line-width = 1in/300,
+            vertical-line-width = 1in/300,
+            cell-border-width = 0pt,
+            cell-margin = 2pt,
+            {header-cell style-element},
+            {header-cell Type},
+            {header-cell Description},
+            
+            {ctext StandardSinglePane}, {docref StandardSinglePane},
+            {text The {ctext StandardSinglePane} itself. You can use style rules
+                to set local and nonlocal options.
+            },
+            
+            {ctext StandardSinglePane/content}, {docref SkinnableFrame},
+            {text The container within which the pane content is displayed.
+            }
+        }
+        
+        Properties of the title bar can be styled by using the style elements associated with
+        {docref PaneTitleBar}.
+    }
+}
+{define-class public open StandardSinglePane {inherits SinglePane}
+  
+  {doc-next
+    {purpose
+        The title bar of this pane.
+    }
+  }
+  field package constant title-bar:PaneTitleBar
+  
+  || Record the specified title-controls for this pane, if any.
+  field private constant _title-controls:{Array-of Graphic}
+  
+  {getter public open {title-controls}:{Array-of Graphic}
+    {return self._title-controls}
+  }
+  
+  {getter public open {style-element}:String
+    def _style-element = self._style-element
+    {if _style-element == "" then
+        {return "StandardSinglePane"}
+     else
+        {return _style-element}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Construct a {docref StandardSinglePane} object.
+    }
+    {parameter pane-name,
+        The name of the pane.
+        See {docref SinglePane.pane-name}.
+    }
+    {parameter root-container,
+        The {docref PaneContainer} that will contain this pane.
+        See {docref BasePane.root-container}.
+    }
+    {parameter content,
+        The graphical object that will be shown in this pane's content section.
+    }
+    {parameter show-close-button?,
+        Should a {quote close} button be shown on this pane?
+        See {docref BasePane.show-close-button?} for further information.
+    }
+    {parameter show-maximize-button?,
+        Should a {quote maximize/restore} button be shown on this pane?
+        See {docref BasePane.show-maximize-button?} for further information.
+    }
+    {parameter title-controls,
+        The application-specific controls, if any, that will be associated with this pane.
+        See {docref BasePane.title-controls} for further information.
+    }
+    {parameter ...,
+        Keyword arguments specifying any of the properties that can be set
+        using the {docref-abbr StandardSinglePane.set-state-properties} method.
+    }
+  }
+  {constructor public {default
+                          pane-name:String,
+                          root-container:PaneContainer,
+                          content:Graphic,
+||--                          show-minimize-button?:bool = true,
+                          show-maximize-button?:bool = true,
+                          show-close-button?:bool = true,
+                          title-controls:{Array-of Graphic} = {new {Array-of Graphic}},
+                          ...
+                      }
+    {construct-super pane-name, root-container}
+    set self._title-controls = title-controls
+    {self.set-state-properties {splice ...}}
+    
+||++set self.show-minimize-button? = show-minimize-button?
+    set self.show-maximize-button? = show-maximize-button?
+    set self.show-close-button? = show-close-button?
+    set self.title-bar = {PaneTitleBar self}
+    
+    {self.add-internal
+        {VBox
+            self.title-bar,
+            {SkinnableFrame
+                _style-element = "StandardSinglePane/content",
+                content
+            },
+            opaque-to-events? = true
+        }
+    }
+||++{content.sync-focus-to-title-bar}
+  }
+
+  {setter public open {title title:String}:void
+    set super.title = title
+    set self.title-bar.title = title
+  }
+  
+  {method public open {note-lost-focus}:void
+    {super.note-lost-focus}
+    {self.title-bar.display-focus-lost}
+  }
+  
+  {method public open {note-gained-focus}:void
+    {super.note-gained-focus}
+    {self.title-bar.display-focus-gained}
+  }
+  
+  {method public open {note-pane-floated}:void
+    {self.title-bar.note-pane-floated}
+  }
+  
+  {method public open {note-pane-unfloated}:void
+    {self.title-bar.note-pane-unfloated}
+  }
+  
+  {method public open {maximize}:void
+    {super.maximize}
+    {self.title-bar.note-pane-maximized}
+  }
+  
+  {method public open {unmaximize}:void
+    {super.unmaximize}
+    {self.title-bar.note-pane-unmaximized}
+  }
+  
+  {method public open {compute-docking-action
+                          x:Distance,
+                          y:Distance,
+                          e:GuiInputEvent
+                      }:DockingAction
+    {if debugging? and e.shift? and e.menu? then
+        || Call for a "replace" docking action if the alt key is down.
+        || This may not be the way we want to do it in the long run, but it will allow for testing.
+        {return DockingAction.replace}
+    }
+    {if e.shift? then
+        || Call for a "swap" docking action if the shift key is down.
+        || This may not be the way we want to do it in the long run, but it will allow for testing.
+        {return DockingAction.swap}
+    }
+    {if self.maximized? then
+        || When we're maximized, no docking actions (other than swap) are allowed relative
+        || to this pane.
+        {return DockingAction.none}
+    }
+    let title-bar:Graphic = self.title-bar
+    let title-height:Distance = {title-bar.layout.get-cell-bounds}.height
+    set (x, y) = {self.transform-from-display-coordinates x, y}
+    let grect:GRect = {self.layout.get-cell-bounds}
+    let width:Distance = grect.width
+    let height:Distance = grect.height
+    
+    || Find the edge of the content area that we're the closest to, and if we're
+    || close enough to that edge and inside the content area, return the corresponding
+    || DockingAction value.
+    let dmin:Distance = StandardPaneContainer.dock-zone-size
+    let action:DockingAction = DockingAction.over-pane
+    || x is our distance inside the left edge of the content area.
+    {if x < dmin then
+        || If we are outside of the content area, then return "none".
+        {if x < 0pt then {return DockingAction.none}}
+        set dmin = x
+        set action = DockingAction.left
+    }
+    || dright is our distance inside the right edge of the content area.
+    def dright = width - x
+    {if dright < dmin then
+        {if dright < 0pt then {return DockingAction.none}}
+        set dmin = dright
+        set action = DockingAction.right
+    }
+    || dtop is our distance inside the top edge of the content area.
+    def dtop = y - title-height
+    {if dtop < dmin then
+        {if y < 0pt then {return DockingAction.none}}
+        || If the pointer is above the content area but not out of the title bar,
+        || then we return a "tab" action; else we set a "top" action.
+        || Note that it's important that this case is checked after "left" and
+        || "right" so we do not return "tab" when the pointer is actually outside
+        || the pane to the left or right.
+        {if dtop < 0pt then {return DockingAction.tab}}
+        set dmin = dtop
+        set action = DockingAction.top
+    }
+    || dbottom is our distance inside the bottom edge of the content area.
+    def dbottom = height - y
+    {if dbottom < dmin then
+        {if dbottom < 0pt then {return DockingAction.none}}
+        set dmin = dbottom
+        set action = DockingAction.bottom
+    }
+    {return action}
+  }
+
+  {method public {save-state out:TextOutputStream}:void
+    {format out = out, "\n\{single-pane pane-name = %w", self.pane-name}
+    {self.write-state-info out}
+    {out.write-one-string "\}"}
+  }
+
+||--  {method public open {on-pointer-envelope-event ev:PointerEnvelopeEvent}:void
+||--    || Any single click on the window should ensure its visible pane is focused.
+||--    || The after 0s is important because the press itself may have changed the
+||--    || the visible pane.
+||--    {type-switch ev.contents 
+||--        case pp:PointerPress do
+||--        {if pp.click-count == 1 then
+||--            {after 0seconds do
+||--                {self.visible-pane-content.request-pane-focus}
+||--||--                {self.visible-pane-content.request-decorations-focus}
+||--            }
+||--        }
+||--    }
+||--    {super.on-pointer-envelope-event ev}
+||--  }
+}
+
+{doc-next
+    {purpose
+        A dummy pane that can be used to fill empty spaces or for other temporary purposes.
+    }
+}
+{define-class public open DummyPane {inherits SinglePane}
+  
+  {getter public open {dummy?}:bool
+    {return true}
+  }
+  
+  {doc-next
+    {purpose
+        Construct a {docref DummyPane} object.
+    }
+    {parameter root-container,
+        The {docref PaneContainer} that will contain this pane.
+        See {docref BasePane.root-container}.
+    }
+    {parameter pane-name,
+        The name of the pane.
+        See {docref SinglePane.pane-name}.
+    }
+    {parameter content,
+        The graphical object that will be shown in this pane's content section.
+    }
+    {parameter ...,
+        Keyword arguments specifying any of the properties that can be set
+        using the {docref-abbr StandardSinglePane.set-state-properties} method.
+    }
+  }
+  {constructor public {default
+                          pane-name:String = "",
+                          root-container:PaneContainer,
+                          content:Graphic = {Fill},
+                          ...
+                      }
+    {construct-super pane-name, root-container, register-pane? = false}
+    {self.set-state-properties {splice ...}}
+    {self.add-internal
+        {VBox
+            content,
+            opaque-to-events? = true
+        }
+    }
+  }
+  
+  {getter public open {takes-focus?}:bool
+    {return false}
+  }
+  
+  {method public open {compute-docking-action
+                          x:Distance,
+                          y:Distance,
+                          e:GuiInputEvent
+                      }:DockingAction
+    || Dummy panes like to get out of the way, so generally they should be replaced
+    || by any docking gesture.
+    {return DockingAction.replace}
+  }
+  
+  {method public {save-state out:TextOutputStream}:void
+    {format out = out, "\n\{dummy-pane pane-name = %w", self.pane-name}
+    {self.write-state-info out}
+    {out.write-one-string "\}"}
+  }
+}

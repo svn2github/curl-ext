@@ -1,0 +1,358 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl-file-attributes character-encoding = "utf8"}
+
+{doc-next
+    {purpose
+        An undirected graph.
+    }
+}
+{define-class public open {DefaultUndirectedGraph-of t:Type}
+  {inherits {UndirectedGraph-of t}}
+  
+  || ======== fields ========
+  
+  || A count of all edges.
+  field private _edge-count:int
+  
+  || All nodes in the graph.
+  field package _nodes:{Set-of {DefaultUndirectedGraphNode-of t}}
+  
+  || ======== constructors ========
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+  }
+  {constructor public {default}
+    {construct-super}
+    set self._nodes = {new {Set-of {DefaultUndirectedGraphNode-of t}}}
+  }
+  
+  || ======== node queries ========
+  
+  {getter public open {node-count}:int
+    {return self._nodes.size}
+  }
+  
+  {getter package {nodes}:{Set-of {DefaultUndirectedGraphNode-of t}}
+    {return self._nodes}
+  }
+  
+  {method public open {to-Iterator}:{Iterator-of {GraphNode-of t}}
+    {return
+        {new {DefaultUndirectedGraphNodeCastingIterator-of t}, self}
+    }
+  }
+  
+  {method public open {visit-nodes
+                          visit-proc:{proc-type {{GraphNode-of t}}:void},
+                          safe?:bool = false
+                      }:void
+    {if safe? then
+        def clone-nodes = {self.nodes.clone}
+        {for node in clone-nodes do
+            {visit-proc node}
+        }
+     else
+        {for node in self.nodes do
+            {visit-proc node}
+        }
+    }
+  }
+    
+  || ======== node modification ========
+  
+  {method public open {create-node data:t}:{GraphNode-of t}
+    def new-node = {new {DefaultUndirectedGraphNode-of t}, data, self}
+    {self._nodes.insert new-node}
+    {return new-node}
+  }
+  
+  {method public open {delete-node
+                          node:{GraphNode-of t},
+                          error-if-missing?:bool = true
+                      }:void
+    {if node.graph != self then
+        {throw
+            {GraphInvalidNodeException
+                {hlmessage "Node not in graph."}
+            }
+        }
+    }
+    {node.disconnect}
+    {self._nodes.remove node asa {DefaultUndirectedGraphNode-of t}}
+    set node.graph = null
+  }
+  
+  {method public open {clear}:void
+    {for node in self.nodes do
+        {self.delete-node node}
+    }
+  }
+  
+  || ======== edge information ========
+  
+  {getter public open {edge-count}:int
+    {return self._edge-count}
+  }
+  
+  {method protected open {note-edge-added
+                             head:{GraphNode-of t},
+                             tail:{GraphNode-of t}
+                         }:void
+    {inc self._edge-count}
+  }
+  
+  {method protected open {note-edge-removed
+                             head:{GraphNode-of t},
+                             tail:{GraphNode-of t}
+                         }:void
+    
+    {dec self._edge-count}
+  }
+  
+  || ======== other ========
+  
+  {method public open {clone}:{Graph-of t}
+    def g = {new {DefaultUndirectedGraph-of t}}
+    def map =
+        {new {HashTable-of {GraphNode-of t}, {GraphNode-of t}},
+            efficient-size = self.nodes.size
+        }
+    {for n in self.nodes do
+        def new-n = {g.create-node n.data}
+        {map.set n, new-n}
+    }
+    {for n in self.nodes do
+        def new-n = {map.get n}
+        {for successor in n do
+            {new-n.add-edge {map.get successor}, error-if-present? = false}
+        }
+    }
+    {return g}
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        A single node in a undirected graph.
+    }
+}
+{define-class public open {DefaultUndirectedGraphNode-of t:Type}
+  {inherits {UndirectedGraphNode-of t}}
+  
+  || ======== fields ========
+  
+  {doc-next
+    {purpose
+        All nodes that share an edge with this node.
+    }
+    {notes
+        The contents of this container should not be directly manipulated.
+    }
+  }
+  field public constant neighbors:{Array-of {DefaultUndirectedGraphNode-of t}}
+  
+  || ======== constructors ========
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter data,
+        The data associated with this node.
+    }
+    {parameter graph,
+        The graph of which this node will be a member.
+    }
+  }
+  {constructor public {default
+                          data:t,
+                          graph:{DefaultUndirectedGraph-of t}
+                      }
+    set self.neighbors = {new {Array-of {DefaultUndirectedGraphNode-of t}}}
+    {construct-super data, graph}
+  }
+  
+  || ======== edge queries ========
+  
+  {method public open {has-edge? node:{GraphNode-of t}}:bool
+    {type-switch node
+     case default-node:{DefaultUndirectedGraphNode-of t} do
+        {return {self.neighbors.find default-node} != -1}
+    }
+    {return false}
+  }
+  
+  {getter public open {indegree}:int
+    {return self.neighbors.size}
+  }
+  
+  {getter public open {outdegree}:int
+    {return self.neighbors.size}
+  }
+  
+  {method public open {get i:int}:{GraphNode-of t}
+    {return self.neighbors[i]}
+  }
+  
+  {getter public open {for-loop-count}:int
+    {return self.neighbors.size}
+  }
+  
+  {method public open {visit-neighbors
+                          visit-proc:{proc-type {{GraphNode-of t}}:void}
+                      }:void
+    {for n in self.neighbors do
+        {visit-proc n}
+    }
+  }
+    
+  || ======== edge modification ========
+  
+  {method public open {add-edge
+                          to-node:{GraphNode-of t},
+                          error-if-present?:bool = true
+                      }:void
+    {self.add-edge-internal
+        to-node asa {DefaultUndirectedGraphNode-of t},
+        error-if-present? = error-if-present?,
+        reverse-link? = true
+    }
+  }
+  
+  {method package {add-edge-internal
+                      node:{DefaultUndirectedGraphNode-of t},
+                      error-if-present?:bool = true,
+                      reverse-link?:bool = true
+                  }:void
+    {if node.graph != self.graph then
+        {throw
+            {GraphInvalidEdgeException
+                {hlmessage "Cannot link two nodes in different graphs."}
+            }
+        }
+     elseif node == self then
+        {throw
+            {GraphInvalidEdgeException
+                {hlmessage "%s cannot have an edge to itself.", node}
+            }
+        }
+    }
+    {if {self.neighbors.find node} == -1 then
+        {self.neighbors.append node}
+     else
+        {if error-if-present? then
+            {throw
+                {GraphInvalidEdgeException
+                    {hlmessage "%s already has an edge to %s.", node, self}
+                }
+            }
+         else
+            {return}
+        }
+    }
+    {if reverse-link? then
+        {node.add-edge-internal
+            self,
+            error-if-present? = false,
+            reverse-link? = false
+        }
+        || Only one of the two nodes should notify the graph object.
+        {self.graph.note-edge-added self, node}
+    }
+  }
+    
+  {method public open {remove-edge
+                          to-node:{GraphNode-of t},
+                          error-if-missing?:bool = true
+                      }:void
+    
+    {self.remove-edge-internal
+        to-node asa {DefaultUndirectedGraphNode-of t},
+        error-if-missing? = error-if-missing?,
+        reverse-delink? = true
+    }    
+  }
+    
+  {method package {remove-edge-internal
+                      node:{DefaultUndirectedGraphNode-of t},
+                      error-if-missing?:bool = false,
+                      reverse-delink?:bool = true
+                  }:void
+    let removed?:bool = false
+    def index = {self.neighbors.find node}
+    {if index != -1 then
+        {self.neighbors.remove index}
+        set removed? = true
+    }
+    {if not removed? and error-if-missing? then
+        {throw
+            {GraphInvalidEdgeException
+                {hlmessage
+                    "Tried to remove %s from %s; not a neighbor.",
+                    node, self
+                }
+            }
+        }
+    }
+    {if reverse-delink? then
+        {node.remove-edge-internal
+            self,
+            error-if-missing? = false,
+            reverse-delink? = false
+        }
+        || Only one of the two nodes should notify the graph object.
+        {self.graph.note-edge-removed self, node}
+    }
+  }
+  
+  {method public open {disconnect}:void
+    {for n in self.neighbors do
+        {self.remove-edge n}
+    }
+  }
+  
+}
+
+
+|| Ugly, but required to fulfill the Graph-of.to-Iterator return contract.
+{define-class package {DefaultUndirectedGraphNodeCastingIterator-of t:Type}
+  {inherits {Iterator-of {GraphNode-of t}}}
+  
+  field private node-iterator:{Iterator-of {DefaultUndirectedGraphNode-of t}}
+  
+  {constructor package {default graph:{DefaultUndirectedGraph-of t}}
+    set self.node-iterator = {graph.nodes.to-Iterator}
+  }
+  
+  {method public open {read-one}:(val:{GraphNode-of t}, eof?:bool)
+    def (val, eof?) = {self.node-iterator.read-one}
+    {return val asa {GraphNode-of t}, eof?}
+  }
+  
+  {method public open {reset}:void
+    {self.node-iterator.reset}
+  }
+  
+}
+

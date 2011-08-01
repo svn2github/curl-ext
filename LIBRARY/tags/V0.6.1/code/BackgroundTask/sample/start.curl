@@ -1,0 +1,210 @@
+||| Copyright (C) 2009, Sumisho Computer Systems Corp.  All Rights Reserved.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+
+{curl 6.0, 7.0 applet}
+{applet manifest = "../manifest.mcurl"}
+
+{import * from COM.CURL.EXT.BACKGROUND-TASK}
+
+|| Sample that calculates the Mandlebrot set using
+|| BackgroundTaskQueue.async-start-task to run the CPU bound calculation
+|| steps.  The applet remains responsive to clicks even while the calculations
+|| continue.  The black sections take longer to calculate, so you can see
+|| the tasks that are for mostly white areas drawing more quickly, and
+|| further tasks then run on those same threads.
+|| If you open the control panel you can see the subapplets that are doing
+|| the calculations.
+
+{define-class Mandlebrot
+  field min-x:double
+  field max-x:double
+  field min-y:double
+  field max-y:double
+  field constant x-pixels:int
+  field constant y-pixels:int
+  field constant step-value:int
+  field working-tasks:int
+  || If we knew the likely number of cores * hyper-threads, we would want to
+  || use that many threads.
+  || We supply a max-idle-threads because we want to keep the subapplets alive
+  || to speed up the zoom-in and zoom-out calculations, because starting
+  || subapplets is a little bit slow.
+  field queue:BackgroundTaskQueue =
+    {BackgroundTaskQueue max-threads = 8, max-idle-threads = 8}
+  field public constant pixmap:Pixmap
+  field public constant fill-pattern:FillPattern
+  {constructor {default
+                   x-pixels:int = 768,
+                   y-pixels:int = 512,
+                   step-value:int = 128,
+                   min-x:double = -2.0f,
+                   max-x:double = 1.0f,
+                   min-y:double = -1.0f,
+                   max-y:double = 1.0f
+               }
+    set self.x-pixels = x-pixels
+    set self.y-pixels = y-pixels
+    {assert x-pixels mod step-value == 0 and y-pixels mod step-value == 0}
+    set self.step-value = step-value
+    set self.min-x = min-x
+    set self.max-x = max-x
+    set self.min-y = min-y
+    set self.max-y = max-y
+
+    set self.pixmap = {Pixmap x-pixels, y-pixels, ignore-alpha? = true}
+    set self.fill-pattern = {FillPattern.from-pixmap self.pixmap}
+  }
+
+  {method {redraw}:void
+    {mutate-fill-pattern p:Pixmap on self.fill-pattern do
+        {p.clear new-value = {Pixel.from-uint8 0xff, 0, 0}}
+    }
+    || If there are calculations still waiting to finish.
+    {if self.working-tasks > 0 then
+        || Clear any remaining stuff.
+        || In many cases canceling a saved list of
+        || BackgroundTaskWorker's would make more sense, and we could save a
+        || number for all of the requests for a particular call to this
+        || method, and then use BackgroundTaskQueue.cancel-pending-tasks,
+        || and just ignore the results from the old calls.
+        || Creating the subapplets is slow.
+        {self.queue.destroy} 
+        set self.working-tasks = 0 
+    }
+    def increment:double = (self.max-x - self.min-x) / self.x-pixels
+    let x0:double = self.min-x
+    let y0:double = self.min-y
+    || Loop over the whole image doing calculations in square chuncks
+    || of self.step-value pixels per side.
+    {for x-index = 0 below self.x-pixels step self.step-value do
+        set y0 = self.min-y
+        {for y-index = 0 below self.y-pixels step self.step-value do
+            def x = x-index
+            def y = y-index
+            || Queue up a calculation.
+            {BackgroundTaskQueue.async-start-task
+                "calculate-rectangle",
+                {Arguments x0, y0, increment, self.step-value},
+                package-selector =
+                    {make-package-selector
+                        "COM.CURL.EXT.BACKGROUND-TASK.MANDLEBROT-SAMPLE",
+                        location = {url "mand.scurl"}
+                    },
+                queue = self.queue,
+                {on e:BackgroundTaskEvent do
+                    || Note: e.canceled? will be true when this task was
+                    || canceled because the user clicked the mouse to zoom.
+
+                    || Handle the result of the calculations, as an
+                    || {Array-of bool} with the results for that rectangle.
+                    {if e.exception == null and not e.canceled? then
+                        || A task has finished.
+                        {dec self.working-tasks}
+                        def r = e.result[0] asa {Array-of bool}
+                        || Write to the Pixmap based on the the result
+                        {mutate-fill-pattern p:Pixmap on self.fill-pattern do
+                            let r-index:int
+                            {for i = 0 below self.step-value do
+                                {for j = 0 below self.step-value do
+                                    {p.set x + i, y + j,
+                                        {if r[r-index] then
+                                            {Pixel.from-uint8 0, 0, 0}
+                                         else
+                                            {Pixel.from-uint8 0xff, 0xff, 0xff}
+                                        }
+                                    }
+                                    {inc r-index}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            || We have queued up another task.
+            {inc self.working-tasks}
+            set y0 = y0 + (increment * self.step-value)
+        }
+        set x0 = x0 + (increment * self.step-value)
+    }
+  }
+  || x and y are percent in from the top left
+  {method public {translate-x-y
+                     x-percent:double, y-percent:double
+                 }:(x:double, y:double)
+    def x-size = (self.max-x - self.min-x)
+    def y-size = (self.max-y - self.min-y)
+    {return
+        self.min-x + (x-percent * x-size),
+        self.min-y + (y-percent * y-size)
+    }
+  }
+  || x and y are percent in from the top left
+  {method public {zoom x-percent:double, y-percent:double, percent:double}:void
+    def x-size = (self.max-x - self.min-x)
+    def y-size = (self.max-y - self.min-y)
+    def x = self.min-x + (x-percent * x-size)
+    def y = self.min-y + (y-percent * y-size)
+    def half-x-size = x-size / (percent * 2.0f)
+    def half-y-size = y-size / (percent * 2.0f)
+    set self.min-x = (x - half-x-size) asa double
+    set self.max-x = (x + half-x-size) asa double
+    set self.min-y = (y - half-y-size) asa double
+    set self.max-y = (y + half-y-size) asa double
+  }
+}
+{def m = {Mandlebrot}}
+{def l = {Frame}}
+
+{define-proc public {translate-event-x-y
+                        f:Fill, e:PointerEvent
+                    }:(x:double, y:double)
+    def bounds = {f.layout.get-bounds}
+    def x-percent = ((e.x + bounds.lextent) / bounds.width)
+    def y-percent = ((e.y + bounds.ascent) / bounds.height)
+    {return x-percent, y-percent}
+}
+
+{def f:Fill =
+    {Fill
+        width = m.x-pixels * 1px, height = m.y-pixels * 1px,
+        background = m.fill-pattern,
+        {on e:PointerPress do 
+            {if e.button == left-button then
+                def (x-percent, y-percent) = {translate-event-x-y f, e}
+                {m.zoom
+                    x-percent, y-percent, 
+                    {if e.shift? then
+                        50% || zoom out
+                     else
+                        200% || zoom in
+                    }
+                }
+                {m.redraw}
+            }
+        },
+        {on e:PointerMotion do
+            def (x-percent, y-percent) = {translate-event-x-y f, e}
+            {l.clear}
+            def (x, y) = {m.translate-x-y x-percent, y-percent}
+            {l.add {format "x=%.10f, y=%.10f", x, y}}
+        }
+    }
+}
+{VBox
+    f,
+    l,
+    {text Left click to zoom in, Shift-Left click to zoom out}
+}
+{m.redraw}

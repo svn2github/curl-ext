@@ -1,0 +1,134 @@
+{curl 7.0 manifest}
+{curl-file-attributes character-encoding = "windows-latin-1"}
+{manifest COM.CURL.EXT}
+||--{component file sample-splash-animation.curl,
+||--    location = "docs/samples/sample-splash-animation.curl"
+||--}
+
+{component package COM.CURL.EXT.SPLASH-SCREEN,
+    location = "splash-screen/load.scurl"
+}
+
+{component package COM.CURL.EXT.SPLASH-ANIMATION,
+    location = "splash-animation/load.scurl"
+}
+
+{component package COM.CURL.EXT.VIEW-ANIMATION,
+    location = "view-animation/load.scurl"
+}
+
+||--{component file sample-transition-frame.curl,
+||--    location = "docs/samples/sample-transition-frame.curl"
+||--}
+
+{component package COM.CURL.EXT.TRANSITION-LIBRARY,
+    location = "transition-library/load.scurl"
+}
+
+{component file t-custom-cells.curl,
+    location = "worksheet/t-custom-cells.curl"
+}
+
+
+{component file start.curl,
+    location = "start.curl"
+}
+
+{component package COM.CURL.EXT.GANTT,
+    location = "gantt/load-gantt.scurl",
+    version = "1.0",
+    translations-file = "translations.ctd",
+    resource-directory = "curl://install/curl-resources",
+    default-locale = "en"
+}
+
+{component package COM.CURL.EXT.GRAPHS,
+    location = "graphs/load.scurl",
+    version = "1.0",
+    translations-file = "translations.ctd",
+    resource-directory = "curl://install/curl-resources",
+    default-locale = "en"
+}
+
+{component package COM.CURL.EXT.CALCULATED-RECORDSET,
+    location = "calculated-record/load.scurl",
+    version = "1.0",
+    translations-file = "translations.ctd",
+    resource-directory = "curl://install/curl-resources",
+    default-locale = "en"
+}
+
+{component package COM.CURL.EXT.AUTO-TEST,
+    location = "GUI/load-autotest.scurl",
+    version = "1.0",
+    translations-file = "translations.ctd",
+    resource-directory = "curl://install/curl-resources",
+    default-locale = "en"
+}
+
+{component package COM.CURL.EXT.GUI,
+    location = "GUI/load-gui.scurl",
+    version = "1.0",
+    translations-file = "translations.ctd",
+    resource-directory = "curl://install/curl-resources",
+    default-locale = "en"
+}
+
+{component package COM.CURL.EXT.DATA-ACCESS,
+    location = "GUI/load-DATA-ACCESS.scurl",
+    version = "1.0",
+    translations-file = "translations.ctd",
+    resource-directory = "curl://install/curl-resources",
+    default-locale = "en"
+}
+
+{component package COM.CURL.EXT.WORKSHEET,
+    location = "worksheet/load.scurl",
+    version = "1.0",
+    translations-file = "translations.ctd",
+    resource-directory = "curl://install/curl-resources",
+    default-locale = "en"
+}
+
+{component package COM.CURL.EXT.TILED-WINDOWS,
+    location = "tiled-windows/load.scurl"
+}
+
+{component package COM.CURL.EXT.BACKGROUND-TASK,
+    location = "BackgroundTask/load.scurl"
+}
+
+{component package COM.CURL.EXT.BACKGROUND-TASK-REMOTE,
+    location = "BackgroundTask/BackgroundTaskRemoteInterfacePackage.scurl"
+}
+
+{component package COM.CURL.EXT.GEOGRAPHIC,
+    location = "GEOGRAPHIC/load.scurl",
+    version = "1.0"
+}
+
+
+
+{component file BackgroundTaskSubApplet.curl,
+    location = "BackgroundTask/BackgroundTaskSubApplet.curl"
+}
+
+{component file BackgroundTaskRemoteInterface.scurl,
+    location = "BackgroundTask/BackgroundTaskRemoteInterface.scurl"
+}
+
+{component directory docs,
+    location = "docs"
+}
+
+{component directory tools,
+    location = "../tools"
+}
+
+{component package COM.CURL.EXT.STANDARD,
+    location = "load.scurl"
+}
+
+{component directory resources,
+    location = "resources"
+}

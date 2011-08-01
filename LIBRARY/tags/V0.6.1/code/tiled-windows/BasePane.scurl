@@ -1,0 +1,1092 @@
+||| Copyright (C) 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An Open Curl project.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+{doc-next
+    {purpose
+        A pane that can be either floating or docked into a {docref PaneContainer}.
+    }
+    {override
+        This abstract class serves as a common superclass for
+        {docref SinglePane} and {docref PaneGroup}.
+    }
+}
+{define-class public abstract open BasePane {inherits BaseFrame}
+  
+  {doc-next
+    {purpose
+        The {docref PaneGroup} that contains this pane.
+    }
+    {details
+        If this pane is currently floating or hidden, this field may contain null,
+        but if this pane was previously docked, this field will point to the
+        {docref PaneGroup} in which this pane was most recently docked.
+    }
+  }
+  field public pane-group:#PaneGroup
+  
+  {doc-next
+    {purpose
+        The {docref FloatingView} that this pane is in, if the pane
+        is currently floating.
+    }
+    {details
+        If this pane is currently docked or hidden, this field will contain null.
+    }
+  }
+  field public floating-view:#FloatingView
+  
+  {doc-next
+    {purpose
+        The {docref PaneContainer} that this pane is associated with.
+    }
+    {details
+        Even when floating or hidden, a pane is always associated with a
+        {docref PaneContainer}.
+        This container is specified when the pane is created and cannot be changed
+        later.
+    }
+  }
+  field public constant root-container:PaneContainer
+  
+  {doc-next
+    {purpose
+        Cast this {docref BasePane} to a {docref PaneGroup}.
+    }
+    {details
+        If this object is a {docref PaneGroup}, then return {ctext self} cast to a {docref PaneGroup}.
+        Otherwise return null.
+    }
+  }
+  {getter public open {view-as-group}:#PaneGroup
+    {return null}
+  }
+  
+||--  field protected show-minimize-button?:bool
+  
+  {doc-next
+    {purpose
+        Should a {quote maximize/restore} button be shown on this {docref BasePane}?
+    }
+    {details
+        If this field is true, then the title bar of the pane will show a {quote maximize/restore}
+        button that maximizes the pane if it is not currently maximized,
+        and restores the pane to its former location if it is currently maximized.
+    }
+    {usage
+        This field should only be set during construction of a pane,
+        because there is no mechanism later on to notice a change in the value of
+        this field and propagate its effects as may be needed.
+    }
+  }
+  field protected show-maximize-button?:bool = false
+  
+  {doc-next
+    {purpose
+        Should a {quote close} button be shown on this {docref BasePane}?
+    }
+    {details
+        If this field is true, then the title bar of the pane will show a {quote close}
+        button that hides the pane.
+    }
+    {usage
+        This field should only be set during construction of a pane,
+        because there is no mechanism later on to notice a change in the value of
+        this field and propagate its effects as may be needed.
+    }
+  }
+  field protected show-close-button?:bool = false
+  
+  {doc-next
+    {purpose
+        The application-defined controls that are associated with this pane.
+    }
+    {details
+        Certain panes can have additional application-defined controls
+        that should be displayed in their title bars.
+        This property specifies these controls are specified as an array
+        of graphical objects that can be displayed by the {docref SinglePane}
+        implementation in whatever geometric arrangement it uses.
+        
+        These objects should each be small in size so that they fit without
+        requiring the pane's title bar to be expanded.
+    }
+    {override
+        The base implementation of this getter in {docref BasePane} simply returns
+        an empty array of {docref Graphic}s.
+        Subclasses that support application-defined controls can override this
+        getter to return an array that contains some controls in it.
+    }
+  }
+  {getter public open {title-controls}:{Array-of Graphic}
+    {return {new {Array-of Graphic}}}
+  }
+  
+  {doc-next
+    {purpose
+        The {quote percentage} to be used when this pane is added to
+        a {docref LinearPaneGroup}.
+        A zero or negative value means a heuristic should be used to determine
+        the percentage.
+    }
+    {details
+        When a pane that was in a {docref LinearPaneGroup} is floated
+        or hidden, its current {quote percentage} is saved in this field.
+        A value for this field may also be specified for a newly created
+        pane, to control the percentage that it will receive if the first time
+        it is shown is as part of a {docref LinearPaneGroup}.
+    }
+  }
+  field public percent:double = -1.0
+  
+  {doc-next
+    {purpose
+        The current docked or floating state of this pane.
+    }
+  }
+  field public state:PaneState = PaneState.docked
+  
+  {doc-next
+    {purpose
+        Is this a dummy pane?
+    }
+    {details
+        This getter returns false for panes that contain application information.
+        For panes that are {quote dummy} placeholders, such as
+        {docref DummyPane},
+        this getter returns true.
+    }
+    {override
+        The base implementation of this getter in {docref BasePane} returns false.
+        Subclasses that implement dummy panes should override this getter
+        to return true.
+    }
+  }
+  {getter public open {dummy?}:bool
+    {return false}
+  }
+  
+  || A field that records whether this pane is hidden.
+  field private _hidden?:bool = false
+  
+  {doc-next
+    {purpose
+        The current hidden vs. showing state of this pane.
+    }
+  }  
+  {getter public open {hidden?}:bool
+    {return self._hidden?}
+  }
+  
+  {setter public open {hidden? h?:bool}:void
+    set self._hidden? = h?
+  }
+  
+  {doc-next
+    {purpose
+        True if this pane is currently floating.
+    }
+  }
+  {getter public open {floating?}:bool
+    {return self.floating-view != null}
+  }
+  
+  {doc-next
+    {purpose
+        True if this pane is currently docked.
+    }
+  }
+  {getter public open {docked?}:bool
+    || This code could execute a bit more cheaply, but with the loss of some abstraction,
+    || if the self.floating? call were replaced with a direct check of self.floating-view.
+    {return (not self.hidden?) and not self.floating?}
+  }
+  
+  {doc-next
+    {purpose
+        True if this pane is currently maximized.
+    }
+  }
+  field public-get protected-set maximized?:bool = false
+  
+  {doc-next
+    {purpose
+        The x coordinate that should be used when this pane is floated.
+    }
+    {details
+        If this pane has ever been floated, the x coordinate of its top left
+        corner when it was most recently floating will be stored here.
+        This provides the default position for the pane if it is floated again.
+        This field can also be set to specify a default location for the first
+        time when the pane is floated.
+        If this value is negative, then a heuristic will be used to determine
+        the position when the window is floated.
+    }
+  }
+  field public floating-x:Distance = -1m
+  
+  {doc-next
+    {purpose
+        The y coordinate that should be used when this pane is floated.
+    }
+    {details
+        If this pane has ever been floated, the y coordinate of its top left
+        corner when it was most recently floating will be stored here.
+        This provides the default position for the pane if it is floated again.
+        This field can also be set to specify a default location for the first
+        time when the pane is floated.
+        If this value is negative, then a heuristic will be used to determine
+        the position when the window is floated.
+    }
+  }
+  field public floating-y:Distance = -1m
+  
+  {doc-next
+    {purpose
+        The width that should be used when this pane is floated.
+    }
+    {details
+        If this pane has ever been floated, its width
+        when it was most recently floating will be stored here.
+        This provides the default width for the pane if it is floated again.
+        This field can also be set to specify a default width for the first
+        time when the pane is floated.
+    }
+  }
+  field public floating-width:Distance = 3in
+  
+  {doc-next
+    {purpose
+        The height that should be used when this pane is floated.
+    }
+    {details
+        If this pane has ever been floated, its height
+        when it was most recently floating will be stored here.
+        This provides the default height for the pane if it is floated again.
+        This field can also be set to specify a default height for the first
+        time when the pane is floated.
+    }
+  }
+  field public floating-height:Distance = 3in
+  
+  {doc-next
+    {purpose
+        The location of this pane in the {docref PaneGroup} hierarchy
+        the last time this pane was docked.
+    }
+    {details
+        Whenever a docked pane is floated or hidden, its current location in the
+        {docref PaneGroup} hierarchy is first recorded in this field
+        as a sequence of integers that gives a path from the top-level
+        {docref PaneGroup} down to this pane.
+        When the pane is later docked again,
+        this path provides a default location for it if the location was
+        not explicitly specified by a user-interface dragging gesture.
+        This field can also be set under program control to specify a default
+        location for the first time that the pane is docked.
+    }
+  }
+  field public path:{Array-of int} = {new {Array-of int}}
+  
+  {doc-next
+    {purpose
+        A {docref String} describing the type of {docref PaneGroup} that
+        this pane was in the last time it was docked.
+    }
+    {details
+        Whenever the {docref-abbr BasePane.path} field is set, this field
+        is also set to the result returned by the {docref-abbr PaneGroup.group-type}
+        getter for this pane's current {docref PaneGroup}.
+    }
+  }
+  field public parent-group-type:String = ""
+  
+  {doc-next
+    {purpose
+        Construct a {docref BasePane} object.
+    }
+    {parameter root-container,
+        The {docref PaneContainer} that will be associated with this pane.
+    }
+    {parameter register-pane?,
+        This argument defaults to true, but if it is explicitly set to false,
+        then the pane will not be registered with the root container.
+        This is undesirable for user-visible panes but is desirable for certain
+        {quote hidden} panes that exist for internal uses, such as occupying
+        blank space in tabular layouts or serving as a temporary pane during
+        swap operations.
+    }
+    {parameter ...,
+        Any additional arguments are passed down to the superclass {docref BaseFrame} constructor.
+    }
+  }
+  {constructor public {default
+                          root-container:PaneContainer,
+                          register-pane?:bool = true,
+                          ...
+                      }
+    set self.root-container = root-container
+    {construct-super ...}
+    {if register-pane? then
+        {root-container.register-pane self}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        The user-readable title for this pane, suitable for display
+        in a window title bar.
+    }
+    {override
+        The base implementation of this accessor in {docref BasePane}
+        just returns {ctext ""} as the value of the getter,
+        and is a no-op when the title is set.
+        Subclass implementations such as {docref SinglePane.title}
+        implement more sophisticated behavior.
+    }
+  }
+  {getter public open {title}:String
+    {return ""}
+  }
+  
+  {setter public open {title new-title:String}:void
+  }
+  
+  {doc-next
+    {purpose
+        The user-readable tab label for this pane, suitable for display
+        in a tab label within a {docref PaneContainer}.
+    }
+    {details
+        If this property is set to the empty string {ctext ""},
+        then the getter will return the value of
+        {ctext self.{docref-abbr SinglePane.title}}.
+        
+        Typically this property will be set if the pane title is longer
+        than would be desirable for a tab label, in which case this
+        property can be set to a shorter string that is more suitable.
+    }
+    {override
+        The base implementation of this accessor in {docref BasePane}
+        just returns {ctext self.{docref-abbr BasePane.title}} as the value of the getter,
+        and the setter is a no-op.
+        Subclass implementations such as {docref SinglePane.name-for-tab}
+        implement more sophisticated behavior.
+    }
+  }
+  {getter public open {name-for-tab}:String
+    {return self.title}
+  }
+  
+  {setter public open {name-for-tab new-name:String}:void
+  }
+    
+  
+  {doc-next
+    {purpose
+        The {docref PaneFocusManager} associated with this pane.
+    }
+    {details
+        This is just the {docref PaneFocusManager} that's associated with this pane's
+        {docref PaneContainer}.
+    }
+  }
+  {getter protected {pane-focus-manager}:PaneFocusManager
+    {return self.root-container.pane-focus-manager}
+  }
+  
+  {doc-next
+    {purpose
+        Does this pane currently have the focus?
+    }
+  }
+  {getter public open {has-focus?}:bool
+    {return self.pane-focus-manager.focus-object == self}
+  }
+  
+  {doc-next
+    {purpose
+        Is this pane capable of taking the focus?
+    }
+    {override
+        The base implementation of this method in {docref BasePane} returns false.
+        It is overridden in {docref SinglePane} to return true.
+        It can be further overridden in user-defined subclasses to return either value as desired.
+    }
+  }
+  {getter public open {takes-focus?}:bool
+    {return false}
+  }
+  
+  {doc-next
+    {purpose
+        Request the focus for this pane.
+    }
+    {notes
+        If this pane is not visible because a different pane is maximized over it,
+        the focus will be given to the maximized pane instead.
+    }
+  }
+  {method public open {request-pane-focus}:void
+    {if self.docked? then
+        {if-non-null max-pane = self.root-container.maximized-docked-pane then
+            || If requesting the focus for a pane that is docked while a different pane is
+            || maximized, then give the focus to the maximized pane instead, because the
+            || docked pane will not be visible.  This can happen, for example, when a
+            || floating pane is redocked while a different pane is maximized.
+            set self.pane-focus-manager.focus-object = max-pane
+            {return}
+        }
+    }
+    set self.pane-focus-manager.focus-object = self
+  }
+  
+  {doc-next
+    {purpose
+        Release the focus for this pane.
+    }
+  }
+  {method public open {release-pane-focus}:void
+    set self.pane-focus-manager.focus-object = null
+  }
+  
+  {doc-next
+    {purpose
+        Called when this {docref BasePane} loses the focus.
+    }
+    {override
+        The base method in {docref BasePane} does nothing.
+        Subclasses can override this method to change their appearance
+        depending on whether they have the focus.
+    }
+  }
+  {method public open {note-lost-focus}:void
+  }
+  
+  {doc-next
+    {purpose
+        Called when this {docref BasePane} gains the focus.
+    }
+    {override
+        The base method in {docref BasePane} calls the {docref-abbr PaneGroup.note-child-gained-focus}
+        method of its parent {docref PaneGroup}.
+        Subclasses can override this method to change their appearance
+        depending on whether they have the focus,
+        but they should be sure to call {ctext super.note-gained-focus} also.
+    }
+  }
+  {method public open {note-gained-focus}:void
+    {if-non-null group = self.pane-group then
+        {if self.docked? and not self.maximized? then
+            {group.note-child-gained-focus self}
+        }
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Display a message in the status line of this pane's {docref PaneContainer}, if it has one.
+    }
+    {parameter text,
+        The message to display.
+    }
+  }
+  {method public open {set-status-text str:String}:void
+    {self.root-container.set-status-text str}
+  }
+  
+  {doc-next
+    {purpose
+        Hide this pane.
+    }
+    {notes
+        This is a no-op if the pane is already hidden.
+    }
+  }
+  {method public open {hide}:void
+    {if self.has-focus? then
+        || If the pane that we are about to hide has the focus, try to find another
+        || pane to take the focus instead.
+        {if-non-null pg = self.pane-group then
+            {pg.focus-other-pane self}
+        }
+    }
+    {self.detach-this-pane}
+    set self.hidden? = true
+  }
+  
+  {doc-next
+    {purpose
+        Unhide this pane.
+    }
+    {notes
+        This is a no-op if the pane is already showing.
+    }
+  }
+  {method public open {show}:void
+    {if not self.hidden? then {return}}
+    {if self.state == PaneState.docked then
+        {self.dock}
+     else
+        {self.float (self.state == PaneState.dockable)}
+    }
+    {self.request-pane-focus}
+  }
+  
+  {doc-next
+    {purpose
+        Remove this pane from its container.
+    }
+    {parameter for-replace?,
+        True if this pane is being detached just so that another object
+        can be attached in its place;
+        false if this pane is being detached because it will be hidden or
+        added somewhere else.
+        When this argument is false, if the detach operation leaves this
+        pane's parent {docref PaneGroup} empty,
+        that {docref PaneGroup} will also be detached.
+    }
+    {details
+        If the this pane is currently docked in a {docref PaneGroup}, it is
+        removed from the {docref PaneGroup}.
+        If this pane is currently floating in a window,
+        it is removed from that window and the window is destroyed.
+    }
+  }
+  {method public open {detach-this-pane for-replace?:bool = false}:void
+    {if-non-null floating-view = self.floating-view then
+        {floating-view.tear-down}
+        || In case we were maximized, set us as not maximized.
+        {self.unmaximize}
+        {self.note-pane-unfloated}
+     else
+        def root = self.root-container
+        {if root.maximized-docked-pane == self then
+            {root.detach-maximized-pane self}
+         else
+            {if-non-null pane-group = self.pane-group then
+                {if not self.hidden? then
+                    {pane-group.remove-pane self, for-replace?}
+                }
+            }
+        }
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Float this pane.
+    }
+    {parameter dockable?,
+        True if the floating window should have {quote dockable} behavior
+        (corresponding to {ctext {docref PaneState}.dockable});
+        false if the floating window should not be dockable
+        (corresponding to {ctext {docref PaneState}.floating}).
+    }
+    {notes
+        This method can be called on a pane that is already floating,
+        for example to change its behavior from dockable to non-dockable.
+    }
+  }
+  {method public open {float dockable?:bool}:void
+    def new-state = {if dockable? then PaneState.dockable else PaneState.floating}
+    {if self.floating-view == null then
+        {self.detach-this-pane}
+        set self.hidden? = false
+        {self.root-container.float-in-window self, new-state}
+     else
+        set self.state = new-state
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Called when this pane is attached to a {docref FloatingView}.
+    }
+    {override
+        The base implementation of this method in {docref BasePane} does nothing.
+        Subclasses can override this method to implement changes in appearance
+        that are desired when a pane is floated.
+    }
+  }
+  {method public open {note-pane-floated}:void
+  }
+  
+  {doc-next
+    {purpose
+        Called when this pane is detached from a {docref FloatingView}.
+    }
+    {override
+        The base implementation of this method in {docref BasePane} does nothing.
+        Subclasses can override this method to implement changes in appearance
+        that are desired when a pane is imfloated.
+    }
+  }
+  {method public open {note-pane-unfloated}:void
+  }
+  
+  {doc-next
+    {purpose
+        Determine the value to be stored into this pane's {docref-abbr BasePane.percent} field
+        prior to undocking it.
+    }
+    {return-vals
+        The value that should be used for this pane's {docref BasePane.percent} field.
+    }
+    {details
+        This method looks up through the hierarchy of ancestor {docref PaneGroup}s until it finds
+        one that has more than one child, and calculates the percentage that is applicable at that
+        level.
+        This is the most useful value because, as soon as this pane is undocked,
+        the chain of ancestors that have only one child will all be deleted since there will be
+        no remaining {docref SinglePane}s docked in that tree.
+    }
+  }
+  {method public open {get-percent-before-undocking}:double
+    let child:BasePane = self
+    let pg:#PaneGroup = self.pane-group
+    {while pg != null do
+        {if pg.size > 1 then
+            {return {pg.get-child-percent child}}
+        }
+        set child = {non-null pg}
+        set pg = child.pane-group
+    }
+    {return -1}
+  }
+  
+  {doc-next
+    {purpose
+        Store the current path to this pane into this pane's {docref-abbr BasePane.path} field.
+    }
+  }
+  {method public open {store-path}:void
+    let parent:#PaneGroup = self.pane-group
+    {if-non-null parent then
+        set self.parent-group-type = parent.group-type
+    }
+    
+    def path = self.path
+    {path.clear}
+    let pchild:BasePane = self
+    {while parent != null do
+        {path.append {parent.find pchild}}
+        set pchild = {non-null parent}
+        set parent = pchild.pane-group
+    }
+    {path.reverse}
+    set self.path = path
+  }
+  
+  {doc-next
+    {purpose
+        Dock this pane at a heuristically determined location.
+    }
+    {details
+        The heuristic for where to dock the pane will be based on
+        the contents of the pane's
+        {docref-abbr BasePane.path} and
+        {docref-abbr BasePane.percent} properties.
+    }
+  }
+  {method public open {dock}:void
+    {self.detach-this-pane}
+    {self.root-container.heuristic-add-pane-from-path self}
+    {self.mark-as-docked}
+    {if self.has-focus? then
+        || If the pane being docked currently has the focus, request it again for this
+        || pane.  This seemingly redundant operation has a purpose when a floating
+        || pane is docked and a different pane is maximized, causing the newly docked
+        || pane to be hiding under the maximized pane.  In this case, it is desirable
+        || for the focus to go to the maximized pane, and this call will accomplish that.
+        {self.request-pane-focus}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Set this {docref BasePane}'s state to mark it as docked.
+    }
+  }
+  {method public open {mark-as-docked}:void
+    {self.path.clear}
+    set self.parent-group-type = ""
+    set self.percent = -1.0
+    set self.state = PaneState.docked
+    set self.hidden? = false
+    set self.maximized? = false
+    {assert self.root-container.maximized-docked-pane != self}
+||++{self.visible-pane-content.sync-focus-to-title-bar}
+  }
+  
+  {doc-next
+    {purpose
+        Dock a {docref BasePane} in the specified relationship to this pane.
+    }
+    {parameter pane,
+        The {docref BasePane} to be docked.
+    }
+    {parameter action,
+        The location relative to {ctext self} where {param pane} should be docked.
+        {param action} should not be {ctext DockingAction.swap}.
+        The {ctext swap} case should be handled by the caller of this method.
+    }
+    {details
+        It is assumed that {param pane} is already detached from any previous
+        container.  This can be assured by calling the
+        {docref-abbr BasePane.detach-this-pane} method on {param pane}
+        before calling this method.
+    }
+  }  
+  {method public open {dock-pane-near-me pane:BasePane, action:DockingAction}:void
+    || Swap actions are handled at an earlier point (e.g., in StandardPaneContainer.dock-pane):
+    {assert action != DockingAction.swap}
+    {if-non-null pg = self.pane-group then
+        {if not {pg.try-add-pane-near-target pane, self, action} then
+            def new-pg = {self.root-container.splice-pane-group-for-action self, action}
+            {assert {new-pg.try-add-pane-near-target pane, self, action}}
+        }
+     else
+        || Execution reaches this point if self is the top-level PaneGroup in a PaneContainer.
+        def pg = self asa PaneGroup
+        {if not {pg.try-add-pane-near-me pane, action} then
+            def new-pg = {self.root-container.splice-pane-group-for-action self, action}
+            {assert {new-pg.try-add-pane-near-me pane, action}}
+        }
+    }
+    {pane.mark-as-docked}
+  }
+  
+  {doc-next
+    {purpose
+        Swap a different pane in place of this pane.
+    }
+    {parameter new-pane,
+        The pane to swap in place of {ctext self}.
+        {param new-pane} should be currently detached
+        (e.g., as a result of calling {docref-abbr BasePane.detach-this-pane}).
+        At the end of this method call, {ctext self} will be detached.
+    }
+  }
+  {method public open {replace-pane-with new-pane:BasePane}:void
+    {assert not self.hidden?}
+    {assert self.root-container == new-pane.root-container}
+    {if self.floating? then
+        {self.floating-view.replace-pane new-pane}
+     elseif self.maximized? then
+        {error "Not implemented yet!"}  || *temp* RHH
+     else
+        {assert self.docked?}
+        {if-non-null pg = self.pane-group then
+            def index = {pg.find self}
+            {pg.replace-pane-at-index new-pane, index}
+            {new-pane.mark-as-docked}
+         else
+            {error "Not implemented yet: replace-pane-with on top-level PaneGroup"}   || *temp* RHH
+        }
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Maximize this pane.
+    }
+    {details
+        If the pane is already maximized, then this is a no-op.
+        If another pane is currently maximized, it is first
+        {docref-abbr BasePane.unmaximize}d.
+    }
+  }
+  {method public open {maximize}:void
+    {if self.maximized? then {return}}
+    def root = self.root-container
+    {if self.docked? then
+        {if-non-null max-pane = root.maximized-docked-pane then
+            {max-pane.unmaximize}
+        }
+        {self.detach-this-pane}
+        {root.attach-maximized-pane self}
+     else
+        {if-non-null floating-view = self.floating-view then
+            || First, save our unmaximized dimensions:
+            {floating-view.save-dimensions}
+            set floating-view.visibility = WindowVisibility.maximized
+            set self.maximized? = true
+        }
+    }
+    {self.request-pane-focus}
+  }
+  
+  {doc-next
+    {purpose
+        Unmaximize this pane (also known as {quote restoring} it).
+    }
+    {details
+        If this pane is not currently maximized, then this is a no-op.
+    }
+  }
+  {method public open {unmaximize}:void
+    {if not self.maximized? then {return}}
+    def root = self.root-container
+    {if root.maximized-docked-pane == self then
+        {root.detach-maximized-pane self}
+        {root.heuristic-add-pane-from-path self}
+        {self.mark-as-docked}
+     else
+        {if-non-null floating-view = self.floating-view then
+            set floating-view.visibility = WindowVisibility.normal
+            set self.maximized? = false
+        }
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Write a Curl expression that can be evaluated to recreate this pane.
+    }
+    {parameter out,
+        The output stream to which the Curl expression should be written.
+    }
+    {details
+        This method is called indirectly from {docref PaneContainer.save-state},
+        which is called to dump a description of the current pane layout prior to
+        closing down an application so that the layout can be restored
+        when the application is next started up.
+        
+        The expression that is written should be suitable for use as a part of the {param layout-spec}
+        argument for the {docref PaneContainer.from-layout-spec} factory.
+    }
+  }
+  {method public abstract {save-state out:TextOutputStream}:void}
+  
+  {doc-next
+    {purpose
+        Write this pane's state information to the specified output stream.
+    }
+    {parameter out,
+        The output stream to write to.
+    }
+    {details
+        This method writes zero or more keyword argument specifiers to {param out}.
+        The keywords written depend on the state of the pane.
+        
+        If the pane is docked,
+        this method determines whether this pane has a meaningful (nonnegative)
+        {docref-abbr BaseFrame.percent} value relative to its parent {docref PaneGroup},
+        and if so, writes that value to {param out} in a form that is useful when
+        executing the {docref-abbr BasePane.save-state} method for this pane.
+        
+        If this pane is floating or hidden, the appropriate state information for each case
+        is written.
+    }
+  }
+  {method protected open {write-state-info out:TextOutputStream}:void
+    {if self.docked? and not self.maximized? then
+        {if-non-null parent = self.pane-group then
+            def percent = {parent.get-child-percent self}
+            {if percent >= 0.0 then
+                {format out = out, ", percent = %s", percent}
+            }
+        }
+     else
+        {if self.maximized? then
+            {out.write-one-string ", maximized? = true"}
+        }
+        {if self.state != PaneState.dockable then
+            {format out = out, ",state = %w", self.state.name}
+        }
+        {if self.hidden? then
+            {out.write-one-string ", hidden? = true"}
+         else
+            {if-non-null floating-view = self.floating-view then
+                || If not docked, hidden, or maximized, this pane must be floating.  Be sure we have
+                || its latest size and position information.
+                {floating-view.save-dimensions}
+            }
+        }
+        {if self.percent >= 0.0 then
+            {format out = out, ", percent = %s", self.percent}
+        }
+        {if self.path.size > 0 then
+            {out.write-one-string ", path = \{create-path "}
+            {for p key i in self.path do
+                {if i > 0 then
+                    {out.write-one-string ", "}
+                }
+                {format out = out, "%d", p}
+            }
+            {out.write-one-string "\}"}
+        }
+        {if self.parent-group-type != "" then
+            {format out = out, ", parent-group-type = %w", self.parent-group-type}
+        }
+    }
+    {if self.floating-x >= 0m then
+        {format out = out, ", floating-x = %s, floating-y = %s, floating-width = %s, floating-height = %s",
+            self.floating-x,
+            self.floating-y,
+            self.floating-width,
+            self.floating-height
+        }
+    }
+    {if self.has-focus? then
+        {out.write-one-string ", has-focus? = true"}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Create a {docref View} that acts as a surrogate for this {docref BasePane}
+        while dragging.
+    }
+    {parameter (pointer-x, pointer-y),
+        The coordinates of the current pointer position, in the coordinate system of
+        the root display window.
+    }
+    {return-vals
+        The required {docref View} object.
+    }
+    {usage
+        This method is called from the {ctext start-drag} method of {docref PaneDragger}.
+    }
+  }
+  {method public open {create-drag-view 
+                          pointer-x:Distance, 
+                          pointer-y:Distance
+                      }:View
+    {self.set-status-text
+        {hlmessage 
+            Hold down the Ctrl key (Command key on Mac) to prevent docking.
+            Hold down Shift to swap dragged pane with target.
+        }
+    }
+    let floating-width:Distance = self.floating-width
+    let floating-height:Distance = self.floating-height
+    let v:View = 
+        {OutlineOnlyView
+            owner = null,
+            vstretch? = true,
+            hstretch? = true,
+            {DragFeedbackFrame}
+        }
+    
+    {v.set-window-size floating-width, floating-height}
+    
+    let (x:Distance, y:Distance) = 
+        {self.transform-to-display-coordinates 0m, 0m}
+    let bounds:GRect = {self.layout.get-bounds}
+    || Make sure the pointer is inside the dragged window
+    let dx:Distance = (pointer-x - x) / bounds.width * floating-width
+    let dy:Distance = (pointer-y - y) / bounds.height * floating-height
+    {v.set-window-position pointer-x - dx, pointer-y - dy}
+    {v.show force-on-display? = false}
+    {return v}
+  }
+  
+  {doc-next
+    {purpose
+        Compute the {docref DockingAction} that should be performed
+        in response to a drop at the specified position.
+    }
+    {parameter (x, y),
+        The coordinates of the pointer position for the drop, in the
+        coordinate system of the screen's root window.
+    }
+    {parameter e,
+        The most recent {docref GuiInputEvent} in the drag/drop gesture.
+        This can be examined to see which modifier keys are down.
+    }
+    {return-vals
+        A {docref DockingAction} that describes the docking operation
+        that should result from the drop.
+    }
+    {override
+        The base implementation of this method in {docref BasePane}
+        just returns {ctext {docref DockingAction}.none}.
+        Some subclasses, such as {docref SinglePane},
+        override this method to return a richer menu of alternatives.
+    }
+  }
+  {method public open {compute-docking-action
+                          x:Distance,
+                          y:Distance,
+                          e:GuiInputEvent
+                      }:DockingAction
+    {return DockingAction.none}
+  }
+  
+  {doc-next
+    {purpose
+        Set the size and position of a dragging surrogate {docref View}
+        to reflect the current docking action in a docking gesture.
+    }
+    {parameter state,
+        The {docref DockingAction} that describes the docking operation that would
+        occur if the drag gesture ended at this point.
+    }
+    {parameter drag-view,
+        The dragging surrogate {docref View}.
+    }
+    {notes
+        This call only applies to docking gestures relative to this specific
+        {docref BasePane}.
+        Typically these consist of positioning the pointer inside the pane
+        and near one of the four edges,
+        or over the pane's title bar for a gesture that calls for adding a tab pane.
+    }
+  }
+  {method public open {show-drop-zone
+                          state:DockingAction,
+                          drag-view:View
+                      }:void
+    {if state == DockingAction.none then
+        {return}
+    }
+    let grect:GRect = {self.layout.get-cell-bounds}
+    let width:Distance = grect.width
+    let height:Distance = grect.height
+    || d-x and d-y will be the screen coordinates of the top left corner of this pane.
+    let (d-x:Distance, d-y:Distance) = 
+        {self.transform-to-display-coordinates -grect.lextent, -grect.ascent}
+    {if state == DockingAction.tab then
+        {drag-view.set-window-position-and-size d-x, d-y, width, height}
+        {return}
+    }
+    {if state == DockingAction.swap or state == DockingAction.replace then
+        || For now, "swap" and "replace" feedback looks just like tab feedback.
+        || Later on, we may want to make them differ in some way.
+        {drag-view.set-window-position-and-size d-x, d-y, width, height}
+        {return}
+    }
+    || drag-view-fraction is the fraction of the height or width of the pane that
+    || is occupied by the left, right, top, or bottom drag feedback cues.
+    def drag-view-fraction = 0.4
+    {switch state
+     case DockingAction.left do
+        {drag-view.set-window-position-and-size d-x, d-y, width * drag-view-fraction, height}
+     case DockingAction.right do
+        {drag-view.set-window-position-and-size 
+            d-x + width * (1.0 - drag-view-fraction), d-y, width * drag-view-fraction, height
+        }
+     case DockingAction.top do
+        {drag-view.set-window-position-and-size d-x, d-y, width, height * drag-view-fraction}
+     case DockingAction.bottom do
+        {drag-view.set-window-position-and-size 
+            d-x, d-y + height * (1.0 - drag-view-fraction), width, height * drag-view-fraction
+        }
+    }
+  }
+  
+}

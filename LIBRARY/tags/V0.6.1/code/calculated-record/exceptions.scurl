@@ -1,0 +1,136 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl-file-attributes character-encoding = "utf8"}
+
+
+{doc-next
+    {purpose
+        An exception involving a {docref CalculatedField}.
+    }
+}
+{define-class public open CalculatedFieldException {inherits Exception}
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter message,
+        A human-readable error message.
+    }
+  }
+  {constructor public {default message:String}
+    {construct-super message}
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        An exception thrown when an operation was attempted
+        on a disconnected {docref CalculatedField}.
+    }
+}
+{define-class public open CalculatedFieldDisconnectedException
+  {inherits CalculatedFieldException}
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+  }
+  {constructor public {default}
+    {construct-super
+        {hlmessage "Cannot perform operation on detached CalculatedField."}
+    }
+  }
+  
+}
+
+
+||--{doc-next
+||--    {purpose
+||--        An exception thrown when an operation attempt to link or
+||--        delink two {docref CalculatedField}s in an invalid way.
+||--    }
+||--}
+||--{define-class public open CalculatedFieldPredecessorException
+||--  {inherits CalculatedFieldException}
+||--  
+||--  {doc-next
+||--    {purpose
+||--        Instantiate this object.
+||--    }
+||--    {parameter message,
+||--        A human-readable error message.
+||--    }
+||--  }
+||--  {constructor public {default message:String}
+||--    {construct-super message}
+||--  }
+||--  
+||--}
+
+
+{doc-next
+    {purpose
+        An exception thrown when a {docref CalculatedField} update
+        encounters an incorrect epoch.
+    }
+}
+{define-class public open CalculatedFieldUpdateEpochException
+  {inherits CalculatedFieldException}
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter message,
+        A human-readable error message.
+    }
+  }
+  {constructor public {default message:String}
+    {construct-super message}
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        An exception thrown when a {docref CalculatedField} operation
+        is attempted between fields in different managers.
+    }
+}
+{define-class public open CalculatedFieldWrongManagerException
+  {inherits CalculatedFieldException}
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter message,
+        A human-readable error message.
+    }
+  }
+  {constructor public {default message:String}
+    {construct-super message}
+  }
+  
+}
+

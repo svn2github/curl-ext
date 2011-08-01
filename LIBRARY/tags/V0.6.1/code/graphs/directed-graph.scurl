@@ -1,0 +1,471 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl-file-attributes character-encoding = "utf8"}
+
+{doc-next
+    {purpose
+        A graph, or series of nodes (vertices) connected by edges.
+    }
+}
+{define-class public abstract shared open {DirectedGraph-of t:Type}
+  {inherits {Graph-of t}}
+  
+  {method public abstract open {create-node data:t}:{GraphNode-of t}}
+  
+  {doc-next
+    {purpose
+        Return all nodes ordered such that no node is listed
+        before any of its predecessors.
+    }
+    {details
+        This function performs a {italic topological sort} on the
+        directed graph(s) defined by the nodes of this graph.
+        As such, it will only be able to complete successfully if the
+        graph is a directed acyclic graph; i.e. there cannot be a cycle
+        among the nodes.
+    }
+    {notes
+        The array returned by this method should not be modified.
+    }
+    {return-vals
+        An array containing all the matching nodes in the given order.
+    }
+    {throws
+        {exception GraphCycleException,
+            if the graph contains a cycle.
+        }
+    }
+  }
+  {method public open {topological-sort}:{Array-of {DirectedGraphNode-of t}}
+    
+    || http://doi.acm.org/10.1145/366707.367589
+    || (Kahn, 1962) algorithm to iteratively pull out relative source nodes.
+    
+    def node-count = self.node-count
+    def ordered-list = {new {Array-of {DirectedGraphNode-of t}}}
+    
+    || Count the "internal indegree" of each node.
+    || The "internal indegree" of each node is the number of edges
+    || originating in other nodes contained in the same set.
+    || IE when we pop a relative source node, we will decrement the
+    || "internal indegree" of all successor nodes.
+    
+    || FIXME: providing efficient size here is arguable;
+    || appears to help in some cases, but we need more data.
+    || Caching hash tables for reuse didn't seem to help performance.
+    def indegree-table =
+        {new {HashTable-of {DirectedGraphNode-of t}, int},
+            efficient-size = node-count
+        }
+    
+    def source-set = {new {Set-of {DirectedGraphNode-of t}}}
+    
+    {for node in self do
+        def cast-node = node asa {DirectedGraphNode-of t}
+        def indegree = node.indegree
+        {if indegree == 0 then
+            {source-set.insert cast-node}
+         else
+            {indegree-table.set cast-node, indegree}
+        }
+    }
+    
+    || Work outwards from the internal source nodes to build the sort.
+    {for node in source-set do
+        {ordered-list.append node}
+        {node.visit-successors
+            {proc {n:{DirectedGraphNode-of t}}:bool
+                def (ideg, valid?) = {indegree-table.get-if-exists n}
+                {if valid? then
+                    set indegree-table[n] = ideg - 1
+                    || If the node is now a relative source node,
+                    || add it to the ordered list; i.e. it WAS 1 so is now 0.
+                    {if ideg == 1 then
+                        {ordered-list.append n}
+                        {return true}
+                    }
+                }
+                {return false}
+            }
+        }
+    }
+    
+    || We should have pushed every node. If we didn't, there was a cycle.
+    {if ordered-list.size != node-count then
+        {throw {GraphCycleException}}
+    }
+    
+    {return ordered-list}
+    
+  }
+  
+  {method public open {get-all-edges}:{Array-of
+                                          {Tuple2-of
+                                              {GraphNode-of t},
+                                              {GraphNode-of t}
+                                          }
+                                      }
+    def working-array = 
+        {new
+            {Array-of
+                {Tuple2-of
+                    {GraphNode-of t},
+                    {GraphNode-of t}
+                }
+            }
+        }
+    {self.visit-nodes
+        {proc {n:{GraphNode-of t}}:void
+            {for successor in n do
+                {working-array.append
+                    {new
+                        {Tuple2-of {GraphNode-of t}, {GraphNode-of t}},
+                        n,
+                        successor
+                    }
+                }
+            }
+        }
+    }
+    {return working-array}
+  }
+  
+  {doc-next
+    {purpose
+        Transposes the graph; i.e. reverses every edge.
+    }
+  }
+  {method public open {transpose}:void
+    def all-edges = {self.get-all-edges}
+    {for edge in all-edges do
+        {edge.t0.remove-edge edge.t1}
+        {edge.t1.add-edge edge.t0}
+    }
+  }
+    
+}
+
+
+{doc-next
+    {purpose
+        A single node in a graph, containing some value of the
+        parameterized type.
+    }
+}
+{define-class public shared abstract open {DirectedGraphNode-of t:Type}
+  {inherits {GraphNode-of t}}
+  
+  {doc-next
+    {purpose
+        Return all successor nodes to one or more nodes, ordered such
+        that no node is listed before any of its predecessors.
+    }
+    {parameter from-nodes,
+        A set of nodes from which to check successors.
+    }
+    {parameter out,
+        If supplied, this array will be filled with the results and returned.
+        It will not be cleared beforehand.
+    }
+    {parameter include-from?,
+        If {ctext true}, the {param from-nodes} will be included in the
+        returned list.
+    }
+    {details
+        This function performs a {italic topological sort} on the
+        directed graph(s) defined by the nodes passed in. As such, it will
+        only be able to complete successfully if the node set defines
+        a directed acyclic graph; i.e. there cannot be a cycle among
+        the base nodes or their successors.
+        
+        Nodes passed in can have predecessors outside of their
+        successor set; these nodes are ignored for the purposes of
+        this sorting operation.
+    }
+    {return-vals
+        An array containing all the matching nodes in the given order.
+    }
+    {throws
+        {exception GraphCycleException,
+            if the successors form a cycle.
+        }
+    }
+  }
+  {define-proc public {topological-sort-subgraph
+                          from-nodes:{Set-of {DirectedGraphNode-of t}},
+                          out:#{Array-of {DirectedGraphNode-of t}} = null,
+                          include-from?:bool = true
+                      }:{Array-of {DirectedGraphNode-of t}}
+    
+    || http://doi.acm.org/10.1145/366707.367589
+    || (Kahn, 1962) algorithm to iteratively pull out relative source nodes.
+    
+    def ordered-list =
+        {if-non-null out then
+            out
+         else
+            {new {Array-of {DirectedGraphNode-of t}}}
+        }
+    
+    || Create a set of all nodes that will be updated.
+    def working-set = {new {Set-of {DirectedGraphNode-of t}}}
+    
+    || First, get all successor nodes unordered.
+    {for node in from-nodes do
+        {if not {working-set.member? node} then
+            {node.visit-successors
+                {proc {n:{DirectedGraphNode-of t}}:bool
+                    {if not {working-set.member? n} then
+                        {working-set.insert n}
+                        {return true}
+                    }
+                    {return false}
+                }
+            }
+            {if include-from? then
+                {working-set.insert node}
+            }
+        }
+    }
+    
+    {if working-set.empty? then {return ordered-list}}
+    
+    || Count the "internal indegree" of each node.
+    || The "internal indegree" of each node is the number of edges
+    || originating in other nodes contained in the same set.
+    || IE when we pop a relative source node, we will decrement the
+    || "internal indegree" of all successor nodes.
+    
+    def indegree-table = {new {HashTable-of {DirectedGraphNode-of t}, int}}
+    
+    def starter-source-set = {new {Set-of {DirectedGraphNode-of t}}}
+    
+    {for node in working-set do
+        let c:int = 0
+        def cast-node = node asa {DirectedGraphNode-of t}
+        {cast-node.visit-predecessors
+            {proc {pred:{DirectedGraphNode-of t}}:bool
+                {if {working-set.member? pred} then {inc c}}
+                {return false}
+            }
+        }
+        {indegree-table.set cast-node, c}
+        {if c == 0 then
+            {starter-source-set.insert cast-node}
+        }
+    }
+    
+    || Work outwards from the internal source nodes to build the sort.
+    {for node in starter-source-set do
+        {ordered-list.append node}
+        {node.visit-successors
+            {proc {n:{DirectedGraphNode-of t}}:bool
+                def (ideg, valid?) = {indegree-table.get-if-exists n}
+                {if valid? then
+                    set indegree-table[n] = ideg - 1
+                    || If the node is now a relative source node,
+                    || add it to the ordered list; i.e. it WAS 1 so is now 0.
+                    {if ideg == 1 then
+                        {ordered-list.append n}
+                        {return true}
+                    }
+                }
+                {return false}
+            }
+        }
+    }
+    
+    || If we didn't push every node, there was a cycle.
+    {if ordered-list.size != working-set.size then
+        {throw {GraphCycleException}}
+    }
+    
+    {return ordered-list}
+  }
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter data,
+        The data associated with this node.
+    }
+    {parameter graph,
+        The graph of which this node will be a member.
+    }
+    {notes
+        Nodes should not generally be constructed directly.
+        Instead, call {docref Graph-of.create-node},
+        which should then construct a {ctext GraphNode-of}.
+    }
+  }
+  {constructor public {default data:t, graph:{DirectedGraph-of t}}
+    {construct-super data, graph}
+  }
+  
+  {secondary-constructor public {default data:t, graph:{DirectedGraph-of t}}
+    set self.data = data
+    set self.graph = graph
+  }
+  
+  {doc-next
+    {purpose
+        Whether there are any edges leading from this node.
+    }
+  }
+  {getter public open {has-successors?}:bool
+    {return not self.sink?}
+  }
+  
+  {doc-next
+    {purpose
+        Whether there are any edges leading to this node.
+    }
+  }
+  {getter public open {has-predecessors?}:bool
+    {return not self.source?}
+  }
+  
+  {doc-next
+    {purpose
+        Visit all successors nodes to this node.
+    }
+    {parameter action-proc,
+        This procedure will be called once with each immediate successor
+        of this node. If it returns true, it will immediately recurse
+        in depth-first fashion onto the successors of the working node.
+        If it returns false, it will not recurse.
+    }
+    {parameter safe?,
+        If {ctext true}, any node will be visited at most once,
+        preventing infinite recursion due to graph cycles, but
+        performance may be reduced.
+        If {ctext false}, no such protection will be employed.
+    }
+  }
+  {method public abstract open {visit-successors
+                                   visit-proc:{proc-type
+                                                  {{DirectedGraphNode-of t}
+                                                  }:bool},
+                                   safe?:bool = false
+                               }:void
+  }
+  
+  {doc-next
+    {purpose
+        Add an edge leading from this node.
+    }
+    {parameter successor-node,
+        The node to which to add an edge.
+    }
+    {parameter error-if-present?,
+        Whether to throw an error if the listed node already
+        has an edge leading to it from this node.
+    }
+  }
+  {method public abstract open {add-successor
+                                   successor-node:{DirectedGraphNode-of t},
+                                   error-if-present?:bool = true
+                               }:void
+  }
+  
+  {doc-next
+    {purpose
+        Removes one edge leading from this node.
+    }
+    {parameter node,
+        The node to remove.
+    }
+    {parameter error-if-missing?,
+        If {ctext true}, an error will be thrown if the listed node is
+        not among the successors of this node.
+    }
+  }
+  {method public abstract open {remove-successor
+                                   node:{DirectedGraphNode-of t},
+                                   error-if-missing?:bool = false
+                               }:void
+  }
+  
+  {doc-next
+    {purpose
+        Visit all predecessor nodes to this node.
+    }
+    {parameter visit-proc,
+        This procedure will be called once with each immediate predecessor
+        of this node. If it returns true, it will immediately recurse
+        in depth-first fashion onto the predecessors of the working node.
+        If it returns false, it will not recurse.
+    }
+    {parameter safe?,
+        If {ctext true}, any node will be visited at most once,
+        preventing infinite recursion due to graph cycles, but
+        performance may be reduced.
+        If {ctext false}, no such protection will be employed.
+    }
+  }
+  {method public abstract open {visit-predecessors
+                                   visit-proc:{proc-type
+                                                  {{DirectedGraphNode-of t}
+                                                  }:bool},
+                                   safe?:bool = false
+                               }:void
+  }
+  
+  {doc-next
+    {purpose
+        Return this node and all successor nodes in an array, ordered such
+        that no node is listed before any of its predecessors.
+    }
+    {parameter out,
+        If supplied, this array will be filled with the results and returned.
+        It will not be cleared beforehand.
+    }
+    {return-vals
+        An array containing all the matching nodes in the given order.
+    }
+    {details
+        This method performs a {italic topological sort} on the subgraph
+        defined by this node and its successors.
+    }
+    {throws
+        {exception GraphCycleException,
+            if this node's successors have a cycle.
+        }
+    }
+  }  
+  {method public open {topological-sort-successors
+                          out:#{Array-of {DirectedGraphNode-of t}} = null
+                      }:{Array-of {DirectedGraphNode-of t}}
+    def ordered-list =
+        {if-non-null out then
+            out
+         else
+            {new {Array-of {DirectedGraphNode-of t}}}
+        }
+    {return
+        {{DirectedGraphNode-of t}.topological-sort-subgraph
+            {new {Set-of {DirectedGraphNode-of t}}, self},
+            out = ordered-list,
+            include-from? = false
+        }
+    }
+  }
+  
+}
+

@@ -1,0 +1,461 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0 applet}
+{curl-file-attributes character-encoding = "utf8"}
+{applet manifest = "../manifest.mcurl"}
+
+{import * from COM.CURL.EXT.CALCULATED-RECORDSET}
+
+{def sum-proc = 
+    {proc {cp:CalculatedField}:void
+        let working-val:int = 0
+        {for pred-cp in cp do
+            {type-switch pred-cp.value
+             case i:int do
+                {inc working-val, i}
+            }
+        }
+        set cp.value = working-val
+    }
+}
+
+
+{value
+    
+    def manager = {CalculatedFieldManager}
+
+    def rf1 =
+        {RecordFields
+            {RecordField "index",
+                domain = int,
+                modifiable? = false,
+                index-type = RecordFieldIndexType.unique
+            },
+            {RecordField "a", domain = int},
+            {RecordField "b", domain = int},
+            {RecordField "c", domain = int},
+            {RecordField "row-sum", domain = int}
+        }
+    def rs1 = {CalculatedRecordSet manager, rf1}
+
+    def rf2 =
+        {RecordFields
+            {RecordField "index",
+                domain = int,
+                modifiable? = false,
+                index-type = RecordFieldIndexType.unique
+            },
+            {RecordField "a", domain = int},
+            {RecordField "b", domain = int},
+            {RecordField "c", domain = int}
+        }
+    def rs2 = {RecordSet rf2}
+    
+    def rf3 =
+        {RecordFields
+            {RecordField "index",
+                domain = int,
+                modifiable? = false,
+                index-type = RecordFieldIndexType.unique
+            },
+            {RecordField "a", domain = int},
+            {RecordField "b", domain = int},
+            {RecordField "c", domain = int},
+            {RecordField "col-sum", domain = int}
+        }
+    def rs3 = {CalculatedRecordSet manager, rf3}
+    
+    {for i = 0 below 10 do
+        {rs1.append
+            {RecordData
+                index = i,
+                a = i * 3 + 1,
+                b = i * 3 + 2,
+                c = i * 3 + 3
+            }
+        }
+        {rs2.append
+            {RecordData
+                index = i,
+                a = i * 3 + 1,
+                b = i * 3 + 2,
+                c = i * 3 + 3
+            }
+        }
+        {rs3.append
+            {RecordData index = i}
+        }
+    }
+    
+    {rs1.commit}
+    {rs2.commit}
+    {rs3.commit}
+    
+    {for rec3 in rs3 do
+        def index = rec3["index"]
+        def rec1 =
+            {non-null
+                {rs1.select-one filter = {RecordData index = index}}
+            } asa CalculatedRecord
+        def rec2 =
+            {non-null
+                {rs2.select-one filter = {RecordData index = index}}
+            } asa Record
+
+        {for field in rf1 do
+            {if field.name == "index" or
+                field.name == "row-sum"
+             then
+                {continue}
+            }
+            
+            def pred1-cf =
+                {rs1.get-or-create-calculated-field
+                    (rec1 asa CalculatedRecord),
+                    field
+                }
+            def pred2-cf =
+                {RecordFilterCalculatedField
+                    manager,
+                    rs2,
+                    {proc {r:Record}:bool
+                        {if r["index"] == index then
+                            {return true}
+                        }
+                        {return false}
+                    },
+                    {rf2.get field.name},
+                    update-proc = sum-proc
+                }
+            {rs3.set-calculated-field
+                rec3 asa CalculatedRecord,
+                {rf3.get field.name},
+                update-proc = sum-proc,
+                pred1-cf,
+                pred2-cf
+            }
+        }
+    }
+    {for record in rs1 do
+        def rec = record asa CalculatedRecord
+        {rs1.set-calculated-field
+            rec asa CalculatedRecord,
+            rf1["row-sum"],
+            update-proc = sum-proc,
+            {rs1.get-or-create-calculated-field rec, rf1["a"]},
+            {rs1.get-or-create-calculated-field rec, rf1["b"]},
+            {rs1.get-or-create-calculated-field rec, rf1["c"]}
+        }
+    }
+
+    {rs3.set-calculated-field
+        {rs3.select-one filter = {RecordData index = 0}} asa CalculatedRecord,
+        {rf3.get-by-index 4},
+        update-proc = sum-proc,
+        {RecordFilterCalculatedField
+            manager,
+            rs1,
+            {proc {r:Record}:bool {return true}},
+            {rf1.get-by-index 1},
+            update-proc = sum-proc
+        }
+    }
+    {rs3.set-calculated-field
+        {rs3.select-one filter = {RecordData index = 1}} asa CalculatedRecord,
+        {rf3.get-by-index 4},
+        update-proc = sum-proc,
+        {RecordFilterCalculatedField
+            manager,
+            rs1,
+            {proc {r:Record}:bool {return true}},
+            {rf1.get-by-index 2},
+            update-proc = sum-proc
+        }
+    }
+    {rs3.set-calculated-field
+        {rs3.select-one filter = {RecordData index = 2}} asa CalculatedRecord,
+        {rf3.get-by-index 4},
+        update-proc = sum-proc,
+        {RecordFilterCalculatedField
+            manager,
+            rs1,
+            {proc {r:Record}:bool {return true}},
+            {rf1.get-by-index 3},
+            update-proc = sum-proc
+        }
+    }
+
+    {rs3.set-calculated-field
+        {rs3.select-one filter = {RecordData index = 3}} asa CalculatedRecord,
+        {rf3.get-by-index 4},
+        update-proc = sum-proc,
+        {RecordFilterCalculatedField
+            manager,
+            rs2,
+            {proc {r:Record}:bool {return true}},
+            {rf2.get-by-index 1},
+            update-proc = sum-proc
+        }
+    }
+    {rs3.set-calculated-field
+        {rs3.select-one filter = {RecordData index = 4}} asa CalculatedRecord,
+        {rf3.get-by-index 4},
+        update-proc = sum-proc,
+        {RecordFilterCalculatedField
+            manager,
+            rs2,
+            {proc {r:Record}:bool {return true}},
+            {rf2.get-by-index 2},
+            update-proc = sum-proc
+        }
+    }
+    {rs3.set-calculated-field
+        {rs3.select-one filter = {RecordData index = 5}} asa CalculatedRecord,
+        {rf3.get-by-index 4},
+        update-proc = sum-proc,
+        {RecordFilterCalculatedField
+            manager,
+            rs2,
+            {proc {r:Record}:bool {return true}},
+            {rf2.get-by-index 3},
+            update-proc = sum-proc
+        }
+    }
+    {rs3.set-calculated-field
+        {rs3.select-one filter = {RecordData index = 6}} asa CalculatedRecord,
+        {rf3.get-by-index 4},
+        update-proc = sum-proc,
+        {rs3.get-or-create-calculated-field
+            {rs3.select-one filter = {RecordData index = 0}} asa CalculatedRecord,
+            {rf3.get-by-index 4}
+        },
+        {rs3.get-or-create-calculated-field
+            {rs3.select-one filter = {RecordData index = 1}} asa CalculatedRecord,
+            {rf3.get-by-index 4}
+        },
+        {rs3.get-or-create-calculated-field
+            {rs3.select-one filter = {RecordData index = 2}} asa CalculatedRecord,
+            {rf3.get-by-index 4}
+        },
+        {rs3.get-or-create-calculated-field
+            {rs3.select-one filter = {RecordData index = 3}} asa CalculatedRecord,
+            {rf3.get-by-index 4}
+        },
+        {rs3.get-or-create-calculated-field
+            {rs3.select-one filter = {RecordData index = 4}} asa CalculatedRecord,
+            {rf3.get-by-index 4}
+        },
+        {rs3.get-or-create-calculated-field
+            {rs3.select-one filter = {RecordData index = 5}} asa CalculatedRecord,
+            {rf3.get-by-index 4}
+        }
+    }
+
+    def regular-width = 1.5cm
+    
+    def common-width = 12cm
+    def common-height = 6cm
+    
+    def rg1 =
+        {RecordGrid
+            width = common-width,
+            height = common-height,
+            record-source = rs1,
+            edit-on-focus? = false,
+            region-selection-enabled? = true,
+            halign = 1,
+            {RecordGridColumn "index", width = regular-width},
+            {RecordGridColumn "a", width = regular-width},
+            {RecordGridColumn "b", width = regular-width},
+            {RecordGridColumn "c", width = regular-width},
+            {RecordGridColumn "row-sum", width = regular-width * 2}
+        }
+    def rg2 =
+        {RecordGrid
+            width = common-width,
+            height = common-height,
+            record-source = rs2,
+            edit-on-focus? = false,
+            region-selection-enabled? = true,
+            halign = 1,
+            {RecordGridColumn "index", width = regular-width},
+            {RecordGridColumn "a", width = regular-width},
+            {RecordGridColumn "b", width = regular-width},
+            {RecordGridColumn "c", width = regular-width}
+        }
+    def rg3 =
+        {RecordGrid
+            width = common-width,
+            height = common-height,
+            record-source = rs3,
+            edit-on-focus? = false,
+            region-selection-enabled? = true,
+            halign = 1,
+            {RecordGridColumn "index", width = regular-width},
+            {RecordGridColumn "a", width = regular-width},
+            {RecordGridColumn "b", width = regular-width},
+            {RecordGridColumn "c", width = regular-width},
+            {RecordGridColumn "col-sum", width = regular-width * 2}
+        }
+    
+    || FIXME: what the heck is this terrible system?
+    let add-index:int = rs1.size - 1
+    let remove-index:int = add-index
+
+    def add-cb =
+        {CommandButton
+            label = "Add Record",
+            {on Action do
+                {inc add-index}
+                {rs1.append
+                    {RecordData
+                        index = add-index,
+                        a = add-index * 3 + 1,
+                        b = add-index * 3 + 2,
+                        c = add-index * 3 + 3
+                    }
+                }
+                {rs2.append
+                    {RecordData
+                        index = add-index,
+                        a = add-index * 3 + 1,
+                        b = add-index * 3 + 2,
+                        c = add-index * 3 + 3
+                    }
+                }
+                {rs3.append
+                    {RecordData index = add-index}
+                }
+                def rd = {RecordData index = add-index}
+                def rec1 = {rs1.select-one filter = rd}
+                def rec2 = {rs2.select-one filter = rd}
+                def rec3 = {rs3.select-one filter = rd}
+                
+                {for field in rf1 do
+                    {if field.name == "index" or
+                        field.name == "row-sum"
+                     then
+                        {continue}
+                    }
+                    
+                    def pred1-cf =
+                        {rs1.get-or-create-calculated-field
+                            (rec1 asa CalculatedRecord),
+                            field
+                        }
+                    def pred2-cf =
+                        {RecordFilterCalculatedField
+                            manager,
+                            rs2,
+                            {proc {r:Record}:bool
+                                {if r["index"] == add-index then
+                                    {return true}
+                                }
+                                {return false}
+                            },
+                            {rf2.get field.name},
+                            update-proc = sum-proc
+                        }
+                    {rs3.set-calculated-field
+                        rec3 asa CalculatedRecord,
+                        {rf3.get field.name},
+                        update-proc = sum-proc,
+                        pred1-cf,
+                        pred2-cf
+                    }
+                }
+            }
+        }
+
+    def remove-cb =
+        {CommandButton
+            label = "Remove Record",
+            tooltip = "You can only remove Records that you added.",
+            {on Action do
+                {inc remove-index}
+                def rd = {RecordData index = remove-index}
+                {if-non-null r = {rs3.select-one filter = rd} then
+                    {r.delete}
+                }
+                {if-non-null r = {rs1.select-one filter = rd} then
+                    {r.delete}
+                }
+                {if-non-null r = {rs2.select-one filter = rd} then
+                    {r.delete}
+                }
+            }
+        }
+    
+    {spaced-vbox
+        border-width = 2px,
+        margin = 5mm,
+        {spaced-hbox
+            valign = 0,
+            rg1,
+            {spaced-vbox
+                {bold CalculatedRecordSet},
+                {text
+                    This CalculatedRecordSet sets row-sum = a + b + c
+                    for each row.
+                    It also provides base data for the CalculatedRecordSet below.
+                }
+            }
+        },
+        {hrule},
+        {spaced-hbox
+            valign = 0,
+            rg2,
+            {spaced-vbox
+                {bold LocalRecordSet},
+                {text
+                    This LocalRecordSet has no internal computed fields --
+                    it can't, being just a LocalRecordSet -- but
+                    provides base data to the CalculatedRecordSet below.
+                }
+            }
+        },
+        {hrule},
+        {spaced-hbox
+            valign = 0,
+            rg3,
+            {spaced-vbox
+                {bold CalculatedRecordSet},
+                {text
+                    This CalculatedRecordSet sets each row's 'a' field to the
+                    sum of the same index's record's 'a' fields in the
+                    preceeding two RecordSets; same for 'b' and 'c'.
+                    E.g. the first Record is index 0, its 'a' field is
+                    equal to the sum of the 'a' fields in the index == 0
+                    Records of the above two RecordSets.
+                },
+                {text
+                    The first three entries in the 'col-sum' column sum
+                    all fields in fields 'a', 'b', and 'c', respectively,
+                    of the first CalculatedRecordSet. The second three entries
+                    sum the same from the LocalRecordSet. The next
+                    (seventh) entry sums all those, or all the a/b/c fields
+                    in both above RecordSets.
+                }
+            }
+        },
+        {hrule},
+        {spaced-hbox add-cb, remove-cb}
+    }
+    
+}
+

@@ -1,0 +1,358 @@
+||| Maintained by: mgordon
+
+{curl 7.0 applet}
+{curl-file-attributes character-encoding = "windows-latin-1"}
+{applet
+    manifest = "manifest.mcurl",
+    {compiler-directives careful? = true}
+}
+{set-document-properties
+    font-size = 10pt
+}
+
+{import * from COM.CURL.EXT.GUI}
+{import * from CURL.GRAPHICS.WINDOW}
+
+{let current-titled-view:#TitledView = null}
+{let current-view:#View = null}
+
+
+|| Show a View, but if there is a View showing, close it first.
+{define-proc {show-view v:View}:void
+    {if current-view != null then
+        {current-view.close}
+        set current-view = null
+    }
+    set current-view = v
+    {current-view.show center? = true}
+}
+
+|| Show a TitledView, but if there is one showing, close it first.
+{define-proc {show-titled-view v:TitledView}:void
+    {if current-titled-view != null then
+        {current-titled-view.close}
+        set current-titled-view = null
+    }
+    set current-titled-view = v
+    {current-titled-view.show center? = true}
+}
+
+|| Apply a style sheet to a View
+{define-proc {apply-style-sheet
+                 view:View,
+                 border-skin-spec:#SkinSpec = null,
+                 title-bar-skin-spec:#SkinSpec = null,
+                 content-background:Background = "transparent"
+             }:void
+
+    let c1:FillPattern = "crimson"
+    let c2:FillPattern = "brown"
+    let c3:FillPattern = "khaki"
+    {install-style-sheet-on-Graphic
+        view,
+        {StyleSheet
+||--            {StyleRule "TitledView",
+||--                background = "yellow"
+||--            },
+            {StyleRule "TitledView/titlebar",
+                background = "orange",
+                font-size = 12pt,
+                skin = title-bar-skin-spec
+            },
+            {StyleRule "TitledView/titlebar-disabled",
+                background = "red",
+                font-size = 12pt,
+                skin =
+                    {ShadedSkinSpec
+                        "black", "khaki",
+                        draw-top-edge? = false,
+                        draw-right-edge? = false,
+                        draw-bottom-edge? = false,
+                        draw-left-edge? = false
+                    }
+            },
+
+            {StyleRule "TitledView/border",
+                skin = border-skin-spec
+            },
+            {StyleRule "TitledView/content",
+                background = content-background
+            },
+            {StyleRule "TitledView/min-button", ||""
+                skin =
+                    {ShadedSkinSpec
+                        c1, c2,
+                        border-color = "black",
+                        highlight-alpha-1 = 0.5,
+                        highlight-boundary = 10percent,
+                        corner-radius = 3px,
+                        upper-left-rounded? = false,
+                        upper-right-rounded? = false,
+                        lower-left-rounded? = true,
+                        lower-right-rounded? = false,
+                        draw-top-edge? = false,
+                        draw-right-edge? = false
+                    }
+            },
+            {StyleRule "TitledView/max-button", ||""
+                skin =
+                    {ShadedSkinSpec
+                        c1, c2,
+                        border-color = "black",
+                        highlight-alpha-1 = 0.5,
+                        highlight-boundary = 10percent,
+                        corner-radius = 3px,
+                        upper-left-rounded? = false,
+                        upper-right-rounded? = false,
+                        lower-left-rounded? = false,
+                        lower-right-rounded? = false,
+                        draw-top-edge? = false,
+                        draw-right-edge? = false
+                    }
+            },
+            {StyleRule "TitledView/close-button", ||""
+                skin =
+                    {ShadedSkinSpec
+                        c1, c2,
+                        border-color = "black",
+                        highlight-alpha-1 = 0.5,
+                        highlight-boundary = 10percent,
+                        corner-radius = 3px,
+                        upper-left-rounded? = false,
+                        upper-right-rounded? = false,
+                        lower-left-rounded? = false,
+                        lower-right-rounded? = true,
+                        draw-top-edge? = false
+                    }
+            }
+        }
+    }
+}
+
+|| Return some content for a test
+{define-proc {make-test-content width:Distance, height:Distance}:Graphic
+    let box-size:Distance = 1cm
+    let rows:int = {ceiling height/box-size} asa int
+    let cols:int = {ceiling width/box-size} asa int
+    let t:Graphic = {Table 
+                        vorigin = "top", horigin = "left",
+                        columns = cols,
+                        cell-margin = 0pt, cell-border-width = 0pt,
+                        border-color = "black", border-width = 0px
+                    }
+    let c1:FillPattern = "lightcyan"
+    let c2:FillPattern = "lemonchiffon"
+    let c:FillPattern = c1
+    {for row = 0 below rows do
+        set c = {if row mod 2 == 0 then c1 else c2}
+        {for col = 0 below cols do
+            {t.add {Fill width = box-size, height = box-size,
+                       background = c
+                   }
+            }
+            set c = {if c == c1 then c2 else c1}
+        }
+    }
+
+    let content-background:Background = "green"
+    let border-skin-spec:#SkinSpec
+
+    def controls =
+        {VBox
+            {ComboBox "1", "2", "3", width = 3cm},
+            {TextField value = "val", width = 6cm},
+            {CommandButton
+                label = "Minimum width/ height",
+                {on Action at cb:CommandButton do
+                    {if-non-null titled = {cb.get-view} then
+                        {titled.set-window-size 1cm, 1cm}
+                    }
+                }
+            },
+            {CheckButton value = true, label = "resizable?",
+                {on ValueFinished at check:CheckButton do
+                    {type-switch {check.get-view}
+                     case tv:TitledView do
+                        set tv.resizable? = check.value
+                    }
+                }
+            },
+            {RadioFrame
+                {spaced-vbox
+                    {RadioButton
+                        label = "Null skin, red background",
+                        {on ValueChanged at rb:RadioButton do
+                            {if rb.value then
+                                {type-switch {rb.get-view}
+                                 case tv:TitledView do
+                                    {apply-style-sheet tv,
+                                        border-skin-spec = null,
+                                        content-background = "red"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {RadioButton
+                        label = "Image skin, orange background ",
+                        {on ValueChanged at rb:RadioButton do
+                            {if rb.value then
+                                {type-switch {rb.get-view}
+                                 case tv:TitledView do
+                                    {apply-style-sheet tv,
+                                        title-bar-skin-spec =
+                                            {ShadedSkinSpec
+                                                "crimson", "khaki",
+                                                draw-top-edge? = false,
+                                                draw-right-edge? = false,
+                                                draw-bottom-edge? = false,
+                                                draw-left-edge? = false
+                                            },
+                                        border-skin-spec =
+                                            {ImageSkinSpec
+                                                {SlicedImage
+                                                    {Pixmap.from-url
+                                                        {url "../code/resources/titledview-borders.png"}
+                                                    },
+                                                    4
+                                                }
+                                            },
+                                        content-background = "orange"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {RadioButton
+                        label = "Shaded skin, lime background",
+                        {on ValueChanged at rb:RadioButton do
+                            {if rb.value then
+                                {type-switch {rb.get-view}
+                                 case tv:TitledView do
+                                    {apply-style-sheet tv,
+                                        title-bar-skin-spec =
+                                            {ShadedSkinSpec
+                                                "blue", "white",
+                                                draw-top-edge? = false,
+                                                draw-right-edge? = false,
+                                                draw-bottom-edge? = false,
+                                                draw-left-edge? = false
+                                            },
+                                        border-skin-spec =
+                                            {ShadedSkinSpec
+                                                "khaki", "black",
+                                                draw-top-edge? = false,
+                                                draw-right-edge? = false,
+                                                draw-bottom-edge? = false,
+                                                draw-left-edge? = false
+                                            },
+                                        content-background = "lime"
+                                        
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {RadioButton
+                        label = "Default style sheet",
+                        value = true,
+                        {on ValueChanged at rb:RadioButton do
+                            {if rb.value then
+                                {type-switch {rb.get-view}
+                                 case tv:TitledView do
+                                    {install-style-sheet-on-Graphic
+                                        tv, null
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "Hi"
+        }
+
+    {return
+        {VBox
+            background = "#eee",
+            border-width = 1pt,
+            border-color = "red",
+            t, controls
+        }
+    }
+}
+
+|| ReturnCommandButton that runs a test.
+{define-proc {make-test-case
+                 name:String,
+                 titled?:bool = true,
+                 ...
+             }:Graphic
+    def args = {Arguments {splice ...}}
+    {return 
+        {CommandButton
+            label = name,
+            {on Action at cb:CommandButton do
+                {if titled? then
+                    def view =
+                        {TitledView
+                            title = name,
+                            disabled-color = "brown",
+                            {make-test-content 4in, 3in},
+                            {splice args},
+                            {on WindowClose do
+                                set current-titled-view = null
+                            }
+                        }
+                    {view.set-icon 
+                        {Pixmap.from-url
+                            {url "../code/resources/sliconx16.gif"}}, null
+                    }
+                    {show-titled-view view}
+                    {after 3s do
+                        {view.set-size-from-child}
+                    }
+                 else
+                    def view =
+                        {View
+                            title = name,
+                            {make-test-content 4in, 3in},
+                            {splice args},
+                            {on WindowClose do
+                                set current-view = null
+                            }
+                        }
+                    {view.set-icon 
+                        {Pixmap.from-url
+                            {url "../code/resources/sliconx16.gif"}}, null}
+                    {show-view view}
+                    {after 3s do
+                        {view.set-size-from-child}
+                    }
+                }
+            }
+        }
+    }
+}
+
+This applet allows you to compare the behavior of a TitledView to a
+regular View. The buttons at the left create a TitledView, the buttons
+at the right create a View with the same contents.
+
+Note: These samples call set-size-from-child after 3 seconds. This is
+just a test to show that set-size-from-child will compute the correct
+size.
+
+|| Create some test cases
+{make-test-case "Default TitledView"}
+{make-test-case "Default View", titled? = false}
+
+{make-test-case "TitledView 6in x 6in", width = 6in, height = 6in}
+{make-test-case "View 6in x 6in", titled? = false, width = 6in, height = 6in}
+
+{bold Known Issues}
+{itemize
+    {item Review the API}
+    {item Write complete doc strings}
+    {item Test and Fix}
+}
