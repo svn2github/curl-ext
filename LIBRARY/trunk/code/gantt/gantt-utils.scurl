@@ -170,6 +170,7 @@
 ||--                {dump "begin > end", tr.name}
 ||--                {breakpoint}
             }
+            def last-day = {non-null tr.end} - 1s
             {self.bar.add-event
                 {EventDisplayInfo 
                     begin, end,
@@ -177,7 +178,7 @@
                     tooltip = 
                         {format "%s (%s) %s-%s", ||""
                             tr.name, tr.owner,
-                            tr.begin.info.locale-date, tr.end.info.locale-date
+                            tr.begin.info.locale-date, last-day.info.locale-date
                         }
                 }
             }
@@ -1265,6 +1266,18 @@
     {return dt}
   }
 
+  {doc-next
+    {purpose Compute the number of days between two dates.}
+    {return-vals The result is a double that represents the number of days.}
+    {parameter start, The earlier date.}
+    {parameter end, The later date.}
+    {parameter full-day?, If true, {param start} and {param end} are truncated
+        to the beginning of the day (time information is set to zero).
+    }
+    {parameter include-end?, If true, {param end} is interpreted as the
+        end of the day.
+    }
+  }
   {method public open {displayed-days
                           start:DateTime,
                           end:DateTime,

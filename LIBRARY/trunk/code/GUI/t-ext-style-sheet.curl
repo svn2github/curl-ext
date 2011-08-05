@@ -1,0 +1,126 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0 applet}
+{applet manifest = "../manifest.mcurl",
+    {compiler-directives careful? = true}
+}
+
+{set-document-properties
+    font-size = 10pt
+}
+
+{import * from CURL.GUI.STANDARD}
+{import * from CURL.GRAPHICS.WINDOW}
+{import * from CURL.GUI.CONTROL-BASE}
+
+{import * from COM.CURL.EXT.GUI}
+{import * from COM.CURL.EXT.AUTO-TEST}
+
+{title heading? = false, Extended Style Manager}
+
+|| Note: use this for debugging. CurlUnit test is tests/t-stylesheet.curl
+
+|#
+
+  What to override?
+
+  - Must change StyleSelectorPattern, which has no superclass
+    It's constructor can't abide whitespace
+  - StyleRule doesn't mind spaces
+  - StyleSheet doesn't mind StyleRules with spaces
+
+  idea:
+  - Make a subclass ExtStyleSelectorPattern
+    - Allows whitespace
+    - Holds the parental parts of a multipart selector
+    - construct-super using the last part of a multipart selector
+    - override match? and if super.match? works, check parents
+
+  - How to insert ExtSSP instead of SSP?
+    - Passed to AtomicStyleRule when it is constructed
+    - ASR instantiated in BasicStyleManager.add-rule
+
+  - Make a subclass ExtStyleManager inherits BasicStyleManager
+    - Override add-rules to handle old and new rules
+      - call add-rule for old rules (to make a StyleSelectorPattern)
+      - for complex rules, make a ExtStyleSelectorPattern
+
+  - Make a version of install-style-sheet that creates an ExtStyleManager
+
+#|
+
+||--{def sr = {StyleRule "foo bar", color="purple"}}
+||--{def xss = {StyleSheet sr}}
+||--{install-style-sheet xss}
+
+{def ss = {StyleSheet
+              {StyleRule "Frame.outer Frame.special CommandButton",
+                  font-style = "normal",
+                  border-width = 2px, border-color = "orange",
+                  color = "violet"
+              },
+              {StyleRule "VBox Frame CommandButton",
+||                  font-style = "italic",
+                  color = "lime"
+              },
+              {StyleRule "CommandButton",
+                  font-size = 12pt
+              },
+              {StyleRule "Frame.special CommandButton",
+                  font-weight = "bold",
+                  font-size = 20pt,
+                  color = "red"
+              },
+              {StyleRule "CommandButton",
+                  font-size = 8pt
+              }
+          }
+}
+{def esm = {ExtStyleManager ss}}
+
+{def box = {Frame
+               style-class = "outer",
+               style-manager = esm
+           }
+}
+
+{value
+    {box.add
+        {VBox
+            spacing = 9pt,
+
+            {CommandButton name="normal", label = "Normal"},
+
+            {Frame
+                style-class = "special",
+                color = "lime",
+                background = "silver",
+                margin = 6pt,
+                {CommandButton
+                    name = "special",
+                    label = "Special",
+                    {on Action do
+                        set box.style-manager = null
+                        set box.style-manager = esm
+                    }
+                }
+            }
+        }
+    }
+    box
+}

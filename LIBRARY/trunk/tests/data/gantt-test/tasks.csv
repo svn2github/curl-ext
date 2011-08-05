@@ -1,0 +1,6 @@
+"Created 2009-08-03 13:30:41.419000 -0700",,,,,,,,,,,,,,,,,,,,,,
+"id","pid","ord","expand?","depth","ln","rn","hide","scenario","basescenario","name","owner","effort","constraint","constraintdate","link","status","c","begin","end","critical","depnode","check"
+10,0,1,true,0,1,8,false,,,Proj1,%23M1,0d,earliest,,,none,0.000,2010-01-03 16:00:00,2010-01-08 16:00:00,false,,
+11,10,2,true,1,2,3,false,,,Part 1,DEV1,2d,earliest,,,none,0.100,2010-01-03 16:00:00,2010-01-05 16:00:00,true,,
+12,10,3,true,1,4,5,false,,,Part 2,DEV2,2d,earliest,,,none,0.000,2010-01-05 16:00:00,2010-01-07 16:00:00,true,,
+13,10,4,true,1,6,7,false,,,Part 3,DEV3,1d,earliest,,,none,0.000,2010-01-07 16:00:00,2010-01-08 16:00:00,true,,

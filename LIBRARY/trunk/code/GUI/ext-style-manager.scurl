@@ -1,0 +1,493 @@
+||| Maintained by: mgordon
+
+|| ------------------------------------------------------------------------ 
+
+|| approx. max-int: 2000 000 000 = 2x10^9
+{let constant package rule-priority:int = 1}
+{let constant package file-priority:int = 1000} || 10^3
+{let constant package element-priority:int = 100 * file-priority}  || 10^5
+{let constant package class-priority:int = 100 * element-priority} || 10^7
+
+{doc-next
+    {purpose
+        A {docref StyleManager} that supports hierarchical selectors.
+    }
+    {details
+        This {docref StyleManager} extends the existing {docref
+        BasicStyleManager} to support rules that match match only if
+        an object is contained within another object that matches an
+        earlier part of the selector pattern. As in standard CSS,
+        the parts of such a pattern are separated by spaces. For
+        example, the rule
+        {code
+            {StyleRule "Frame.login CommanndButton", font-weight = "bold"}
+        }
+        will only match a {ctext CommandButton} that is nested inside
+        of a {ctext Frame} with a {code style-class} that includes the
+        string "login". The depth of nesting is not constrained. The
+        {ctext CommandButton} could be immediately inside of the {ctext Frame},
+        or it could be nested inside of several other boxes that are
+        inside of the {ctext Frame}.
+
+        This style manager assigns priorities to rules in a manner
+        that is more consistent with standard CSS rules. See the
+        description of the {docref ExtStyleSelectorPattern.specificity}
+        property for more details about the priority of the patterns
+        supported by this style manager.
+    }
+}
+{define-class public open ExtStyleManager {inherits BasicStyleManager}
+
+  {doc-next
+    {purpose
+        The number of rules processed, used to assign priorities.
+    }
+  }
+  field protected rule-count:int = 0
+
+  {doc-next
+    {purpose The priority of the next rule, while rules are being imported.}
+  }
+  field protected import-priority:int = file-priority
+
+
+  {doc-next
+    {purpose Initialize a new {docref ExtStyleManager}.}
+    {parameter style-sheet, the style rules}
+    {parameter look-and-feel, If a {docref StyledLookAndFeel} is in
+        use, a {ctext StyleManager} must include its default style
+        rules.  If this parameter is not supplied, the rules from
+        {docref the-default-look-and-feel} are used.
+    }
+  }
+  {constructor public {default
+                          style-sheet:StyleSheet,
+                          look-and-feel:#LookAndFeel = 
+                              the-default-look-and-feel.target-look-and-feel
+                      }
+    {construct-super style-sheet, look-and-feel = look-and-feel}
+  }
+
+
+  || inherited
+  {method protected open {rebuild-index}:void
+    set self.import-priority = file-priority
+
+    || First the "base rules"
+    {self.add-rules StyleManager.base-style-rules}
+    {inc self.import-priority, file-priority}
+
+    || Grab the rules from a StyledLookAndFeel
+    {type-switch self.look-and-feel
+     case slnf:StyledLookAndFeel do
+        {self.import slnf.combined-style-sheet}
+    }
+
+    || Now the style sheet that was passed in
+    {self.import self.style-sheet}
+
+    || Cook the rules for quick access later
+    || Sort each group of atomic rules to put higher priority rules first
+    {for ra:StyleRuleArray in self.index do
+        {ra.sort
+            comparison-proc = 
+                {proc {a:AtomicStyleRule, b:AtomicStyleRule}:bool
+                    {return a.priority > b.priority}
+                }
+        }
+    }
+  }
+
+  {doc-next
+    {purpose Instantiate a {docref StyleSheet} from the file at
+        {param location} and use it to initialize a {docref
+        ExtStyleManager}.
+    }
+    {since 7.0}
+  }
+  {factory public implicit {from-url location:Url}:ExtStyleManager
+    {return {ExtStyleManager {StyleSheet location}}}
+  }
+
+  {doc-next
+    {purpose Create a {docref ExtStyleManager} from a {docref StyleSheet}.}
+  }
+  {factory public implicit {from-StyleSheet-factory 
+                               style-sheet:StyleSheet
+                           }:ExtStyleManager
+    {return {ExtStyleManager style-sheet}}
+  }
+
+
+  {doc-next
+    {purpose
+        Import the rules from a style sheet, recursively importing
+        any style sheets that are imported.
+    }
+  }
+  {method protected open {import ss:StyleSheet}:void
+    {for iss:StyleSheet in ss.imports do
+        {self.import iss}
+        {inc self.import-priority, file-priority}
+        set self.rule-count = 0
+    }
+    {self.add-rules ss.rules}
+    {inc self.import-priority, file-priority}
+  }
+
+
+  {doc-next
+    {purpose
+        Incorporate each of the {docref StyleRule}s given in
+        {param rules} into this {docref ExtStyleManager}.
+    }
+  }
+  {method protected open {add-rules rules:{Array-of StyleRule}}:void
+    {for sr:StyleRule in rules do
+        {inc self.rule-count}
+        {self.add-rule sr.selectors, sr.bindings}
+    }
+  }
+
+  ||inherited
+  {method protected open {add-rule
+                          selectors:StringArray,
+                          bindings:{HashTable-of String, any}
+                      }:void
+    {for pattern:String in selectors do
+        let ssp:ExtStyleSelectorPattern = {ExtStyleSelectorPattern pattern}
+        let prio:int = 
+            self.import-priority + self.rule-count + ssp.specificity
+        {for val:any key name in bindings do
+            let sr:AtomicStyleRule =
+                {AtomicStyleRule ssp, name, val, prio asa int}
+            {self.index-rule sr}
+        }
+    }
+  }
+
+
+  ||NOTE: This is private in BasicStyleManager
+  {doc-next
+    {purpose Add a rule to the index.}
+  }
+  {method protected open {index-rule rule:AtomicStyleRule}:void
+    let rname:String = rule.pattern.key
+    let (ra:StyleRuleArray, found?:bool) = {self.index.get-if-exists rname}
+    {if found? then
+        {ra.append rule}
+     else
+        set self.index[rname] = {StyleRuleArray rule}
+    }
+  }
+}
+
+
+{doc-next
+    {purpose
+        Extends the {docref StyleSelectorPattern} to support selectors
+        that match ancestor nodes.
+    }
+}
+{define-class public open ExtStyleSelectorPattern {inherits StyleSelectorPattern}
+
+  {doc-next
+    {purpose
+        The selector patterns for ancestors in the GUI hierarchy, if
+        any were specified on the style rule.
+    }
+  }
+  field public-get protected-set patterns:#{Array-of StyleSelectorPattern}
+
+  {doc-next
+    {purpose The importance of the rule.}
+    {details
+        Each style rule can match classes and elements. The
+        specificity can be thought of as a triple (a, b, c).  The
+        first component is incremented for each {docref
+        Visual.style-class} that must match in order for the rule to
+        apply. This component is the most important in determining the
+        strength of the pattern. The middle component (b) is
+        incremented for each {docref Visual.style-element} that must
+        match. The last component (c) is incremented by one for each
+        rule processed, so that later rules have higher priority
+        than earlier rules, assuming the first two components are
+        equal.
+    }
+  }
+  field public specificity:int
+
+  {doc-next
+    {purpose Initialize a {docref ExtStyleSelectorPattern} from a String.}
+    {details
+        A pattern consists of a sequence of one or more selectors
+        separated by spaces. For the rule to match, the last selector
+        must match an object in the GUI hiearachy, and ancestor objects
+        must match the preceeding selectors with the first selector
+        matching the most distant ancestor.
+
+        Each selector consists of two or more components separated by periods:
+        For example: "Frame", "Frame.big", ".big", or "Frame.big.bold".
+
+        The first component (before the ".") matches a {docref
+        Visual.style-element} string. If it is "*" or empty, it
+        matches all {ctext style-element} values. In the preceeding
+        examples, all of the rules match a {docref Frame}. The rule
+        ".big" matchs any object with a style-class containing "big".
+
+        Remaining components are separated by periods (".") and are
+        used to match the {docref Visual.style-class}. All of them
+        must be present on an object in order for the pattern to
+        match.
+    }
+  }
+  {constructor public {default pattern:String}
+    def parts = {pattern.split}
+    def last = parts[parts.size - 1]
+    set self.specificity = {self.selector-specificity last}
+    {if parts.size > 1 then
+        set self.patterns = {new {Array-of StyleSelectorPattern}}
+        {for i = 0 below parts.size - 1 do
+            {self.patterns.append {StyleSelectorPattern parts[i]}}
+            {inc self.specificity, {self.selector-specificity parts[i]}}
+        }
+    }
+    {construct-super last}
+  }
+
+  {method protected open {selector-specificity selector:String}:int
+    def pi = {selector.find '.'}
+    {if pi < 0 then
+        {return element-priority}
+     elseif pi == 0 then
+        {return class-priority}
+     else
+        {return class-priority + element-priority}
+    }
+  }
+
+  || inherited
+  {method public open {match? v:Visual}:bool
+    {if {super.match? v} then
+        {if-non-null patterns = self.patterns then
+            let pv:#Visual = v.option-parent
+            {for i = self.patterns.size - 1 downto 0 do
+                def ssp = self.patterns[i]
+                {while pv != null do
+                    {if {ssp.match? pv} then
+                        {if i == 0 then
+                            || Have matched all of the patterns
+                            {return true}
+                         else
+                            set pv = pv.option-parent
+                            {break}
+                        }
+                     else
+                        set pv = pv.option-parent
+                    }
+                }
+            }
+            {return false}
+        }
+        {return true}
+    }
+    {return false}
+  }
+
+}
+
+|| ----------------------------------------------------------------------
+
+{doc-next
+    {purpose Install a {docref StyleSheet} and optionally a {docref 
+        LookAndFeel} as the default for this applet.
+    }
+    {parameter style-sheet,
+        The {docref StyleSheet} to install along with the new
+        {docref LookAndFeel} that is installed.
+    }
+    {parameter look-and-feel, The {docref LookAndFeel} to install. If
+        this parameter is not supplied a new {docref
+        StyledLookAndFeel} is created and installed. 
+    }
+    {details 
+        This procedure is used to change the global look of an applet.
+        It can change the top level style sheet or the default look
+        and feel, or both.
+
+        This procedure will create a {docref ExtStyleManager} which
+        supports selector patterns that specify nesting as well the
+        selectors supported by the {docref BasicStyleManager}. See
+        the documentation for {docref ExtStyleManager} for more information.
+
+        The {param look-and-feel} passed in may be a {docref
+        StandardLookAndFeel} or a {docref StyledLookAndFeel}. If the
+        {param look-and-feel} parameter is not given and if the
+        current look and feel (given by {docref
+        the-default-look-and-feel}.target-look-and-feel) is not a
+        {docref StyledLookAndFeel}, then a {ctext StyledLookAndFeel}
+        is created.
+
+        Once the look and feel is established, a new {docref
+        ExtStyleManager} will be installed at the root of the options
+        inheritance hierarchy. This {ctext ExtStyleManager} will
+        incorporate the rules from the look and feel and the {param
+        style-sheet} passed in and will be the default {ctext
+        ExtStyleManager} for the applet and any {docref View} created by
+        the applet.
+    }
+}
+{define-proc public {ext-install-style-sheet 
+                        style-sheet:#StyleSheet,
+                        look-and-feel:#LookAndFeel = null
+                    }:void
+
+    let current-lnf:LookAndFeel = 
+        the-default-look-and-feel.target-look-and-feel
+
+    let styled-lnf:StyledLookAndFeel = 
+        {uninitialized-value-for-type StyledLookAndFeel}
+
+    {type-switch look-and-feel
+
+     case null-lnf:Null do
+        || No new LnF. Make sure we have a StyledLookAndFeel
+        {type-switch current-lnf
+         case slnf:StyledLookAndFeel do
+            set styled-lnf = slnf
+         else
+            || For backwards compatibility with the 6.0 library, if the
+            || current LnF is not a StyledLookAndFeel, replace it.
+            set styled-lnf = {StyledLookAndFeel}
+        }
+
+     case slnf:StyledLookAndFeel do
+        set styled-lnf = slnf
+
+     else
+        || Can't install the style sheet on the LookAndFeel passed in,
+        || so just make it the global default.
+        {if-non-null style-sheet then
+            set {prefs}["style-manager"] =  ||""
+            {ExtStyleManager style-sheet, look-and-feel = look-and-feel}
+         else
+            set {prefs}["style-manager"] = null ||""
+        }
+        set the-default-look-and-feel.target-look-and-feel = 
+            {non-null look-and-feel}
+        {return}
+    }
+
+    || Install StyledLnF and style sheet
+    let style-manager:#StyleManager = 
+        {if style-sheet != null or styled-lnf.style-manager == null then
+            {ExtStyleManager 
+                {StyleSheet styled-lnf.combined-style-sheet, style-sheet}
+            }
+         else
+            styled-lnf.style-manager
+        }
+    set {prefs}["style-manager"] = style-manager ||""
+    set the-default-look-and-feel.target-look-and-feel = styled-lnf
+}
+
+
+{doc-next
+    {purpose Apply a {docref StyleSheet} and a {docref LookAndFeel} to
+        a {docref Graphic}.
+    }
+    {parameter g, Any {docref Graphic}, but usually a graphical container.}
+    {parameter style-sheet, An optional {docref StyleSheet} to be applied.
+        If null, the style sheet will be the one associated with the
+        {param look-and-feel}.
+    }
+    {details
+        This procedure sets the {docref style-manager} and {docref
+        look-and-feel} nonlocal options on {param g} in order to
+        impose a new look and feel and/or style sheet.
+
+        This procedure will create a {docref ExtStyleManager} which
+        supports selector patterns that specify nesting as well the
+        selectors supported by the {docref BasicStyleManager}. See
+        the documentation for {docref ExtStyleManager} for more information.
+
+        If {param look-and-feel} is specified, it becomes {ctext
+        g.look-and-feel}.  If not, {ctext g.look-and-feel} is not
+        changed if it is already a {docref StyledLookAndFeel} but it
+        is set to a newly created {ctext StyledLookAndFeel} otherwise.
+
+        Every {ctext StyledLookAndFeel} has a default style sheet.  If
+        {ctext g.look-and-feel} is a {ctext StyledLookAndFeel} then
+        {param style-sheet} is combined with {ctext
+        g.look-and-feel.style-sheet} so that it can override rules
+        from the {ctext StyledLookAndFeel}. If {param look-and-feel}
+        is not a {ctext StyledLookAndFeel}, then {ctext
+        g.style-manager} is set to a {docref ExtStyleManager} created
+        from {param style-sheet}, or unset if {param style-sheet} is
+        null, allowing global rules to be inherited by {param g}.
+    }
+    {since 7.0}
+}
+{define-proc public {ext-install-style-sheet-on-Graphic
+                        g:Graphic,
+                        style-sheet:#StyleSheet,
+                        look-and-feel:#LookAndFeel = null
+                    }:Graphic
+
+    let current-lnf:LookAndFeel = 
+        {type-switch g.look-and-feel
+         case dlf:DelegatingLookAndFeel do
+            dlf.target-look-and-feel
+         else
+           g.look-and-feel
+        }
+
+    let styled-lnf:StyledLookAndFeel = 
+        {uninitialized-value-for-type StyledLookAndFeel}
+
+    {type-switch look-and-feel
+
+     case null-lnf:Null do
+        || No new LnF. Make sure we have a StyledLookAndFeel
+        {type-switch current-lnf
+         case slnf:StyledLookAndFeel do
+            set styled-lnf = slnf
+         else
+            || For backwards compatibility with the 6.0 library, if the
+            || current LnF is not a StyledLookAndFeel, replace it.
+            set styled-lnf = {StyledLookAndFeel}
+        }
+
+     case slnf:StyledLookAndFeel do
+        set styled-lnf = slnf
+
+     else
+        || Can't install the style sheet on the LookAndFeel passed in.
+        || Create a StyleManager for it if non-null, or inherit otherwise.
+        {if-non-null style-sheet then
+            set g.style-manager = {ExtStyleManager 
+                                      style-sheet,
+                                      look-and-feel = look-and-feel
+                                  }
+         else
+            {unset g.style-manager}
+        }
+        set g.look-and-feel = {non-null look-and-feel}
+        {return g}
+    }
+
+    || Install StyledLnF and style sheet
+    let style-manager:#StyleManager = 
+        {if style-sheet != null or styled-lnf.style-manager == null then
+            {ExtStyleManager 
+                {StyleSheet styled-lnf.combined-style-sheet, style-sheet}
+            }
+         else
+            styled-lnf.style-manager
+        }
+    set g.style-manager = style-manager
+    set g.look-and-feel = styled-lnf
+    {return g}
+}
+
+|| ----------------------------------------------------------------------

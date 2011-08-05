@@ -582,16 +582,18 @@ How to handle foreign key fields?
   }
 
 
-  {method public open {get-owner-id name:String}:int
-    {if-non-null r = {self.resources.rs.select-one
-                         filter = {RecordData name = name}
-                     }
-     then
-        {return r["id"] asa int} ||""
-    }
-    {return -1}
-  }
+||FIXME: Not very useful since task names aren't unique
+||--  {method public open {get-owner-id name:String}:int
+||--    {if-non-null r = {self.resources.rs.select-one
+||--                         filter = {RecordData name = name}
+||--                     }
+||--     then
+||--        {return r["id"] asa int} ||""
+||--    }
+||--    {return -1}
+||--  }
 
+  ||FIXME: generalize this (similar to CsvRecordSetB.get-list-model)
   {method package {create-resource-list-model
                       default-label:String = "\ "
                   }:{Array-of ListValueItem}
@@ -608,18 +610,8 @@ How to handle foreign key fields?
   }
 
 
-  {method public open {add-dependency r:Record}:void
-    def dr = {DependencyRecord r}
-    {try
-        def tra = {self.tasks.get-TaskRecord-by-id dr.ida}
-        def trb = {self.tasks.get-TaskRecord-by-id dr.idb}
-        {trb.depnode.add-successor tra.depnode}
-     catch ignored:Exception do
-    }
-  }
-
   || Is resource already assigned to a task on the given date?
-  {method protected open {resource-available? owner:int, date:DateTime}:bool
+  {method public open {resource-available? owner:int, date:DateTime}:bool
     {if owner == 0
         or {self.resources.get-ResourceRecord owner}.max-load == 0
      then
@@ -731,7 +723,8 @@ How to handle foreign key fields?
     {if {self.scheduled.member? tr} then
 ||--        {return}
     }
-    {self.scheduled.insert tr}
+||--    {self.scheduled.insert tr}
+    {self.scheduled.remove tr}
 
     def load =
         {if tr.owner > 0 then
@@ -744,7 +737,8 @@ How to handle foreign key fields?
 
     {if-non-null end = tr.end then
         let begin:DateTime = end
-        {while remaining > 0s do
+        {while remaining > 0s and begin >= (self.begin-date + self._time-unit)
+         do
             {dec begin, self._time-unit}
             {if {self.events.available? tr.owner, begin}
                 and {self.resource-available? tr.owner, begin}
@@ -760,6 +754,39 @@ How to handle foreign key fields?
                 }
         }
     }
+    {self.scheduled.insert tr}
+  }
+
+  {method private {add-owner-dependencies tn:TaskDinode}:void
+    let sibling:#TaskDinode = null
+    def sorted-preds = {new {Array-of TaskDinode}}
+    {for pred in tn.predecessors do
+        {sorted-preds.append pred}
+    }
+    {sorted-preds.sort
+        comparison-proc = 
+            {proc {a:{DirectedGraphNode-of TaskRecord},
+                   b:{DirectedGraphNode-of TaskRecord}}:bool
+                {if a.data.owner == b.data.owner then
+                    {return a.data.ord < b.data.ord}
+                }
+                {return a.data.owner < b.data.owner}
+            }
+    }
+    {for pred in sorted-preds do
+        ||FIXME: This inserts a dependency between tasks that are assigned
+        || to the same person if they are both required for the current
+        || task.
+        {if-non-null sibling then
+            {if sibling.data.owner == pred.data.owner then
+                {try
+                    {sibling.add-successor pred}
+                 catch ignored:Exception do
+                }
+            }
+        }
+        set sibling = pred
+    }
   }
 
   {method private {mark-critical-predecessor tn:TaskDinode}:void
@@ -767,6 +794,7 @@ How to handle foreign key fields?
     let last-latest:DateTime = {DateTime.date "1980-01-01"} ||""
     let ln:#TaskDinode = null
     let lnl:#TaskDinode = null
+
     {for pred in tn.predecessors do
         {if-non-null end = pred.data.end then
             {if pred.data.constraint == TaskConstraint.latest then
@@ -861,6 +889,7 @@ How to handle foreign key fields?
 
         {for ftn in self.tasks.final-tasks do
             {if not ftn.data.has-subtasks? then
+                {self.add-owner-dependencies ftn}
                 set ftn.data.critical? = true
                 {self.mark-critical-predecessor ftn}
             }
@@ -877,11 +906,8 @@ How to handle foreign key fields?
                         let end:DateTime = {DateTime.date "1980-01-01"}   ||""
                         let effort:Time = 0d
                         {for cr:Record in children do
-                            def tr =
-                                {self.tasks.get-TaskRecord cr} ||""
-                            {if tr.critical? then
-                                {inc effort, tr.effort}
-                            }
+                            def tr = {self.tasks.get-TaskRecord cr} ||""
+                            {inc effort, tr.effort}
                             {if-non-null tb = tr.begin, te = tr.end then
                                 {if tb < begin then
                                     set begin = tb
@@ -912,7 +938,7 @@ How to handle foreign key fields?
   }
 
 
-  || Schedule a task. Then schedule all tasks that depend on it, where possible.
+  || Schedule a task. Then schedule all tasks that depend on it, if possible.
   {method protected open {schedule tn:TaskDinode}:void
     {if tn.data.has-subtasks? then
         || Not a real task
@@ -940,7 +966,7 @@ How to handle foreign key fields?
         {if not {self.scheduled.member? dn.data}
             and {self.preds-scheduled? dn asa TaskDinode}
          then
-            let last:DateTime = self.begin-date - 3650d
+            let last:DateTime = self.begin-date
             {dn.visit-predecessors
                 {proc {pred:{DirectedGraphNode-of TaskRecord}}:bool
                     {if-non-null pred-end = pred.data.end then
@@ -960,6 +986,18 @@ How to handle foreign key fields?
   }
 
 
+  {method protected open {note-dependency r:Record}:void
+    def dr = {DependencyRecord r}
+    {try
+        def tra = {self.tasks.get-TaskRecord-by-id dr.ida}
+        def trb = {self.tasks.get-TaskRecord-by-id dr.idb}
+        {trb.depnode.add-successor tra.depnode}
+     catch ignored:Exception do
+        || Graph throws exception of you add a successor when it is already
+||--        {dump "note-dependency", ignored}
+    }
+  }
+
   || Recalculate the entire model
   {method public open {refresh}:void
 
@@ -978,16 +1016,19 @@ How to handle foreign key fields?
     || FIXME: Recalc if a record is changed. incremental or rebuild?
     || FIXME: probably a bad idea to rebuild dependencies unnecessarily
     {with self.tasks.rs.batch-events? = true do
+        {self.graph.clear}
         {for r:Record in self.tasks.rs do
             def tr = {self.tasks.get-TaskRecord r}
+            {tr.depnode.clear-successors}
             {if tr.status == TaskStatus.none then
                 set tr.begin = null
                 set tr.end = null
             }
         }
-        {self.graph.clear}
         {for r:Record in self.dependencies.rs do
-            {self.add-dependency r}
+            {if r.state != RecordState.deleted then
+                {self.note-dependency r}
+            }
         }
         {self.compute-schedule 0}
     }
@@ -1049,6 +1090,62 @@ How to handle foreign key fields?
     {self.schedule-refresh}
   }
 
+  {doc-next
+    {purpose
+        Add a task to the project model.
+    }
+  }
+  {method public open {add-task
+                          name:String,
+                          effort:Time,
+                          constraint:TaskConstraint = TaskConstraint.earliest,
+                          status:TaskStatus = TaskStatus.none
+                      }:Record
+    {return {self.tasks.new-task
+                name, effort,
+                constraint = constraint,
+                status = status
+            }
+    }
+  }
+
+
+  {doc-next
+    {purpose
+        Add a dependency from task {param a} to {param b}, with a default
+        of "a requires b".
+    }
+  }
+  {method public open {add-dependency
+                          a:int, b:int,
+                          dep-type:DependencyType = DependencyType.requires,
+                          delay:Time = 0s,
+                          replace?:bool = true
+                      }:Record
+    {if a == b then
+        {error {hlmessage A task cannot depend on itself.}}
+    }
+    def deptab = self.dependencies
+
+    def recs = {deptab.rs.select filter = {RecordData ida = a, idb = b}}
+    {if not replace? and recs.size > 0 then
+        {error
+            {hlmessage A dependency already exists between these two tasks.}
+        }
+    }
+    {assert recs.size <= 1}
+    def nr =
+        {if recs.size > 0 then
+            recs[0]
+         else
+            {deptab.new-dependency type = dep-type}
+        }
+    set nr["type"] = dep-type
+    set nr["ida"] = a
+    set nr["idb"] = b
+    set nr["delay"] = delay
+    {return nr}
+  }
 }
 
 {define-nonlocal-option public project-model:#ProjectModel = null}
@@ -1360,6 +1457,16 @@ INSERT INTO resource VALUES (1,Fred,Programmer,"FP","Dev","http://www.curl.com",
     {return self.record["effort"] asa Time} ||""
   }
 
+  {getter public open {duration}:Time
+    {if-non-null
+        begin = self.record["begin"] asa #DateTime,
+        end = self.record["end"] asa #DateTime
+     then
+        {return end - begin}
+    }
+    {return self.record["effort"] asa Time} ||""
+  }
+
   {setter public open {constraint v:TaskConstraint}
     set self.record["constraint"] = v ||""
   }
@@ -1547,12 +1654,14 @@ INSERT INTO resource VALUES (1,Fred,Programmer,"FP","Dev","http://www.curl.com",
                 },
                 {RecordField "begin", ||""
                     caption = {lmessage begin},
-                    domain = DateTime, nullable? = true,
+||--                    domain = DateTime, nullable? = true,
+                    domain = locale-date-domain, nullable? = true,
                     index-type = RecordFieldIndexType.none
                 },
                 {RecordField "end", ||""
                     caption = {lmessage end},
-                    domain = DateTime, nullable? = true,
+||--                    domain = DateTime, nullable? = true,
+                    domain = locale-date-domain, nullable? = true,
                     index-type = RecordFieldIndexType.none
                 },
                 {RecordField "critical", ||""
@@ -1575,6 +1684,7 @@ INSERT INTO resource VALUES (1,Fred,Programmer,"FP","Dev","http://www.curl.com",
     }
   }
 
+  ||FIXME: add a paramete dbtarget = "sql" | "mysql" | "sqlite" | ...
   {getter public open {get-sql-create}:String
     {return
         |"CREATE TABLE task (
@@ -1644,7 +1754,8 @@ INSERT INTO task VALUES (1,0,0,0,0,'Sample Task 1','JP','',1.0,0.0,0.0);
     }
     {self.rs.add-event-handler
         {on e:RecordAdded do
-            def tr = {self.get-TaskRecord e.record}
+            {self.rebuild}
+||--            def tr = {self.get-TaskRecord e.record}
         }
     }
   }
@@ -1671,19 +1782,34 @@ INSERT INTO task VALUES (1,0,0,0,0,'Sample Task 1','JP','',1.0,0.0,0.0);
     {assert self.rs.size == self.task-record-map.size}
   }
 
-  {method public open {new-task}:int
+  {method public open {new-task
+                          name:String,
+                          effort:Time,
+                          constraint:TaskConstraint = TaskConstraint.earliest,
+                          status:TaskStatus = TaskStatus.none
+                      }:Record
     let r:Record = {self.rs.new-record}
     ||"" ((
     def id = {self.rs.new-id}
     set r["id"] = id
-    set r["name"] = ""
-    set r["effort"] = 1d
-    set r["depnode"] = {TaskDinode {TaskRecord r}, self.project.graph}
+    set r["name"] = name
     ||"" ))
-    def ntr = {self.get-TaskRecord-by-id r["id"] asa int}
+    set r["effort"] = effort
+    set r["constraint"] = constraint
+    set r["status"] = status
+    def ntr = {self.get-TaskRecord r}
     {self.rs.append r}
-    {return id}
+    {return r}
   }
+
+
+||--  {method public open {new-task}:int
+||--    let r:Record = {self.new-record}
+||--    ||"" ((
+||--    set r["effort"] = 1d
+||--    ||"" ))
+||--    {return r["id"] asa int}
+||--  }
 
   {method public open {refresh}:void
     ||FIXME: could there be spurious entries in the map?
@@ -1740,7 +1866,7 @@ INSERT INTO task VALUES (1,0,0,0,0,'Sample Task 1','JP','',1.0,0.0,0.0);
     def tasks = {new {Array-of TaskDinode}}
     {for r in self.rs do
         def tn = {self.get-TaskRecord r}
-        {if tn.depnode.sink? then
+        {if not tn.depnode.source? then
             {tasks.append tn.depnode}
         }
     }
@@ -1984,6 +2110,19 @@ INSERT INTO dependency VALUES (1,"","",requires,2,3,0);
         file-name,
         {splice ...}
     }
+  }
+
+  {method public open {new-dependency
+                          type:DependencyType = DependencyType.requires
+                      }:Record
+    let r:Record = {self.rs.new-record}
+    ||"" ((
+    def id = {self.rs.new-id}
+    set r["id"] = id
+    ||"" ))
+    set r["type"] = type
+    {self.rs.append r}
+    {return r}
   }
 
   {method public open {refresh}:void
@@ -2245,6 +2384,7 @@ INSERT INTO event VALUES (1,"New Years",0,2009-01-01,2020-01-01,00:00,86400,year
     {return events}
   }
 
+  ||FIXME: add params like add-task
   {method public open {new-event}:int
     let r:Record = {self.rs.new-record}
     ||"" ((

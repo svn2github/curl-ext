@@ -49,6 +49,8 @@
 {include "titled-view.scurl"} ||""
 {include "autocomplete.scurl"} ||""
 
+{include "ext-style-manager.scurl"} ||""
+
 {include "file-app.scurl"} ||""
 {include "data-store.scurl"} ||""
 

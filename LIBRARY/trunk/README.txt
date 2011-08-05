@@ -94,6 +94,10 @@ and thus require privilege and web access to succeed.
  CHANGES
 =========
 
+0.6.3 Release (August 2011)
+  o New tests for gantt and fix bugs
+  o New ExtStyleManage supports selector patterns for nested objects
+
 0.6.1 Release (1 June 2011)
   o Fix TransitionFrame "badly timed finish layout"
   o Improve the make-zips script to check for certain .scurl files

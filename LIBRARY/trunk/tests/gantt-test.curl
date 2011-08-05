@@ -39,6 +39,9 @@
         "gantt-demo", directory? = true, ||""
         title = {lmessage Gantt Data Directory}}
 }
+{do
+    {file-locator.persist-url {url "./data/gantt-test/"}}
+}
 
 || -------------------------------------------------------------------------
 
@@ -505,11 +508,8 @@
   field public gantt-grid:TreeGrid =
       {uninitialized-value-for-type TreeGrid}
 
-  field public dependency-dialog:DependencyDialog
-
   {nonlocal-option public project-model:#ProjectModel
     {if-non-null pm = project-model then
-        set self.dependency-dialog.project-model = project-model
         set ScheduleUI._pm = project-model
 ||--        set self.begin-date-ctl.value = project-model.begin-date
 ||--        set self.end-date-ctl.value = project-model.end-date
@@ -590,13 +590,6 @@
                 bound-command =
                     {self.gantt-grid.get-command "Tree.delete-node"} ||""
             },
-            {CommandButton label = "Dependencies...",
-                {on Action do
-                    {self.dependency-dialog.show
-                        title = {hlmessage Dependencies}
-                    }
-                }
-            },
             {Fill width = {make-elastic
                               preferred-size = 1m,
                               compress-order = compliant-stretch-order
@@ -658,7 +651,6 @@
                 }
             }
         }
-    set self.dependency-dialog = {DependencyDialog self}
   }
 
   {method public {refresh-calendar}:void
@@ -681,257 +673,6 @@
 ||--            }
 ||--        set self.gantt-grid.columns[4].header-spec = self.scale
 ||--        set self.gantt-grid.columns[4].color = "blue"
-    }
-  }
-}
-
-{def package lb-width = 2.5in}
-
-{define-class public open DependencyDialog {inherits Dialog}
-
-  field public ui:ScheduleUI
-
-  {getter public open {gantt-grid}:TreeGrid
-    {return self.ui.gantt-grid}
-  }
-
-  field protected task-list-model:DefaultListModel = {DefaultListModel}
-  field protected precursors-ctl:ListBox
-  field protected task-ctl:ListBox
-  
-  {nonlocal-option public project-model:#ProjectModel
-    {if-non-null pm = project-model then
-    }
-  }
-
-  {constructor public {default
-                          ui:ScheduleUI,
-                          ...
-                      }
-    set self.ui = ui
-    set self.project-model = ui.project-model
-    {construct-super {splice ...}}
-
-    def task-item-proc = 
-        {proc {val:any}:ListItem
-            {type-switch val
-             case tr:TaskRecord do
-                def label = {text-part}
-                {for i = 0 below tr.depth do
-                    {label.add "\ "}
-                }
-                {label.add tr.name}
-                {return
-                    {ListValueItem
-                        tr.id,
-                        enabled? = not tr.has-subtasks?,
-                        label = label
-                    }
-                }
-             else
-                {return {ListValueItem val}}
-            }
-        }
-
-    def precursor-item-proc = 
-        {proc {val:any}:ListItem
-            {type-switch val
-             case tr:TaskRecord do
-                def label = {text-part}
-                {for i = 0 below tr.depth do
-                    {label.add "\ "}
-                }
-                {label.add tr.name}
-                {return
-                    {ListValueItem
-                        tr.id,
-                        enabled? = not tr.has-subtasks?,
-                        label = label
-                    }
-                }
-             else
-                {return {ListValueItem val}}
-            }
-        }
-
-    set self.precursors-ctl =
-        {ListBox
-            height = {add-stretch},
-            width = lb-width,
-            list-item-creation-proc = precursor-item-proc,
-            style = ListBoxStyle.checkbutton,
-            data-model = self.task-list-model
-||--            ,
-||--            {on ValueChanged do
-||--                {self.update-precursors}
-||--            }
-        }
-
-    set self.task-ctl =
-||--        {DropdownList width = 2in,
-        {ListBox
-            width = lb-width,
-            data-model = self.task-list-model,
-            list-item-creation-proc = task-item-proc,
-            {on e:ValueChanged at ddl:ListBox do
-                {self.refresh-precursors}
-            }
-        }
-
-    {self.add-event-handler
-        {on e:DialogShow at d:Dialog do
-            {self.refresh self.gantt-grid.current-record}
-        }
-    }
-
-    def ok-btn = 
-        {CommandButton
-            width = standard-button-width,
-            label = {hlmessage Apply},
-            {on Action do
-                {self.update-precursors}
-            }
-        }
-
-    def done-btn = 
-        {cancel-button
-            width = standard-button-width,
-            label = {hlmessage Done}
-        }
-
-    {self.add
-        {Table columns = 2,
-            margin = 9pt,
-            {row
-                {cell colspan = 2, text-breakable? = true,
-                    {hlmessage
-                        Select a task in the first list. Then select the
-                        tasks that are required by that task in the second list.
-                    }
-                }
-            },
-            {row {cell {hlmessage Task:}} {cell {hlmessage Requires:}}},
-            {row
-                {cell {value self.task-ctl}}
-                {cell {value self.precursors-ctl}}
-            },
-            {row
-                {cell colspan = 2, halign = "right",
-                    {HBox
-                        spacing = 6pt,
-                        {Fill}, ok-btn, done-btn
-                    }
-                }
-            }
-        }
-    }
-  }
-
-  {getter public open {selected-task}:#TaskRecord
-    {return
-        {type-switch self.task-ctl.value
-         case a:Array do
-            {if a.size > 0 then
-                a[0] asa TaskRecord
-             else
-                null
-            }
-         else
-            null
-        }
-    }
-  }
-
-  || Replace dependencies with new ones
-  {method protected open {update-precursors}:void
-    {if-non-null
-        ctr = self.selected-task,
-        deps = self.precursors-ctl.value
-     then
-        def ndeps = {new {Set-of int}}
-        {for v in deps asa Array do
-            def pr = v asa TaskRecord
-            {ndeps.insert pr.id}
-        }
-        def task-deps = {self.project-model.dependencies.rs.select
-                            filter = {RecordData ida = ctr.id}
-                        }
-        {for mr:Record key mri in task-deps do
-            {if mr.state != RecordState.deleted then
-                def mtr = {DependencyRecord mr}
-                {if {ndeps.member? mtr.ida} then
-                    {ndeps.remove mtr.ida}
-                 else
-                    {mr.delete}
-                }
-            }
-        }
-        {for dri in ndeps do
-            def r = {self.project-model.dependencies.new-dependency}
-            def ndr = {DependencyRecord r}
-            set ndr.ida = ctr.id
-            set ndr.idb = dri
-        }
-        {self.project-model.refresh}
-        ||DEBUG
-        def tdeps = {self.project-model.dependencies.rs.select
-                        filter = {RecordData ida = ctr.id}
-                    }
-        {for mr:Record key mri in tdeps do
-            def mtr = {DependencyRecord mr}
-            {dump mr.state, mtr.ida, mtr.type, mtr.idb}
-        }
-        {self.refresh-precursors}
-    }
-  }
-
-  || Called when the task-ctl value is changed
-  {method protected open {refresh-precursors}:void
-    {if-non-null pm = self.project-model then
-        {if-non-null ctr = self.selected-task then
-            {self.precursors-ctl.deselect-all-items}
-            def pdeps = {new {Set-of int}}
-            def tdeps = {self.project-model.dependencies.rs.select
-                            filter = {RecordData ida = ctr.id}
-                        }
-            {for r:Record in tdeps do
-                {if r.state != RecordState.deleted then
-                    {pdeps.insert r["idb"] asa int}
-||--                 else
-||--                    {dump "DEBUG", r.state}
-                }
-            }
-            let vi:int = -1
-            {for v:any in self.task-list-model do
-                {inc vi}
-                {type-switch v
-                 case ptr:TaskRecord do
-                    {if {pdeps.member? ptr.id} then
-                        {self.precursors-ctl.add-selected-index vi}
-                    }
-                 else
-                    {assert false} || internal error
-                }
-            }
-        }
-    }
-  }
-
-  {method protected open {refresh r:#Record}:void
-    def tasks-model = self.task-list-model
-    let cri:int = -1
-    {tasks-model.clear}
-    {for mr:Record key mri in {self.project-model.tasks.rs.select} do
-        def mtr = {TaskRecord mr}
-        {if r["id"] == mtr.id then
-            set cri = mri
-         elseif cri < 0 and not mtr.has-subtasks? then
-            set cri = mri
-        }
-        {tasks-model.append-quietly mtr}
-    }
-    {if cri >= 0 then
-        {self.task-ctl.select-index-with-events cri}
     }
   }
 }

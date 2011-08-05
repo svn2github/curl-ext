@@ -16,7 +16,7 @@
 
 {value
     def name = "COM.CURL.EXT"
-    def version = "0.6.1" || April 2011
+    def version = "0.6.3" || August 2011
     def dirname = name & "-V" & version
     
     {DeploySpecs
