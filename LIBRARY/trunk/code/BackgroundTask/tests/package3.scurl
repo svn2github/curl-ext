@@ -13,7 +13,7 @@
 ||| limitations under the License.
 
 
-{curl 6.0, 7.0 package}
+{curl 6.0, 7.0, 8.0 package}
 {package COM.CURL.EXT.TEST.PACKAGE3}
 
 {define-proc public {echo-args3 a:Array}:(int, String, bool)

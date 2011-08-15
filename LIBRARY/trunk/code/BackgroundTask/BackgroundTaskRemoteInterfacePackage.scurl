@@ -13,7 +13,7 @@
 ||| limitations under the License.
 
 
-{curl 6.0, 7.0 package}
+{curl 6.0, 7.0, 8.0 package}
 {package COM.CURL.EXT.BACKGROUND-TASK-REMOTE,
     version = "1.0",
     {compiler-directives

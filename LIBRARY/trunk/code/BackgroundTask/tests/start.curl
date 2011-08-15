@@ -13,7 +13,7 @@
 ||| limitations under the License.
 
 
-{curl 6.0, 7.0 applet}
+{curl 6.0, 7.0, 8.0 applet}
 {applet manifest="manifest.mcurl"}
 {import * from COM.CURL.EXT.BACKGROUND-TASK, location = "../load.scurl"}
 

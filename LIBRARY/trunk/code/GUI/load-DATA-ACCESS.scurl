@@ -15,7 +15,7 @@
 ||| limitations under the License.
 ||| ----------------------------------------------------------------------------
 
-{curl 7.0 package}
+{curl 7.0, 8.0 package}
 
 {doc type = package, COM.CURL.EXT.DATA-ACCESS
     {purpose

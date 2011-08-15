@@ -1,4 +1,4 @@
-{curl 7.0 package}
+{curl 7.0, 8.0 package}
 {curl-file-attributes character-encoding = "shift-jis"}
 {package COM.CURL.EXT.GEOGRAPHIC,
     {compiler-directives careful? = true}

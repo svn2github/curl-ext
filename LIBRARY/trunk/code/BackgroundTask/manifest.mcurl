@@ -13,8 +13,10 @@
 ||| limitations under the License.
 
 
-{curl 6.0, 7.0 manifest}
+{curl 6.0, 7.0, 8.0 manifest}
 {manifest COM.CURL.EXT.BACKGROUND-TASK}
+
+
 
 {component package COM.CURL.EXT.BACKGROUND-TASK,
     location = "load.scurl"
@@ -22,6 +24,6 @@
 {component package COM.CURL.EXT.BACKGROUND-TASK-REMOTE,
     location = "BackgroundTaskRemoteInterfacePackage.scurl"
 }
-{component file BackgroundTaskSubApplet.scurl,
-    location = "BackgroundTaskSubApplet.scurl"
+{component file BackgroundTaskSubApplet.curl,
+    location = "BackgroundTaskSubApplet.curl"
 }

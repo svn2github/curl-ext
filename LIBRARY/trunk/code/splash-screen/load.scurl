@@ -14,7 +14,7 @@
 ||| See the License for the specific language governing permissions and
 ||| limitations under the License.
 
-{curl 7.0 package}
+{curl 7.0, 8.0 package}
 {curl-file-attributes character-encoding = "windows-latin-1"}
 {package COM.CURL.EXT.SPLASH-SCREEN,
     {compiler-directives careful? = true}
@@ -1009,7 +1009,7 @@
             {import * from COM.CURL.EXT.SPLASH-SCREEN}
             {def applet-source:String =
                 {stringify
-                    {curl 7.0 applet}
+                    {curl 7.0, 8.0 applet}
                     {import * from COM.CURL.EXT.SPLASH-SCREEN}
                     
                     

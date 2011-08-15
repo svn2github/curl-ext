@@ -1,6 +1,8 @@
-{curl 7.0 manifest}
+{curl 7.0, 8.0 manifest}
 {curl-file-attributes character-encoding = "windows-latin-1"}
-{manifest COM.CURL.EXT}
+{manifest COM.CURL.EXT,
+    version = "0.7.0"}
+
 ||--{component file sample-splash-animation.curl,
 ||--    location = "docs/samples/sample-splash-animation.curl"
 ||--}
@@ -131,4 +133,12 @@
 
 {component directory resources,
     location = "resources"
+}
+
+{component file classic-project.cprj,
+    location = "classic-project.cprj"
+}
+
+{component file project.cprj,
+    location = "project.cprj"
 }

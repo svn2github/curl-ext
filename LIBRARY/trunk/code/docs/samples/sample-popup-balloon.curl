@@ -1,6 +1,6 @@
 ||| Maintained by: mgordon
 
-{curl 7.0 applet}
+{curl 7.0, 8.0 applet}
 {curl-file-attributes character-encoding = "windows-latin-1"}
 {applet 
     manifest = "manifest.mcurl",
