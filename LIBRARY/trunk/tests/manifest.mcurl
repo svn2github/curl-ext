@@ -14,13 +14,10 @@
 ||| See the License for the specific language governing permissions and
 ||| limitations under the License.
 
-{curl 7.0 manifest}
+{curl 7.0, 8.0 manifest}
 {manifest COM.CURL.EXT.TESTS}
 
 {delegate-to COM.CURL.CDU,
-||--    || use with adjacent CDU repository
-||--    location = "../../../CDU/trunk/code/manifest.mcurl"
-    || use with svn:externals
     location = "../lib/CDU/manifest.mcurl"
 }
 
@@ -28,9 +25,9 @@
     location = "../code/manifest.mcurl"
 }
 
-||--{component package COM.CURL.EXT.TEST-SUPPORT,
-||--    location = "test-support.scurl"
-||--}
+{component package COM.CURL.EXT.TEST-SUPPORT,
+    location = "test-support.scurl"
+}
 
 {component file start-tests.curl,
     location = "start-tests.curl"
@@ -96,15 +93,10 @@
     location = "t-autocomplete.xcurl"
 }
 
+{component file classic-project.cprj,
+    location = "classic-project.cprj"
+}
 
-
-
-
-
-
-
-
-
-
-
-
+{component file project.cprj,
+    location = "project.cprj"
+}

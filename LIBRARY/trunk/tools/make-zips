@@ -34,11 +34,25 @@ fi
 rsync "$FLAGS" "$SRCROOT/src/" "$DISTSRC/"
 rsync "$FLAGS" "$SRCROOT/deploy/$DDIR" "$DISTDIR/"
 rsync "$FLAGS" "$SRCROOT/docs-install/$DDIR/" "$DISTDOC/"
-if test -d "$DISTDOC"/docs/ja ; then
-    rm -rf "$DISTDOC"/docs/ja
+
+HOST_LOCALE=ja
+SOURCE_LOCALE=en
+DEST_LOCALE=ja
+
+if [ "$HOST_LOCALE" ]; then
+    if  [ -d "$DISTDOC"/docs/$HOST_LOCALE/api-ref ] ; then \
+      # cd "$DISTDOC"/docs/$SOURCE_LOCALE && mv api-ref not-api-ref
+      (cd "$DISTDOC"/docs/$HOST_LOCALE; tar cpf - api-ref) | \
+      (cd "$DISTDOC"/docs/$SOURCE_LOCALE; tar xvpf -)
+      # cd "$DISTDOC"/docs/$SOURCE_LOCALE && ln -s ../$HOST_LOCALE/api-ref .
+    fi
 fi
-if test -d "$DISTSRC"/code/docs/ja ; then
-    rm -rf "$DISTSRC"/code/docs/ja
+
+if test -d "$DISTDOC"/docs/$DEST_LOCALE ; then
+    rm -rf "$DISTDOC"/docs/$DEST_LOCALE
+fi
+if test -d "$DISTSRC"/code/docs/$DEST_LOCALE ; then
+    rm -rf "$DISTSRC"/code/docs/$DEST_LOCALE
 fi
 ls -l "$DISTDIR"
 cd "$SRCROOT"

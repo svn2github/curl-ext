@@ -1,6 +1,6 @@
 ||| Maintained by: mgordon
 
-{curl 7.0 applet}
+{curl 7.0, 8.0 applet}
 {applet manifest = "manifest.mcurl",
     {compiler-directives careful? = true}
 }

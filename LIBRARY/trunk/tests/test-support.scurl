@@ -1,4 +1,4 @@
-{curl 7.0 package}
+{curl 7.0, 8.0 package}
 {package COM.CURL.EXT.TEST-SUPPORT,
     {compiler-directives careful? = true}
 }

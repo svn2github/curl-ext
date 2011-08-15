@@ -16,9 +16,9 @@
 
 {value
     def name = "COM.CURL.EXT"
-    def version = "0.6.3" || August 2011
+    def version = "0.7.0" || August 2011
     def dirname = name & "-V" & version
-    
+       
     {DeploySpecs
         caption = {lmessage deploy COM.CURL.EXT},
 
@@ -127,7 +127,6 @@
         || ------------------
         || DOCS distribution
         || ------------------
-        
         || documentation (copy + docs)
         || --------------------
         {DeploySpec
