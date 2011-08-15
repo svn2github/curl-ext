@@ -3,7 +3,6 @@
 	<name>COM.CURL.EXT.TESTS</name>
 	<comment>A Curl Project</comment>
 	<projects>
-		<project>ide</project>
 	</projects>
 	<buildSpec>
 	</buildSpec>

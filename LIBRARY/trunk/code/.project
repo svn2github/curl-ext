@@ -1,10 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <projectDescription>
-	<name>CURL-EXT</name>
+	<name>COM.CURL.EXT</name>
 	<comment>A Curl Project</comment>
 	<projects>
-		<project>COM.CURL.EXT.BACKGROUND-TASK</project>
-		<project>ide</project>
 	</projects>
 	<buildSpec>
 	</buildSpec>

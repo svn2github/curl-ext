@@ -3,8 +3,6 @@
 	<name>COM.CURL.EXT.TOOLS</name>
 	<comment>A Curl Project</comment>
 	<projects>
-		<project>COM.CURL.EXT</project>
-		<project>ide</project>
 	</projects>
 	<buildSpec>
 	</buildSpec>
