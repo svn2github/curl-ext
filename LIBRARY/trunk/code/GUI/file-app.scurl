@@ -652,7 +652,7 @@
         the top level of your applet to identify a persistent data
         repository and make it available to the current applet.
         {curl-code
-            {curl 7.0 applet}
+            {curl 7.0, 8.0 applet}
             {persistent-data "my-applet-location", duration = 180days}
         }
 
