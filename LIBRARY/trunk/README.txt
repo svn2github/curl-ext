@@ -94,6 +94,9 @@ and thus require privilege and web access to succeed.
  CHANGES
 =========
 
+0.7.0 Release (August 2011)
+  o Add support for Upcoming Version 8.0 RTE
+
 0.6.3 Release (August 2011)
   o New tests for gantt and fix bugs
   o New ExtStyleManage supports selector patterns for nested objects
