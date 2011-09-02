@@ -1,0 +1,201 @@
+{curl 7.0, 8.0 applet}
+{curl-file-attributes character-encoding = "shift-jis"}
+{applet manifest = "manifest.mcurl"}
+
+{import * from COM.CURL.EXT.GEOGRAPHIC}
+{import * from CURL.GUI.SHAPES}
+{import * from CURL.GRAPHICS.IMAGEFILTER}
+
+{document-style PlainDocument}
+
+{define-class public MySingleMapLayer {inherits SingleMapLayer}
+  
+  {constructor public {default ...}
+    {construct-super {splice ...}}
+  }
+  
+  {method public {highlight-area area-shape:AreaShape}:void
+    
+    {for shape in area-shape.shape-children do
+        {if not shape isa RegionShape then {return}}
+        
+        let region-shape:RegionShape = shape asa RegionShape
+        set region-shape.border-color = "white"
+        set region-shape.border-width = 
+            (2px / self.manager.map-display.current-scale)
+    }
+    let parent:#ShapeContainerBase = area-shape.shape-parent
+    let last:int = parent.shape-children.size - 1
+    set self.temp-index = {parent.shape-children.find area-shape}
+    {if self.temp-index < 0 then
+        {return}
+    }
+    {parent.set-shape-index area-shape, last}
+  }
+  
+  {method public {set-color-altitude}:void
+    {for as:AreaShape in self.area-shapes do
+        let alt-str:String = {as.dbf-data.get "•½‹Ï•W‚\u0000\u0000\u0000"}
+        let altitude:double = {{alt-str.trim-clone}.to-double} 
+        let c:Color = {self.get-color-by-altitude altitude}
+        set as.color = c
+    }
+  }
+  
+  {method private {get-color-by-altitude altitude:double}:Color
+    let max-meter:int = 200
+    let min-meter:int = 4
+    
+    {if altitude < -1 then
+        {return {Color.from-rgb-uint8 0, 3, 218}}
+    }
+    {if altitude >= -1 and altitude < 0 then
+        {return {Color.from-rgb-uint8 11, 123, 233}}
+    }
+    {if altitude >= 0 and altitude < 1 then
+        {return {Color.from-rgb-uint8 0, 193, 253}}
+    }
+    {if altitude >= 1 and altitude < 3 then
+        {return {Color.from-rgb-uint8 4, 220, 199}}
+    }
+    {if altitude >= 3 and altitude < 4 then
+        {return {Color.from-rgb-uint8 0, 202, 117}}
+    }
+    {if altitude >= 4 and altitude < 99999 then
+        ||R
+        let r:int = 
+            40 + (194 / (max-meter - min-meter) * (altitude - 4)) asa int
+        ||G
+        let g:int = 
+            204 - (139 / (max-meter - min-meter) * (altitude - 4)) asa int
+        ||B
+        let b:int = 
+            21 - (2 / (max-meter - min-meter) * (altitude - 4)) asa int
+        {return 
+            {Color.from-rgb-uint8 r, g, b}
+        }
+    }
+    
+    {return {Color.from-rgb-uint8 0, 0, 0, opacity = 0}}
+  }
+  
+}
+
+{value
+    {{get-the-applet}.set-title "GeoGraphicAPI Sample"}
+    let manager:#MapLayerManager
+    let base-filename:String = "TM_WORLD_BORDERS_SIMPL-0.2"
+    let parent-url:Url = {url "./data/geo/japan"}
+    let display-frame:Frame = {Frame 
+                                  width = {make-elastic}, 
+                                  height = {make-elastic},
+                                  border-width = 1pt                                  
+                              }
+    let cb1:#CommandButton
+    let cb2:#CommandButton
+    let cb3:#CommandButton
+    
+    set cb1 = 
+        {CommandButton label = "Create Japan MAP", width = 80pt,
+            {on Action do
+                let layer:MySingleMapLayer = 
+                    {MySingleMapLayer
+                        base-filename,
+                        parent-url,
+                        region-color = "darkgray",
+                        ellipse-radius = 2pt,
+                        {on e:RegionLeaveEvent do
+                            let border-color:FillPattern = 
+                                {blend e.area-shape.color, "#070707", 75%}
+                            {for shape in e.area-shape.shape-children do
+                                {if not shape isa RegionShape then
+                                    {return}
+                                }      
+                                def region-shape = shape asa RegionShape
+                                set region-shape.border-color = border-color
+                                set region-shape.border-width = 0px
+                            }
+                        },
+                        {on e:RegionSelectionEvent do
+                            {for rf:RecordField in e.area-shape.dbf-data.record-set.fields do
+                                {output rf.name & " : " & e.area-shape.dbf-data[rf.name]}
+                            }
+                        },
+                        {on e:RegionEnterEvent do
+                            {layer.highlight-area e.area-shape}
+                        }
+                    }
+                {if manager == null then
+                    set manager = {MapLayerManager layer}
+                    {display-frame.add manager.map-display.canvas, 
+                        replace? = true}
+                }
+                set cb2.enabled? = true
+                set cb3.enabled? = true
+            }
+        }
+    set cb2 = 
+        {CommandButton label = "Set Altitude", width = 80pt, enabled? = false,
+            {on Action do
+                let parent-urls:{Array-of String} = {{Array-of String}
+                                                        "G04-a-81_5239",
+                                                        "G04-a-81_5240",
+                                                        "G04-a-81_5339",
+                                                        "G04-a-81_5340"
+                                                    }
+                {for u:String in parent-urls do
+                    let layer:MySingleMapLayer = 
+                        {MySingleMapLayer
+                            u & "_mDB01",
+                            {url "./data/geo/AltitudeMesh/" & u},
+                            ellipse-radius = 2pt,
+                            {on e:RegionSelectionEvent do
+                                {for rf:RecordField in e.area-shape.dbf-data.record-set.fields do
+                                    {output rf.name & " : " & e.area-shape.dbf-data[rf.name]}
+                                }
+                            }
+                        }
+                    {manager.append-layer layer}
+                    {layer.set-color-altitude}
+                }
+            }
+        }
+    let in?:bool = true
+    set cb3 = 
+        {CommandButton label = "Zoom In", width = 80pt, enabled? = false,
+            {on Action at c:CommandButton do
+                {if in? then
+                    {for shape:Shape in manager.map-display.canvas.shape-children do
+                        set shape.visible? = false
+                        {with-compiler-directives 
+                            allow-implicit-any-casts? = true do
+                            {shape.set-transformation
+                                {manager.map-display.geo-scale-transform
+                                    manager.map-display.canvas.actual-width,
+                                    manager.map-display.canvas.actual-height,
+                                    scale-delta = 18,
+                                    shape = shape
+                                }
+                            }
+                            ||
+                            {shape.apply-translation -4.3pt, -1.7pt} 
+                            
+                            
+                            set manager.map-display.scale-delta = 18
+                        }
+                        set shape.visible? = true
+                    }
+                    set c.label = "Zoom Out"
+                 else    
+                    {manager.map-display.canvas.size-changed}
+                    set c.label = "Zoom In"
+                }
+                set in? = not in?
+            }
+        }
+    
+    {VBox spacing = 5pt, margin = 3pt,
+        {HBox width = {make-elastic}, spacing = 5pt, cb1, cb2, cb3, {Fill}},
+        display-frame
+    }
+}

@@ -1,0 +1,272 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0, 8.0 applet}
+
+{applet manifest = "manifest.mcurl", locale = "en"}
+
+{include "../utils/guide-header.scurl"}
+{include "../utils/support.scurl"}
+
+{chapter
+    index = {HeadingIndex primary-key="COM.CURL.EXT.AUTO-TEST"},
+    Writing an Automated Test using the AutoTest Framework
+}
+{summary
+    {paragraph
+        {itemize
+            {item The Autotest Framework allows you to write simple
+                scripts to test a single control or other {docref
+                Graphic} object.
+            }
+            {item Each test applet contains many tests. The framework
+                displays the tests and results in a table.
+            }
+            {item A test can fire events at an object and check
+                for expected results.
+            }
+        }
+    }
+}
+
+{heading level=2, Introduction}
+
+{paragraph The autotest framework allows you to write simple scripts
+    that fire events at a GUI object (usually a {docref Control} and
+    then check to see if the object responded in the expected way. You
+    can check various properties of the object and you can see what
+    events the object fires in response to the events the test script
+    fires at it.
+}
+{paragraph
+    A test applet can contain many different test scripts. Each
+    script tests some specific behavior, such as the effect of a click
+    or double-click at various locations within the control or other
+    {docref Graphic} object that is being tested.
+}
+{paragraph
+    The framework provides the API to write the scripts, and organizes
+    the tests and results in a table so you can run each one manually,
+    or run them all.  The results shown in the table are updated as
+    each test script is executed. The background of the result display
+    changes color: gray means the test was not run. Green means it
+    succeeded. Pink indicates failure.
+}
+{paragraph
+    While the tests are running you should not use the mouse or
+    keyboard because you might generate events that interfere with the
+    test script.
+}
+{heading level=2, Structure of an Automated Test}
+{paragraph
+    An automated test applet can consist of any number of tests.
+    You simply define your tests and call {docref GuiTest.setup}.
+}
+{paragraph
+    A single test is represented by a {docref GuiTest} object. It has
+    three component parts: the target object, a short description of
+    the test, and the sequence of steps in the test.  Each step of a
+    test is represented by an instance of a {docref UI} object. Here
+    is an example.
+    {curl-code
+        def toggle-test =
+            {GuiTest
+                {CheckButton},
+                "CheckButton toggle test",
+                {UI.focus},
+                {UI.check-property "value", false},
+                || Click on the control to toggle the value
+                {UI.click 1cm, 0mm},
+                {UI.check-property "value", true}
+            }
+    }
+}
+{paragraph
+    The UI class encapsulates the information needed to perform one
+    simulated user interface gesture. The types of gestures available
+    are given by the {docref UiGesture} enumeration.
+}
+{curl-code
+    {define-enum public UiGesture
+        || Mouse gestures
+        press,
+        release,
+        move,
+        click,
+        right-click,
+        double-click,
+
+        || Keyboard gestures
+        focus,
+        type,
+        press-key,
+
+        || Checking the target object
+        check-selection,
+        check-value,
+        check-events,
+        check-property,
+        check,
+
+        || Other actions
+        clear-selection,
+        do,
+        scroll,
+        set-value,
+        set-view,
+        wait
+    }
+}
+{paragraph
+    There is a constructor for each type of gesture. For example the
+    constructor for the object that represents a click of the mouse
+    (press, then release at the same point) looks like this:
+    {curl-code
+        {constructor public {press
+                                x:any,
+                                y:any,
+                                delay:Time = 50ms,
+                                button:int = left-button,
+                                shift?:bool = false,
+                                ctrl?:bool = false,
+                                alt?:bool = false,
+                                menu?:bool = false,
+                                command?:bool = false,
+                                platform:String = ""
+                            }
+        }
+    }
+}
+{paragraph
+    When you write {ctext {UI.press 4mm, 0mm}} you are specifying a
+    mouse click at a position 4mm to the right and 0mm down from the
+    origin of the target object.
+}
+{paragraph
+    You can also specify a double value for {param x} or {param y}.
+    In a text control, a double value for {param x} or {param y} is
+    interpreted as a number of characters. If you
+    write {ctext {UI.press 4.5, 0mm}} and the target of the gesture is
+    a text control, it means the x coordinate is exactly halfway from
+    the fourth character to the fifth. The exact distance will depend
+    on the font and even the characters themselves (since in a
+    proportional font each character may have a different width).
+}
+{paragraph
+    In other words, if a double value is used as an x coordinate, the
+    integer part indicates how many characters to skip and the
+    fractional part is taken as a fraction of the width of the next
+    character. For a y coordinate the integer part is the number of
+    lines to skip and the fraction is taken as a fraction of the next
+    line. Usually the y coordinate is between 0.0 and 1.0, but for
+    multiline text controls, values greater than 1.0 can be useful.
+}
+{paragraph
+    If the target of the gesture is not a text control, or if it falls
+    beyond the characters that are present in the text control, the
+    coordinate is simply the double value multiplied by the size of a
+    "standard" character.  This helps to minimize differences in the
+    behavior of a script when running on different platforms or with
+    different host settings.
+}
+{paragraph
+    You may notice a small digit "5" at the top of each test
+    applet. This is used to measure the "standard" character width.
+    This digit is inside of a {docref Dialog} so that it inherits
+    text attributes from the default {docref LookAnFeel}.
+}
+{paragraph
+    The {param delay} is an amount of time to wait after the current
+    gesture before the next one. During this time, the test framework
+    will handle any events that come from the host operating system.
+}
+{paragraph
+    The next few parameters {param button}, {param shift?}, {param
+    ctrl?}, {param alt?}, {param menu?}, and {param command?} are all
+    used to fill in the fields of the {docref GuiInputEvent} that
+    will be fired at the target object.
+}
+{paragraph
+    The {param platform} parameter is a string that can be used to
+    specify that the UI gesture should only be used on a specified
+    platform. It is a space-separated list of the strings "win32",
+    "linux" and "mac". An empty string means there is no filtering.
+    If you code {ctext {UI.click 1cm, 1mm, platform = "mac"}}, the
+    click gesture will be ignored except on the Macintosh platform.
+    Sometimes there are deliberate differences in the behavior for a
+    given platform and this allows a test to be written so it will
+    work correctly on every platform.
+}
+{paragraph
+    Each gesture has a corresponding constructor on the {docref  UI}
+    class. Refer to the API reference for details.
+}
+
+{heading level=2, Example of an Automated Test}
+
+{paragraph
+    Here is the complete code for a simple
+    {link href = {url "../../samples/sample-checkbutton-test.curl"},
+    CheckButton test}. Click the link to run the test. The source
+    code is shown below.
+}
+{curl-code
+{curl 7.0, 8.0 applet}
+{applet manifest = "manifest.mcurl",
+    {compiler-directives careful? = true}
+}
+
+{import * from COM.CURL.EXT.AUTO-TEST}
+
+|| Event constants for use with check-events
+{def value-changed = {ValueChanged}}
+{def value-finished = {ValueFinished}}
+
+|| First test for toggling the CheckButton
+{def toggle-test =
+    {GuiTest
+        {CheckButton label = "Toggle", check-value = "CB1"},
+        "Test Toggle CheckButton",
+        {UI.focus},
+        {UI.check-value null},
+        {UI.click 2mm, 0mm, delay = 100ms},
+        {UI.check-events value-changed, value-finished},
+        {UI.check-value "CB1"},
+        {UI.click 2mm, 0mm, delay = 100ms},
+        {UI.check-events value-changed, value-finished},
+        {UI.check-value null}
+    }
+}
+
+|| Another test uses the keyboard to toggle the CheckButton
+{def mnemonic-test =
+    {GuiTest
+        {CheckButton label = "&Toggle"},
+        "Test Toggle CheckButton",
+        {UI.focus},
+        {UI.check-property "value", false},
+        {UI.type alt? = true, "t"},
+        {UI.check-property "value", true},
+        {UI.type " "},
+        {UI.check-property "value", false}
+    }
+}
+
+|| Start up the framework and display the UI
+{GuiTest.setup "CheckButton Tests"}
+}
+{curl-copyright}

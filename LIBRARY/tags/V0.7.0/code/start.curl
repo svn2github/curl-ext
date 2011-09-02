@@ -1,0 +1,27 @@
+{curl 7.0, 8.0 applet}
+{curl-file-attributes character-encoding = "windows-latin-1"}
+{applet manifest = "manifest.mcurl",
+    {compiler-directives careful? = true}
+}
+{set-document-properties
+    font-size = 10pt
+}
+{title Curl Extension Library}
+
+The "docs install" directory (COM.CURL.EXT-Vm.n-doc) contains library
+directories prepared for addition to the Curl Documentation Viewer
+using the IDE 'Install Documentation' command.  The directories
+include both documentation and source code, which allows stepping into
+code in the library.  For example, COM.CURL.EXT-Vm.n-doc/manifest.mcurl
+is the COM.CURL.EXT library manifest for the "docs install" directory.
+
+If you install the documentation, you will see a new section in the
+Contents pane of the Curl Documentation Viewer called Curl Extensions
+Guide. The first subsection is an overview of the packages provided by
+the library with links to more detailed information (where available)
+and sample applets.
+
+You can also run the sample applets directly from 
+COM.CURL.EXT-Vm.n-doc/docs/samples.
+
+Please view README.txt for more information.

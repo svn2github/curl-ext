@@ -1,0 +1,655 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0, 8.0 applet}
+
+{applet manifest = "manifest.mcurl", locale = "en"}
+
+{import * from COM.CURL.EXT.GUI}
+{import * from COM.CURL.EXT.DATA-ACCESS}
+
+
+{include "../utils/guide-header.scurl"}
+{include "../utils/support.scurl"}
+{include "../utils/example-support.scurl"}
+
+{chapter
+    index = {HeadingIndex primary-key="Data Access APIs"},
+    Data Access Components in the Curl Extensions Library
+}
+{summary
+    {itemize
+        {item
+            The package {docref COM.CURL.EXT.DATA-ACCESS} contains
+            data access APIs.
+        }
+        {item
+            The package contains several new {docref Domain} classes.
+        }
+        {item
+            The package contains several new kinds of 
+            {docref RecordGridCell}s.
+        }
+        {item
+            There is a enhanced {docref CsvRecordSet} called
+            {docref CsvRecordSetB}.
+        }
+    }
+}
+
+{privilege-note}
+
+{heading level=2, Introduction}
+
+{paragraph
+    The Curl Extensions Library contains the following useful Data Access
+    API's in the package COM.CURL.EXT.DATA-ACCESS.
+}
+{paragraph
+    There are several new {docref Domain}s in the package, along with
+    some constant domain instances. These are useful for defining a
+    {docref RecordField}.
+}
+{itemize
+    {item {docref DurationDomain} - A {docref Domain} for
+        time values.
+    }
+    {item {docref LocaleDateDomain} - A {docref Domain} that formats
+        dates using the working locale date format.
+    }
+    {item {docref DoubleDomain } - A {docref Domain} for double
+        values formatted to a specified number of decimal digits.
+    }
+    {item {docref ForeignFieldDomain} -
+        A {ctext ForeignFieldDomain} can be used in a {docref RecordGrid}
+        column with a {ctext ForeignKeyCell} to obtain a dropdown
+        that selects values from a foreign table.
+    }
+    {item The domain constants are {docref transient-domain},
+        {docref date-domain},
+        {docref duration-domain},
+        {docref locale-date-domain},
+        {docref double-domain},
+        {docref d2-domain},
+        {docref d3-domain},
+        and {docref d4-domain}.
+    }
+}
+{paragraph
+    There are several new kinds of {docref RecordGridCell} in the package.
+}
+{itemize
+    {item {docref MovableCell} - A {docref RecordGridCell} that
+        allows a record to be moved around in a {docref RecordGrid}.
+    }
+    {item {docref ChooseValueCell} - A {docref RecordGridCell} that
+        will recompute the list of choices each time the cell
+        is activated for editing.
+    }
+    {item {docref StandardDateCell} - A {docref RecordGridCell} that
+        uses a {docref DateField} to enter a date value.
+    }
+    {item {docref CurrencyCell} - A {docref RecordGridCell} used
+        to display and edit currency values.
+    }
+    {item {docref MultilineStringCell} - A  {docref RecordGridCell} that
+        supports a long string displayed in several lines within the cell.
+    }
+}
+{paragraph
+    Finally, there are a few other useful public API's in the package.
+}
+{itemize
+    {item {docref CsvRecordSetB} - A {docref CsvRecordSet} with
+        various enhancements.
+    }
+    {item {docref EventSpec}, {docref EventIterator} - A class
+        that represents an event at some date and time that may
+        repeat at various intervals.
+    }
+}
+
+{heading level = 2, Sample Data for the Examples}
+
+{paragraph
+    The following examples use a sample {docref RecordSet} that is
+    created with the following procedure. It is shown once here so that
+    it doesn't need to be repeated with each example.
+}
+{curl-code
+{define-proc {make-sample-record-set}:RecordSet
+    let sample-rs:RecordSet =
+        {RecordSet
+            {RecordFields
+                {RecordField
+                    "id", domain = int
+                },
+                {RecordField
+                    "name", caption = "Name", domain = String
+                },
+                {RecordField
+                    "date", caption = "Date", domain = locale-date-domain
+                },
+                {RecordField
+                    "end-date", caption = "End Date", domain = date-domain
+                },
+                {RecordField 
+                    "duration", caption = "Duration", domain = duration-domain
+                },
+                {RecordField 
+                    "time", caption = "Time", domain = {StandardTimeDomain}
+                },
+                {RecordField 
+                    "amount", caption = "Amount", domain = int
+                },
+                {RecordField 
+                    "fraction", caption = "Fraction", domain = d3-domain
+                },
+                {RecordField 
+                    "notes", caption = "Notes", domain = String
+                }
+            },
+            {RecordData 
+                id = 1,
+                name = "Gene",
+                date = {DateTime.date "2005-04-08"},
+                duration = 1d,
+                time = 8h,
+                amount = 100,
+                fraction = 1/2
+            },
+            {RecordData 
+                id = 2,
+                name = "George",
+                date = {DateTime.date "2006-07-08"},
+                duration = 2d,
+                time = 9h,
+                amount = 1001,
+                fraction = 1/3
+            },
+            {RecordData 
+                id = 3,
+                name = "Gail",
+                date = {DateTime.date "2007-09-08"},
+                duration = 7d,
+                time = 12h,
+                amount = 123456789,
+                fraction = 1/4
+            },
+            {RecordData 
+                id = 4,
+                name = "Fred",
+                date = {DateTime.date "2008-02-18"},
+                duration = 14d,
+                time = 13h,
+                amount = -1234,
+                fraction = 1/5,
+                notes = 
+|"This column uses the MultilineStringCell to allow long strings to be entered and editied."|
+            },
+            {RecordData 
+                id = 5,
+                name = "Elly",
+                date = {DateTime.date "3/4/2009"},
+                duration = 30d,
+                time = 16h,
+                amount = -999999,
+                fraction = 1/6
+            }
+        }
+    {for r:Record in sample-rs do
+        set r["end-date"] = (r["date"] asa DateTime) + r["duration"] asa Time
+    }
+    {return sample-rs}
+}
+}
+
+{heading level = 2, Domains in the Extensions Library}
+
+The {docref COM.CURL.EXT.DATA-ACCESS} package introduces a number of new
+{docref Domain} classes.
+
+{docref LocaleDateDomain}. This is just like {docref StandardDateDomain}
+except that formats dates using the working locale. Furthermore, if
+you use a {ctext LocaleDateDomain} in a {docref RecordSet} with
+the {docref StandardDateCell} in a {docref RecordGridColumn}, the date
+values will be both displayed and edited in the locale's default
+format.
+
+{docref DoubleDomain}. This is a domain for double values. Unlike
+{docref StandardDoubleDomain}, it will format values to some fixed
+maximum precision. It allows you to choose the precision that is
+appropriate to your application. The {ctext StandardDoubleDomain} will
+display the maximum precision possible, which is better for saving
+values to a file but usually not appropriate for presenting numbers in
+a {docref RecordGrid}.
+
+{docref ForeignFieldDomain}. This domain is designed to be used in
+a column where the value is an index into a foreign table. It is used
+in conjunction with a {docref ForeignKeyCell}.
+
+The following public {docref Domain} constants are also exported by
+this package. Thise are useful for specifying a {docref RecordField},
+since a field definition requires a domain instance, and it is
+sometimes useful to use an equality check to see if two fields have
+the same domain.
+
+{docref d2-domain}, {docref d3-domain}, and {docref d4-domain}. These
+are instances of {docref DoubleDomain} that format values to 2, 3, or
+4 digits after the decimal point. In addition there is {docref
+double-domain}, which formats to the default of 5 digits.
+
+The constant {docref duration-domain} is a default instance of
+{docref DurationDomain}. The constant {docref transient-domain} is
+a default instance of {docref TransientAnyDomain}.
+
+
+{heading level = 2, RecordGrid Cells in the Extensions Library}
+
+A number of new {docref RecordGridCell}s are included in the Curl
+Extensions library. These are demonstrated in the next example, 
+along with some of the new domains described earlier.
+
+The {docref CurrencyCell} can be used for a column that represents a
+currency amount. The convention is that the data in the cell is an
+integer that represents the currency amount times 100. To display the
+value, the cell divides it by 100 and displays it using a {docref
+NumberFormatter} initialized to format as a currency in the working
+locale. When updating the cell value, the entry is parsed and then
+multiplied by 100.
+
+The {docref StandardDateCell} is used to display and edit a date value
+(represented as a {docref DateTime}). It uses a {docref DateField} to
+edit the value. It can display dates in either the ISO format or the
+locale date format, depending on what kind of domain is used for the
+associated field. If a {docref LocaleDateDomain} is used for the
+field, then the cell uses the locale date format. otherwise, it will
+use the ISO date format. The third and fifth columns of this
+{ctext RecordGrid} use the {ctext StandardDateCell}.
+
+The fourth column of this {ctext RecordGrid} shows a field that uses
+a {docref DurationDomain}. Note how it differs from the sixth column,
+which uses a {docref TimeDomain}. The former formats the value as
+a {docref Time} while the latter treats it as a time of day.
+
+The seventh column, Amount, shows what you get when you use a
+{docref CurrencyCell}.
+
+The next column, Fraction, shows what you get when you use a
+{docref d3-domain}.
+
+The last column uses a {docref MultilineStringCell} to display and
+edit ling strings of text.
+
+{example
+    title = {hlmessage Example using StandardDateCell and
+    DurationDomain},
+
+{import * from COM.CURL.EXT.GUI}
+{import * from COM.CURL.EXT.DATA-ACCESS}
+{include "../utils/example-support.scurl"}
+
+{RecordGrid 
+    record-source = {make-sample-record-set},
+    width = 7.5in, height = 2.5in,
+    automatic-columns? = false,
+
+    {RecordGridColumn  width = .25in, "id"},
+    {RecordGridColumn  width = 44pt, "name"},
+    {RecordGridColumn  width = 60pt, "date", cell-spec = StandardDateCell},
+    {RecordGridColumn  width = 48pt, "duration"},
+    {RecordGridColumn  width = 66pt, "end-date", cell-spec = StandardDateCell},
+    {RecordGridColumn  width = 48pt, "time"},
+    {RecordGridColumn  width = 60pt, "amount", cell-spec = CurrencyCell},
+    {RecordGridColumn  width = 44pt, "fraction"},
+    {RecordGridColumn  width = 1.75in, "notes", cell-spec = MultilineStringCell}
+}
+}
+
+{heading level = 2, Using Foreign Keys}
+
+{paragraph
+    A "foreign key cell" is a cell that allows a user to make a choice
+    from among values in some other table. For example, if each record
+    in a{ctext RecordGrid} represents a bug report, the name of the
+    product affected would often come from a table of products.  The
+    table of products is called the "foreign" table. Usually the local
+    table (the one being shown in the {ctext RecordGrid}) will use an
+    id value (usually a number) to identify the record in the foreign
+    table. This is called the "foreign key". The value displayed in
+    the cell however should be something that makes sense to the user,
+    such as the product name.
+}
+{paragraph
+    Two classes are used to implement foreign key cells, 
+    {docref ForeignFieldDomain} and {docref ForeignKeyCell}.
+    The domain is used for parsing and formatting. The cell is used
+    for editing and display. Since the value must be one of the keys
+    in foreign table, the editor is a {docref DropdownList} that
+    allows the user to select any of the available values.
+}
+
+{heading level = 3, The ForeignFieldDomain}
+{paragraph
+    Perhaps the most important function of a {docref Domain} object is
+    to parse and format the data values in a record. The value,
+    whatever it's type, is formatted as a String so that it can be
+    displayed and edited. The edited value can then be parsed to get
+    back the value that should be stored in the record. Because of
+    their ability to convert values to strings and back, Domains are
+    also used in the {docref CsvRecordSet} to obtain the string
+    representation of a value so it can be written to a file, and when
+    the file is read, the parse method can be used to get the value
+    back again.
+}
+{paragraph
+    As with any other Domain, The {ctext ForeignFieldDomain} is
+    responsible for parsing and formatting values for storage in a
+    file or for display in a {ctext RecordGrid}. To do this it needs
+    to know the name of the key or id field in the foreign table, the
+    name of the field that has a human readable label, and access to
+    the foreign {ctext RecordSet} itself. This is all passed to the
+    constructor when the {ctext ForeignFieldDomain} is created.  Note
+    that since {docref RecordView} is a subclass of {docref RecordSet}
+    you can also pass in a {docref RecordView} that contains a filterd
+    subset of the foreign table. This allows you to remove choices
+    that should not be available at any given time in your
+    application.
+
+    To format a value (which will be an integer key), the domain can
+    select the associated record and return the label value from that
+    record.  To parse a value, it can often do the reverse: given the
+    label it could find the corresponding key. However, although the
+    keys are unique, the labels may not be. For this reason, the
+    format method produces a string with both the key value and the
+    label value, separated by a pound sign (#) character. The label us
+    encoded using {docref url-encode-string} to ensure that if it
+    contains a pound sign, it won't interfere with the parsing and
+    formatting. So the formatted value might look like "Monday#2".
+    The {ctext ForeignKeyCell} is designed to work with teh
+    {ctext ForeignFieldDomain} and will only display the label (in
+    this case, "Monday").
+}
+
+{heading level = 3, The ForeignKeyCell}
+{paragraph
+    The {ctext ForeignKeyCell} is used to display and edit foreign key
+    values in a {ctext RecordGrid}. When the cell is opened for
+    editing, it creates a dropdown list containing the available
+    values from the foreign table. In this example, the first column
+    is the {ctext ForeignKeyCell}.
+}
+{paragraph
+    The second {ctext RecordGrid} below shows the foreign {ctext
+    RecordSet}.  You can change a name in the second table and see the
+    name updated in the first. This is because the {ctext
+    ForeignKeyCell} adds an event handler to the foreign {ctext
+    RecordSet} to update the cell when any record is changed. This
+    works because the value in the column is the id, which does not
+    change when you edit the name.
+}
+
+{example
+    title = {hlmessage Using a ForeignKeyCell},
+
+    {import * from COM.CURL.EXT.GUI}
+    {import * from COM.CURL.EXT.DATA-ACCESS}
+    {include "../utils/example-support.scurl"}
+
+    {def foreign-rs = {make-sample-record-set}}
+    {def foreign-domain = {ForeignFieldDomain foreign-rs, "id", "name"}}
+    {let rs:RecordSet =
+        {RecordSet
+            {RecordFields
+                {RecordField
+                    "name", caption = "Name", 
+                    domain = foreign-domain
+                },
+                {RecordField
+                    "email", caption = "email", domain = String
+                }
+            },
+            {RecordData name = "Gene", email = "gene@example.com"},
+            {RecordData name = "Gail", email = "gail@example.com"}
+        }
+    }
+    
+    {RecordGrid
+        record-source = rs,
+        width = 7in, height = 1.5in,
+        automatic-columns? = false,
+        {RecordGridColumn  width = 48pt, "name", cell-spec = ForeignKeyCell},
+        {RecordGridColumn  width = 96pt, "email"}
+    }
+
+    {RecordGrid 
+        record-source = foreign-rs,
+        width = 7in, height = 1.5in,
+        automatic-columns? = false,
+        {RecordGridColumn  width = 48pt, "name"},
+        {RecordGridColumn  width = 66pt, "date", cell-spec = StandardDateCell},
+        {RecordGridColumn  width = 48pt, "duration"},
+        {RecordGridColumn  width = 66pt, "end-date", cell-spec = StandardDateCell},
+        {RecordGridColumn  width = 48pt, "time"},
+        {RecordGridColumn  width = 48pt, "amount"}
+    }
+}
+
+{heading level = 2, Using CsvRecordSetB}
+
+The {docref CsvRecordSetB} is a {docref CsvRecordSet} with a few
+enhancements.
+{itemize
+    {item
+        If the data is stored at a {ctext file://} url, it will
+        automatically re-read the file if it changes.
+    }
+    {item
+        If you specify a unique id field, when a new record is created,
+        it will automatically assign a nuew unique id. It can also give
+        you a {docref Record} directly, given it's id.
+    }
+    {item
+        If the csv file does not exist when the {ctext CsvRecordSetB} is
+        instantiated, it will be created.
+    }
+}
+{paragraph
+    The following example shows how to build a simple logging object
+    using a {ctext CsvRecordSetB}. This class stores messages in a CSV
+    file, and it also provides a simple viewer for the file. The
+    viewer is automatically updated when new messages are appended to
+    the file. This means the viewer can be a separate applet.
+}
+{paragraph
+    First we define a simple logging class. We define the components
+    of a message as a record with an id, a timestamp, a severity
+    level, the message itself, and some tags, which can be used for
+    filtering messages.  When you log a message, a record is appended
+    to the recordset and it is committed, which writes it to a the
+    file specified when the logger was created.
+}
+{paragraph
+    The Logger class can also create a log viewer, which shows you
+    the messages in the recordset.
+}
+
+{curl-code
+{define-enum LogLevel
+    info, warning, error
+}
+
+{define-class public open CsvLogger
+
+  field public rs:CsvRecordSetB
+
+  {constructor public {default location:Url}
+    set self.rs =
+        {CsvRecordSetB
+            location,
+            autoupdate-interval = .5s,
+            id-field = "id",
+            self.fields
+        }
+  }
+
+  {getter public open {fields}:RecordFields
+    {return
+        {RecordFields
+            {RecordField "id", caption = "id", domain = int},
+            {RecordField "time", caption = "Time", domain = DateTime},
+            {RecordField "level", caption = "Level", domain = LogLevel},
+            {RecordField "message", caption = "Message", domain = String},
+            {RecordField "tags", caption = "Tags", domain = String}
+        }
+    }
+  }
+
+  {method public open {log message:String, level:LogLevel, tags:String}:void
+    {self.rs.append
+        {RecordData
+            time = {DateTime},
+            level = level,
+            message = message,
+            tags = tags
+        }
+    }
+    {self.rs.commit}
+  }
+
+  {method public open {get-viewer}:Graphic
+    def rg =
+        {RecordGrid
+            record-source = self.rs,
+            width = 6.5in,
+            height = 2in,
+            sort = "time",
+            display-navigation-panel? = false,
+            display-filler-column? = true,
+            background = "#f0f0f0",
+            alternate-row-background="#f0f0f0",
+            automatic-columns? = false,
+            {RecordGridColumn  width = 48pt, "level"},
+            {RecordGridColumn  width = 3in, "message"},
+            {RecordGridColumn  width = 72pt, "tags"},
+            {RecordGridColumn  width = 96pt, "time"}
+        }
+
+    def tag-field = {TextField width = 1in}
+    def tag-filter =
+        {proc {r:Record}:bool
+            {if tag-field.value != "" then
+                def tags = r["tags"] asa String
+                {for ftag in {tag-field.value.split} do
+                    {if {tags.find-string ftag} >= 0 then
+                        {return true}
+                    }
+                }
+                {return false}
+            }
+            {return true}
+        }
+    {tag-field.add-event-handler
+        {on ValueFinished at tf:TextField do
+            {set rg.filter = tag-filter}
+        }
+    }
+
+    {return
+        {Dialog
+            margin = 3pt,
+            {VBox
+                spacing = 6pt,
+                {HBox {text Tag Filter:}, tag-field},
+                rg
+            }
+        }
+    }
+  }
+}
+}
+
+{paragraph
+    Now we can create a simple example to show how the logger can be
+    used. The controls at the top allow you to append messages to the
+    log. The UI below is the log viewer. It has a field where you can
+    type the tags you want to filter for.
+}
+{example
+    title = {hlmessage Using a CsvRecordSetB for a Logger},
+
+    {import * from COM.CURL.EXT.GUI}
+    {import * from COM.CURL.EXT.DATA-ACCESS}
+    {include "../utils/example-support.scurl"}
+
+    {let msg-count:int = 1}
+    {let log-location = {url "example.log"}}
+    {def logger = {CsvLogger log-location}}
+    {def message-tags = {TextField width = 1in, prompt = "Your Tags Here"}}
+    Tags: {value message-tags}
+    {CommandButton label = "Add Error",
+        {on Action do
+            {logger.log
+                "This is error " & msg-count, LogLevel.error, message-tags.value
+            }
+            {inc msg-count}
+        }
+    }
+    {CommandButton label = "Add Warning",
+        {on Action do
+            {logger.log
+                "This is warning " & msg-count, LogLevel.warning, message-tags.value
+            }
+            {inc msg-count}
+        }
+    }
+
+    {logger.get-viewer}
+}
+
+{paragraph
+    Here is a second logger that views the same file. Note that it is
+    updated automatically when the log file is changed.
+}
+{example
+    title = {hlmessage Second Log Viewer},
+    {import * from COM.CURL.EXT.GUI}
+    {import * from COM.CURL.EXT.DATA-ACCESS}
+    {include "../utils/example-support.scurl"}
+
+    {{CsvLogger {url "example.log"}}.get-viewer}
+}
+
+{paragraph
+
+}
+{paragraph
+}
+{paragraph
+}
+{paragraph
+}
+
+
+|| Example: RecordGrid with movable records
+||  o You need a subclass of MovableCell (we should provide MovableStringCell)
+||  o Your RecordGrid must be sorted by some field
+||  o You need a command called dragdrop that will change values in the sorted
+||    field to make the records move into place
+||  o 
+||  o 
+||  o 

@@ -1,0 +1,508 @@
+||| Copyright (C) 1998-2011, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An Open Curl project.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+{curl 7.0, 8.0 package}
+{curl-file-attributes character-encoding = "windows-latin-1"}
+{package COM.CURL.EXT.SPLASH-ANIMATION,
+    {compiler-directives careful? = true}
+}
+
+
+{import * from CURL.GUI.STANDARD}
+{import * from CURL.GUI.SHAPES}
+
+{doc-next
+    {purpose
+        Item-maker procedure for {docref CircleAnimation} that
+        creates a {docref RectangleShape} item.
+    }
+    {parameter length,
+        The length of the shape,
+        measured radially in the direction away from the center of the circle.
+    }
+    {parameter width,
+        The width of the shape.
+    }
+    {parameter trans,
+        A {docref Transformation2d} that specifies the
+        orientation and position of the shape.
+    }
+    {return-vals
+        A rectangular shape item for the animation.
+    }
+}
+{define-proc public {rectangle-animation-item-maker
+                        length:Distance, width:Distance, trans:Transformation2d
+                    }:Visual
+    def hwidth = 0.5 * width
+    def grect = {GRect 0m, length, hwidth, hwidth}
+    def shape = {RectangleShape grect, transformation = trans}
+    {return shape}
+}
+
+{doc-next
+    {purpose
+        Item-maker procedure for {docref CircleAnimation} that
+        creates a {docref EllipseShape} item.
+    }
+    {parameter (length, width, trans),
+        See {docref rectangle-animation-item-maker}
+        for information about these arguments.
+    }
+    {return-vals
+        An elliptical shape item for the animation.
+    }
+}
+{define-proc public {ellipse-animation-item-maker
+                        length:Distance, width:Distance, trans:Transformation2d
+                    }:Visual
+    def hwidth = 0.5 * width
+    def grect = {GRect 0m, length, hwidth, hwidth}
+    def shape = {EllipseShape grect, transformation = trans}
+    {return shape}
+}
+
+{doc-next
+    {purpose
+        Item-maker procedure for {docref CircleAnimation} that
+        creates a circular {docref EllipseShape} item.
+    }
+    {parameter (length, width, trans),
+        See {docref rectangle-animation-item-maker}
+        for information about these arguments.
+        The {param length} argument is not used by this procedure.
+    }
+    {return-vals
+        A circular shape item for the animation.
+    }
+}
+{define-proc public {circle-animation-item-maker
+                        length:Distance, width:Distance, trans:Transformation2d
+                    }:Visual
+    def hwidth = 0.5 * width
+    def grect = {GRect 0m, width, hwidth, hwidth}
+    def shape = {EllipseShape grect, transformation = trans}
+    {return shape}
+}
+
+{doc-next
+    {purpose
+        A {docref ShapeGroup} that displays a {quote waiting} animation
+        where shapes arranged in a circle vary in opacity in a way
+        that creates an impression of clockwise motion around the circle.
+    }
+    {details
+        The animation consists of a series of shapes arranged evenly
+        in a circle, with their opacities changing periodically to
+        create the appearance of clockwise motion around the circle.
+        Various parameters of the animation can be controlled by keyword
+        arguments to the {docref CircleAnimation.default} constructor.
+    }
+    {notes
+        See {docref CircleAnimation.make-splash-subapplet-source}
+        for a procedure that creates source code suitable
+        for the {param splash-applet-url} argument to
+        {docref SplashScreen.setup}.
+    }
+}
+{define-class public CircleAnimation {inherits ShapeGroup}
+  
+  {doc-next
+    {purpose
+        The length of the animated shapes.
+    }
+  }
+  field private item-length:Distance
+  
+  {doc-next
+    {purpose
+        The width of the animated shapes.
+    }
+  }
+  field private item-width:Distance
+  
+  {doc-next
+    {purpose
+        The radius of the circle tangent to the inner sides of the animated shapes.
+    }
+  }
+  field private radius:Distance
+  
+  {doc-next
+    {purpose
+        The number of animated shapes.
+    }
+  }
+  field private count:int
+  
+  {doc-next
+    {purpose
+        The interval between updating the opacities of the shapes.
+    }
+  }
+  field private interval:Time
+  
+  {doc-next
+    {purpose
+        The minimum opacity of the shapes.
+    }
+  }
+  field private min-opacity:Fraction
+  
+  {doc-next
+    {purpose
+        A procedure that creates a shape to be included in the circle.
+    }
+    {details
+        The first argument specifies the length of the shape
+        (measured radially in the direction away from the center of the circle).
+        The second argument specifies the width of the shape.
+        The third argument is a {docref Transformation2d} that specifies the
+        orientation and position of the shape.
+    }
+    {for-example
+        A typical example of an {ctext item-maker} procedure is the following
+        implementation of {docref rectangle-animation-item-maker},
+        which makes items that are {docref RectangleShape}s:
+        
+        {curl-code
+            {define-proc public {rectangle-animation-item-maker
+                                    length:Distance, width:Distance, trans:Transformation2d
+                                }:Visual
+                def hwidth = 0.5 * width
+                def grect = {GRect 0m, length, hwidth, hwidth}
+                def shape = {RectangleShape grect, transformation = trans}
+                {return shape}
+            }
+        }
+    }
+  }
+  field private item-maker:{proc-type {Distance, Distance, Transformation2d}:Visual}
+  
+  {doc-next
+    {purpose
+        An array that contains the shape items in this animation.
+    }
+    {notes
+        The items are arranged so that counting up through the array indices
+        moves you counterclockwise around the circle.
+    }
+  }
+  field private constant items:{Array-of Visual} = {new {Array-of Visual}}
+  
+  {doc-next
+    {purpose
+        The index of the shape in {ctext self.{docref-abbr CircleAnimation.items}}
+        that currently has the highest opacity value.
+    }
+    {notes
+        Lower opacity values trail off counterclockwise from the shape that
+        whose index is given by the {ctext phase} field.
+    }
+  }
+  field private phase:int = 0
+  
+  {doc-next
+    {purpose
+        Construct a {docref CircleAnimation} object.
+    }
+    {parameter item-length,
+        The length of each of the shapes that is arranged in the circle,
+        measured radially in the direction away from the center of the circle.
+    }
+    {parameter item-width,
+        The width of each of the shapes that is arranged in the circle.
+    }
+    {parameter radius,
+        The radius of the circle that is formed by the innermost points
+        in the individual shape items.
+    }
+    {parameter count,
+        The number of shape items that should be arranged around the circle.
+    }
+    {parameter interval,
+        The interval between updates to the opacities of the shape items.
+    }
+    {parameter min-opacity,
+        The minimum opacity value that can be assigned to a shape item.
+        (The maximum opacity value is always 1.)
+    }
+    {parameter item-maker,
+        The procedure that will be called to create each individual shape item in
+        the circle.
+        The first argument specifies the length of the shape
+        (measured radially in the direction away from the center of the circle).
+        The second argument specifies the width of the shape.
+        The third argument is a {docref Transformation2d} that specifies the
+        orientation and position of the shape.
+        
+        The predefined procedures
+        {docref rectangle-animation-item-maker},
+        {docref ellipse-animation-item-maker}, and
+        {docref circle-animation-item-maker}
+        may be used, or a user-defined procedure may be supplied.
+    }
+    {parameter ...,
+        Any additional constructor arguments are passed directly to
+        the default constructor for the {docref ShapeGroup} superclass.
+    }
+  }
+  {constructor public {default
+                          item-length:Distance = 16pt,
+                          item-width:Distance = 0.35 * item-length,
+                          radius:Distance = item-length,
+                          count:int = 12,
+                          interval:Time = 100ms,
+                          min-opacity:Fraction = 25%,
+                          item-maker:{proc-type {Distance, Distance, Transformation2d}:Visual} =
+                              rectangle-animation-item-maker,
+                          ...
+                      }
+    set self.item-length = item-length
+    set self.item-width = item-width
+    set self.radius = radius
+    set self.count = count
+    set self.interval = interval
+    set self.min-opacity = min-opacity
+    set self.item-maker = item-maker
+    {construct-super ...}
+    {for i = 0 below count do
+        def angle = (i * 360degrees) / count
+        def trans = {Transformation2d}
+        {trans.local-rotate angle}
+        {trans.local-translate radius, 0m}
+        def item = {self.item-maker item-length, item-width, trans}
+        {self.add item}
+        {self.items.append item}
+    }
+    {self.colorize-items}
+    def start-time = {DateTime}
+    def animation-timer =
+        {self.animate
+            interval = 0.25 * self.interval,
+            {on TimerEvent do
+                def t = {start-time.elapsed}
+                def new-phase = (-({truncate t, self.interval} asa int)) mod self.count
+                {if new-phase != self.phase then
+                    set self.phase = new-phase
+                    {self.colorize-items}
+                }
+            }
+        }
+  }
+  
+  {nonlocal-option public color:FillPattern
+    {self.colorize-items}
+  }
+  
+  {doc-next
+    {purpose
+        Set the color and opacity of all the shape items in the circle
+        so that they reflect the current value of the
+        {docref-abbr CircleAnimation.phase} field.
+    }
+  }
+  {method private {colorize-items}:void
+    def base-color = self.color
+    def base-pixel = {base-color.to-Pixel}
+    {for i = 0 below self.items.size do
+        def item = self.items[i]
+        def p = (i + self.phase) mod self.count
+        def opacity = {max self.min-opacity, p / self.count}
+        set item.color =
+            {FillPattern.from-rgb
+                base-pixel.red,
+                base-pixel.green,
+                base-pixel.blue,
+                opacity = base-pixel.alpha * opacity
+            }
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Make source code for a splash screen that uses a {docref CircleAnimation}.
+    }
+    {parameter circle-color,
+        The color of the shapes that are arranged in the
+        {docref CircleAnimation} circle.
+    }
+    {parameter background,
+        The color of the background for the splash screen window
+        that is displaying the {docref CircleAnimation}.
+    }
+    {parameter item-maker-proc-name,
+        The source code for an expression that evaluates to an item-maker
+        procedure of the type that could be passed as an {ctext item-maker}
+        argument to the {docref CircleAnimation.default} constructor.
+        This argument could be one of the predefined item-maker procedure
+        names such as
+        {docref rectangle-animation-item-maker},
+        {docref ellipse-animation-item-maker}, or
+        {docref circle-animation-item-maker},
+        or it could be a user-defined procedure whose source code should
+        be supplied using the {param added-definitions} keyword argument.
+    }
+    {parameter item-length,
+        The length of each of the shapes that is arranged in the circle,
+        measured radially in the direction away from the center of the circle.
+    }
+    {parameter item-width,
+        The width of each of the shapes that is arranged in the circle.
+    }
+    {parameter radius,
+        The radius of the circle that is formed by the innermost points
+        in the individual shape items.
+    }
+    {parameter count,
+        The number of shape items that should be arranged around the circle.
+    }
+    {parameter interval,
+        The interval between updates to the opacities of the shape items.
+    }
+    {parameter min-opacity,
+        The minimum opacity value that can be assigned to a shape item.
+        (The maximum opacity value is always 1.)
+    }
+    {parameter added-definitions,
+        The source code for additional definitions or other top-level expressions
+        that should be included in the return value of this procedure.
+    }
+    {return-vals
+        A {docref String} that contains the source code to be
+        supplied in the {param splash-applet-url} argument to
+        {docref SplashScreen.setup}.
+    }
+    {for-example
+        A typical use of this procedure is to set up a splash screen
+        that shows a {docref CircleAnimation} as in the following
+        code:
+        {example
+            {import * from COM.CURL.EXT.SPLASH-SCREEN}
+            {import * from COM.CURL.EXT.SPLASH-ANIMATION}
+            
+            {CommandButton
+                label = "Animated Splash Screen",
+                {on Action do
+                    {TranslucentSplashScreen.setup
+                        title = "Loading ...",
+                        footer = "Test Example ...",
+                        splash-applet-url =
+                            {string-url
+                                {CircleAnimation.make-splash-subapplet-source
+                                    || Animation parameters can be customized
+                                    || with keyword arguments here.
+                                }
+                            }
+                    }
+                    {sleep 5s}
+                    || We are done. Destroy the Splash Screen.
+                    {TranslucentSplashScreen.destroy}
+                }
+            }
+            
+        }
+    }
+  }
+  {define-proc public {make-splash-subapplet-source
+                          circle-color:FillPattern = "blue",
+                          background:FillPattern = "silver",
+                          item-maker-proc-name:String = "rectangle-animation-item-maker",
+                          item-length:Distance = 16pt,
+                          item-width:Distance = 0.35 * item-length,
+                          radius:Distance = item-length,
+                          count:int = 12,
+                          interval:Time = 100ms,
+                          min-opacity:Fraction = 25%,
+                          added-definitions:String = ""
+                      }:String
+    def fmt =
+        {stringify
+            {curl %s applet}
+            {applet manifest = "manifest.mcurl"}
+            {import * from COM.CURL.EXT.SPLASH-SCREEN}
+            {import * from COM.CURL.EXT.SPLASH-ANIMATION}
+            
+            %s
+            
+            {define-class public CustomSplashScreenSubApplet
+              {inherits TranslucentSplashScreenSubApplet}
+              
+              {constructor public {default}
+                {construct-super}
+              }
+              
+              {method public open {create-main-body}:Graphic
+                def cwidth = 5in
+                def cheight = 0.6 * cwidth
+                def c = {Canvas width = cwidth, height = cheight}
+                def circle =
+                    {CircleAnimation
+                        item-maker = %s,
+                        item-length = %w,
+                        item-width = %w,
+                        radius = %w,
+                        count = %w,
+                        interval = %w,
+                        min-opacity = %w
+                    }
+                set circle.color = {Color.from-pixel %w}
+                {c.add circle, x = 0.5 * cwidth, y = 0.5 * cheight}
+                
+                {return
+                    {VBox
+                        halign = "center",
+                        width = 5in,
+                        background = {Color.from-pixel %w},
+                        border-width = 1px,
+                        border-color = "#330033",
+                        hstretch? = true,
+                        framelike-stretch? = true,
+                        self.title-frame,
+                        {HBox
+                            {Fill},
+                            c,
+                            {Fill}
+                        },
+                        self.footer-frame,
+                        self.progress-bar-frame
+                    }
+                }
+              }
+            }
+            {after 0s do
+                {CustomSplashScreenSubApplet}
+            }
+        }
+    def circle-pixel = {circle-color.to-Pixel} 
+    def result =
+        {format
+            fmt,
+            curl-version-number-2,
+            added-definitions,
+            item-maker-proc-name,
+            item-length,
+            item-width,
+            radius,
+            count,
+            interval,
+            min-opacity,
+            circle-pixel,
+            {background.to-Pixel}
+        }
+    {return result}
+  }
+}

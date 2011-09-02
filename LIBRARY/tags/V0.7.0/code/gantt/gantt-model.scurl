@@ -1,0 +1,2408 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+|||
+|||     http://www.apache.org/licenses/LICENSE-2.0
+|||
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{import * from CURL.DATA-ACCESS.CONNECTED} || for TransientAnyDomain
+{import * from CURL.LANGUAGE.REGEXP}
+{import * from CURL.UTIL.OBSERVER}
+
+{import * from COM.CURL.EXT.GRAPHS}
+{import * from COM.CURL.EXT.DATA-ACCESS}
+
+|| -------------------------------------------------------------------------
+
+|| Possible constraints on starting a task
+{define-enum public TaskConstraint
+    earliest,   || schedule as early as possible
+    latest,     || schedule as late as possible
+    not-before, || schedule before some date
+    not-after   || schedule after date
+}
+
+{def public TaskConstraint-domain =
+    {new {EnumDomain-of TaskConstraint}}
+}
+
+|| Possible dependencies between two tasks
+{define-enum public DependencyType
+    requires,    || a requires b (a cannot start until after b)
+    starts-with, || a starts-with b (earliest determines start)
+    ends-with,   || a ends-with b (latest determines schedule)
+    obsoletes,   || a obsoletes b (earliest determines schedule)
+    requires-event,    || a requires event b (a cannot start until event b)
+    ends-with-event    || a ends at event b (event determines end)
+}
+
+{def public DependencyType-domain = {new {EnumDomain-of DependencyType}}}
+
+|| Task status
+{define-enum public TaskStatus
+    none,
+    hold,
+    started,
+    finished
+}
+
+{def public TaskStatus-domain = {new {EnumDomain-of TaskStatus}}}
+
+|| -------------------------------------------------------------------------
+
+|#
+How to handle foreign key fields?
+
+  - You need a special Cell and Domain
+    - Domain
+      - format via table to "name/id"
+      - parse id only
+      - compare entire string
+    - Cell
+      - Display just the name
+      - Edit as dropdownlist. ListValueItem value is id, display is name
+
+  - Use the id number as the RecordSet value
+
+  - If you change the name in the resource table, reformat the column
+    so the new name appears everywhere
+
+  o Need to create the RecordFields for the foreign key reference
+    after the foreign table is created so that the domain can refer to
+    the foreign table.
+
+#|
+
+||FIXME: parameterize {ForeignFieldCell-for rs, id, name}
+{define-class public open ResourceCell
+  {inherits StandardBaseEditableStringCell}
+
+  {doc-next
+    {purpose
+        Construct this object.
+    }
+  }
+  {constructor public {default}
+    {construct-super}
+  }
+
+  || Create the default array of ListValueItems for this cell.
+  {method package {create-list-value-array}:{Array-of ListValueItem}
+    let constant lm:{Array-of ListValueItem} = {{Array-of ListValueItem}}
+    let has-empty?:bool = false
+    {if-non-null
+        rf = self.field,
+        pm = self.project-model
+     then
+        {for r:Record in {pm.resources.rs.select} do
+            def rr = {ResourceRecord r}
+            {lm.append
+                {ListValueItem rr.id, label = rr.name}
+            }
+        }
+        {lm.append {ListValueItem 0, label = " "}} ||""
+    }
+    {return lm}
+  }
+
+  {method protected open {create-editor}:DropdownList
+    let lm:{Array-of ListValueItem} = {self.create-list-value-array}
+    {return {SRGDropdownList {splice lm}}}
+  }
+
+  {getter public open {current-editor}:#DropdownList
+    {return super.current-editor asa #DropdownList}
+  }
+
+  || Methods to implement RecordGridCell
+  {method public open {refresh-data}:void
+    {super.refresh-data}
+    {if-non-null editor = self.current-editor then
+        let (val:any, valid?:bool) = {self.get-data}
+        {if valid? then
+            set editor.value = val
+         else
+            set editor.prompt =  ""
+            {editor.unset-value}
+        }
+     else
+        let (str:String, valid?:bool) = {self.get-formatted-data}
+        {if valid? then
+            let parts:StringArray = {str.split split-chars = "/"} ||""
+            {if parts.size > 0 then
+                set str = parts[0]
+            }
+        }
+        set self.display-graphic.contents = {if valid? then str else ""}
+    }
+  }
+
+  {method public open {become-active forward?:bool = true}:bool
+    let ret:bool = {super.become-active forward? = forward?}
+    {if ret then
+        {if-non-null editor = self.current-editor then
+            def ddl = editor asa DropdownList
+            def lm = ddl.data-model
+            {lm.clear}
+            {for item in {self.create-list-value-array} do
+                {lm.append-quietly item}
+            }
+            {editor.become-active forward? = forward?}
+        }
+    }
+    {return ret}
+  }
+
+  {method public open {note-grid-focus-in}:void
+    {super.note-grid-focus-in}
+    {if-non-null editor = self.current-editor then
+        {type-switch editor
+         case ddl:DropdownList do
+            set ddl.halign = self.halign
+        }
+    }
+  }
+
+  {method public open {note-grid-focus-out}:void
+    {if-non-null editor = self.current-editor then
+        || force pending change to happen immediately.
+        {if editor.pending-value? then
+            {editor.handle-event {ValueFinished}}
+            set editor.pending-value? = false
+        }
+    }
+    {super.note-grid-focus-out}
+  }
+
+  {local-option public halign:any
+    {if-non-null editor = self.current-editor then
+        {type-switch editor
+         case ddl:DropdownList do
+            set ddl.halign = self.halign
+        }
+    }
+  }
+
+  || When a KeyPress is delivered to this cell,
+  || toss it directly to the editor's UI instead.
+  {method public open {on-key-press ev:KeyPress}:void
+    {super.on-key-press ev}
+    {if-non-null editor = self.current-editor then
+        {type-switch ev
+         case rgkp:RecordGridKeyPress do
+            {if not rgkp.upwards? then
+                {editor.ui-object.handle-event ev}
+                set ev.test-recorded? = true
+            }
+        }
+    }
+  }
+
+  || Attempts to locate the index of a value among the list used for
+  || this cell's control. Returns -1 on failure.
+  || FIXME: only works when this cell is active and has an editor.
+  {method package {find-index-for-list-item val:any}:(int, any)
+    let tmp-idx:int
+    let index:int = -1
+    let data:any
+    let constant list-items:{Iterator-of ListItem} =
+        {if-non-null editor = self.current-editor then
+            editor.list-items
+         else
+            {return -1, null}
+        }
+    {type-switch val
+     case s:String do
+        let main:#String = null
+        {if {regexp-match? |"#(\d+)"|, s, main} then ||""
+            {try
+                set index = {main.to-int}
+                set tmp-idx = -1
+                {for item in list-items do
+                    {inc tmp-idx}
+                    {if index == tmp-idx then
+                        set data = item.value
+                        {break}
+                    }
+                }
+
+                {if index != tmp-idx then
+                    {throw
+                        {KeyNotFoundException
+                            {lmessage
+                                Key '{value index}' not found in
+                                '{value list-items}'.
+                            }
+                        }
+                    }
+                }
+             catch ce:CastException do
+            }
+
+         else
+            set tmp-idx = -1
+            {for item in list-items do
+                {inc tmp-idx}
+                {if {item.get-text} == s then
+                    set index = tmp-idx
+                    set data = item.value
+                }
+            }
+        }
+     else
+        set tmp-idx = -1
+        {for item in list-items do
+            {inc tmp-idx}
+            {if item.value == val then
+                set index = tmp-idx
+                set data = val
+            }
+        }
+    }
+    {if index >= 0 then
+        {return index, data}
+     else
+        {return index, null}
+    }
+  }
+
+  {method public open {test-run action:String, args:FastArray}:any
+    {switch action
+     case "SetCellData" do ||""
+        let constant (index:int, new-value:any) =
+            {self.find-index-for-list-item args[0]}
+        {if-non-null new-value then
+            {self.attempt-update new-value}
+        }
+        {return null}
+     else
+        {return {super.test-run action, args}}
+    }
+  }
+
+  || FIXME: this only works for the current index at present, and
+  || only when the current editor is active (cell is active).
+  {getter public open {test-value}:#String
+    let constant (data:any, valid?:bool) = {self.get-data}
+    {if valid? then
+        {if-non-null editor = self.current-editor then
+            {if value == editor.value then
+                {return "#" & editor.selected-index} ||""
+            }
+        }
+    }
+    {return null}
+  }
+
+}
+
+
+{doc-next
+    {purpose Diaplay the dependencies for a task for debugging.}
+}
+{define-class public open DependencyCell {inherits StandardRecordGridCell}
+  field protected content:Graphic
+
+  {constructor public {default}
+    {construct-super}
+    set self.content = {Frame}
+    {self.add-internal self.content}
+    set self.opaque-to-events? = true
+  }
+
+  {method public open {refresh-data}:void
+    {if-non-null record = self.record then
+        {if-non-null d = record["depnode"] then ||""
+            def dn = d asa TaskDinode
+            def ins = {StringBuf}
+            {for dn:TaskDinode in dn.predecessors do
+                {if ins.size > 0 then {ins.concat ", "}} ||""
+                {ins.concat {String (dn.data asa TaskRecord).id}}
+            }
+            def outs = {StringBuf}
+            {for dn:TaskDinode in dn.successors do
+                {if outs.size > 0 then {outs.concat ", "}} ||""
+                {outs.concat {String (dn.data asa TaskRecord).id}}
+            }
+            {self.content.add replace? = true,
+                {format "(%s->%s)", ins, outs} ||""
+            }
+            {return}
+        }
+    }
+    {self.content.add replace? = true, "()"} ||""
+  }
+}
+
+
+{doc-next 
+    {purpose Class used to create directed graph of task dependencies.}
+}
+{def public TaskDinode = {DigraphNode-of TaskRecord}}
+
+{doc-next
+    {purpose Shorthand for {ctext {Array-of TaskDinode}}}
+}
+{def public TaskDinodeArray = {Array-of TaskDinode}}
+
+{doc-next
+    {purpose Base class for the tables associated with a ProjectModel.}
+}
+{define-class abstract public open ProjectDataTable
+
+  {doc-next
+    {purpose The {docref ProjectModel} this table belongs to.}
+  }
+  field public-get protected-set project:ProjectModel
+
+  {doc-next
+    {purpose The {docref RecordField}s that define the columns of this table.}
+  }
+  {getter abstract public open {fields}:RecordFields}
+
+  {doc-next
+    {purpose The {docref RecordSet} used to store this table.}
+  }
+  field public-get protected-set rs:CsvRecordSetB =
+      {uninitialized-value-for-type CsvRecordSetB}
+
+  {doc-next
+    {purpose Recompute any computed data.}
+  }
+  {method abstract public open {refresh}:void}
+
+  {doc-next
+    {purpose Construct the table.}
+    {parameter project,
+        The initial value for {docref ProjectDataTable.project}.
+    }
+    {parameter file-name,
+        The name of the file where this table is stored.
+    }
+    {parameter ..., Event handlers to be attached to
+        {docref ProjectDataTable.rs}.
+    }
+  }
+  {constructor public {default
+                          project:ProjectModel,
+                          file-name:String,
+                          ...:EventHandler
+                      }
+
+    set self.project = project
+
+    set self.rs =
+        {CsvRecordSetB
+            {project.data-file-url file-name},
+            self.fields,
+            id-field = "id",
+            modifiable? = true,
+            backup? = true,
+            {splice ...},
+            {on e:RecordsChanged at rs:RecordSet do
+                {self.project.schedule-refresh}
+            }
+        }
+  }
+
+  {doc-next
+    {purpose Write out this table to the file name specified when
+        the object was constructed in the directory that contains the
+        project model.
+    }
+  }
+  {method public open {save}:void
+    {self.rs.save-as {self.project.data-file-url self.rs.url.filename}}
+  }
+}
+
+|| -----------------------------------------------------------------
+
+{doc-next
+    {purpose
+        Represents one project (tasks, resources, calendar, and
+        dependencies).
+    }
+}
+{define-class public open ProjectModel {inherits Observable}
+
+  {doc-next
+    {purpose The directory where the project model is stored.}
+  }
+  field protected _data-dir:Url
+
+  {doc-next
+    {purpose Concatenate the directory where the project is stored with
+        {param file-name} and return it.
+    }
+  }
+  {method public open {data-file-url file-name:String}:Url
+    {return
+        {self._data-dir.concat file-name}
+    }
+  }
+
+  {doc-next
+    {purpose True during a call to {docref ProjectModel.refresh}.}
+    {details This flag is used so that changes to the project model
+        that are computed don't cause another refresh to be scheduled.
+    }
+  }
+  field protected busy?:bool = false
+
+  {doc-next
+    {purpose Becomes true when a refresh is requested, false when the
+        refresh is complete.
+    }
+  }
+  field protected _refresh-requested?:bool = false
+
+  {doc-next
+    {purpose Request that the {docref ProjectDataTable.refresh} method
+        be called as soon as the current event has been handled.
+    }
+    {details
+        This method should be called when a user changes something
+        in the model. It will then recompute everything by calling
+        {docref ProjectDataTable.refresh}. It also notifies all
+        observers with the message "save-needed".
+    }
+  }
+  {method public open {schedule-refresh}:void
+    {if not self._refresh-requested? then
+        {self.notify-observers message = "save-needed"}
+        set self._refresh-requested? = true
+        {after 0s do
+            {self.refresh}
+            set self._refresh-requested? = false
+        }
+    }
+  }
+
+
+  field protected _time-unit:Time = 1d
+
+  field protected _begin-date:DateTime
+  field protected _end-date:DateTime
+
+  field public-get protected-set min-date:DateTime
+  field public-get protected-set max-date:DateTime
+
+  ||FIXME: currently unused. drop it?
+  field protected _schedule-date:DateTime
+
+  field protected _resources:ResourceTable
+  field protected _tasks:TaskTable
+  field protected _events:EventTable
+  field protected _dependencies:DependencyTable
+
+  field protected scheduled:{Set-of TaskRecord} = {new {Set-of TaskRecord}}
+  
+  field protected graph:{Digraph-of TaskRecord} = {new {Digraph-of TaskRecord}}
+  
+  {constructor public {default
+                          begin-date:DateTime,
+                          end-date:DateTime,
+                          data-dir:Url = {url "data/"}, ||""
+                          schedule-date:DateTime = {DateTime.date},
+                          time-unit:Time = 1d
+                      }
+    {construct-super}
+    set self.busy? = true
+    set self._data-dir = data-dir
+    set self._begin-date = begin-date
+    set self._end-date = end-date
+    set self._schedule-date = schedule-date
+    set self._time-unit = time-unit
+
+    set self.min-date =
+        {DateTime.date
+            year = begin-date.info.year,
+            month = begin-date.info.month - 1,
+            day = 1
+        }
+    set self.max-date =
+        {DateTime.date
+            year = end-date.info.year,
+            month = end-date.info.month + 2,
+            day = 1
+        }
+
+    set self._resources = {ResourceTable self, "resources.csv"} ||""
+    set self._events = {EventTable self, "events.csv"} ||""
+    set self._tasks = {TaskTable self, "tasks.csv"} || tasks-5060  ||""
+
+    || Create this after tasks because it uses the task records
+    set self._dependencies = {DependencyTable self, "dependencies.csv"} ||""
+
+    set self.busy? = false
+  }
+
+
+  {method public open {get-owner-name id:int}:String
+    {if id == 0 then
+        {return ""}
+    }
+    {return {self.resources.get-ResourceRecord id}.name}
+  }
+
+  {doc-next
+    {purpose
+        Commit all pending changes.
+    }
+  }
+  {method public open {commit}:void
+    {self.resources.rs.commit}
+    {self.events.rs.commit}
+    {self.dependencies.rs.commit}
+    {self.tasks.rs.commit}
+  }
+
+  {doc-next
+    {purpose
+        Commit all pending changes into a new location.
+    }
+  }
+  {method public open {save-as url:Url}:void
+    set self._data-dir = url
+    {self.resources.save}
+    {self.events.save}
+    {self.dependencies.save}
+    {self.tasks.save}
+  }
+
+
+||FIXME: Not very useful since task names aren't unique
+||--  {method public open {get-owner-id name:String}:int
+||--    {if-non-null r = {self.resources.rs.select-one
+||--                         filter = {RecordData name = name}
+||--                     }
+||--     then
+||--        {return r["id"] asa int} ||""
+||--    }
+||--    {return -1}
+||--  }
+
+  ||FIXME: generalize this (similar to CsvRecordSetB.get-list-model)
+  {method package {create-resource-list-model
+                      default-label:String = "\ "
+                  }:{Array-of ListValueItem}
+    let constant lm:{Array-of ListValueItem} = {new {Array-of ListValueItem}}
+    let has-empty?:bool = false
+    {for r:Record in {self.resources.rs.select} do
+        def rr = {ResourceRecord r}
+        {lm.append
+            {ListValueItem rr.id, label = rr.name}
+        }
+    }
+    {lm.append {ListValueItem 0, label = default-label}}
+    {return lm}
+  }
+
+
+  || Is resource already assigned to a task on the given date?
+  {method public open {resource-available? owner:int, date:DateTime}:bool
+    {if owner == 0
+        or {self.resources.get-ResourceRecord owner}.max-load == 0
+     then
+        || All tasks with no owner are scheduled to run in parallel
+        {return true}
+    }
+    {for r:Record in
+        {self.tasks.rs.select filter = {RecordData owner = owner}}
+     do
+        def tr = {self.tasks.get-TaskRecord r} ||""
+        {if tr.status == TaskStatus.hold then
+            {continue}
+         elseif {self.scheduled.member? tr} then
+            {if-non-null
+                begin = tr.begin, end = tr.end
+             then
+                {if date >= begin and date < end then
+                    {return false}
+                }
+            }
+        }
+    }
+    {return true}
+  }
+
+  || Find first date where owner is not assigned and not on holiday
+  {method protected open {find-nearest-date owner:int, date:DateTime}:DateTime
+    let d:DateTime = date
+    {while not {self.events.available? owner, d}
+        or not {self.resource-available? owner, d}
+     do
+        set d = d + self._time-unit
+    }
+    {return d}
+  }
+
+  || Find the start date for an initial task
+  {method protected open {assign-begin-date tr:TaskRecord}:void
+    {if tr.depnode.source? then
+        {if tr.status == TaskStatus.none then
+            || Not started, so assume it will start ASAP, i.e., today
+            set tr.begin = {self.find-nearest-date tr.owner, self.begin-date}
+         elseif tr.status == TaskStatus.hold then
+||--            set tr.begin = null
+            set tr.begin = {self.find-nearest-date tr.owner, self.begin-date}
+            ||FIXME: what do do with tasks on hold?
+         else
+            || status is started or finished
+            {if tr.begin == null then
+                set tr.begin =
+                    {self.find-nearest-date tr.owner, self.begin-date}
+                ||FIXME: Is this normal when status changes to "active"?
+                {output {hlformat
+                            "?? Task underway but no begin date given: %s (%s)",
+                            tr.name, tr.id
+                        }
+                }
+            }
+        }
+||--        {dump "assign", tr.ord, tr.begin}
+    }
+  }
+
+  || Find the end date for a task
+  {method protected open {compute-end-date tr:TaskRecord}:void
+    {if {self.scheduled.member? tr} then
+||--        {return}
+    }
+    {self.scheduled.insert tr}
+    {if tr.status == TaskStatus.hold then
+||--        set tr.end = null
+     elseif tr.status == TaskStatus.finished then
+        {if tr.end != null then
+            {return}
+        }
+    }
+
+    def load =
+        {if tr.owner > 0 then
+            def ml = {self.resources.get-ResourceRecord tr.owner}.max-load
+            {if ml <= 0.0 then 1.0 else ml}
+         else
+            1.0
+        }
+    let remaining:Time = tr.effort
+
+    {if-non-null begin = tr.begin then
+        let end:DateTime = begin
+        {while remaining > 0s do
+            {if {self.events.available? tr.owner, end}
+                and {self.resource-available? tr.owner, end}
+             then
+                {dec remaining, self._time-unit * load}
+            }
+            {inc end, self._time-unit}
+        }
+        set tr.end = end
+     else
+        {output {hlformat
+                    "Computing end but begin is null: %s (%s)",
+                    tr.name, tr.id
+                }
+        }
+    }
+  }
+
+  || Compute the begin date for a task that is scheduled latest possible
+  {method protected open {compute-begin-date tr:TaskRecord}:void
+    {if {self.scheduled.member? tr} then
+||--        {return}
+    }
+||--    {self.scheduled.insert tr}
+    {self.scheduled.remove tr}
+
+    def load =
+        {if tr.owner > 0 then
+            def ml = {self.resources.get-ResourceRecord tr.owner}.max-load
+            {if ml <= 0.0 then 1.0 else ml}
+         else
+            1.0
+        }
+    let remaining:Time = tr.effort
+
+    {if-non-null end = tr.end then
+        let begin:DateTime = end
+        {while remaining > 0s and begin >= (self.begin-date + self._time-unit)
+         do
+            {dec begin, self._time-unit}
+            {if {self.events.available? tr.owner, begin}
+                and {self.resource-available? tr.owner, begin}
+             then
+                {dec remaining, self._time-unit * load}
+            }
+        }
+        set tr.begin = begin
+     else
+        {output {hlformat
+                    "Computing begin but end is null: %s (%s)",
+                    tr.name, tr.id
+                }
+        }
+    }
+    {self.scheduled.insert tr}
+  }
+
+  {method private {add-owner-dependencies tn:TaskDinode}:void
+    let sibling:#TaskDinode = null
+    def sorted-preds = {new {Array-of TaskDinode}}
+    {for pred in tn.predecessors do
+        {sorted-preds.append pred}
+    }
+    {sorted-preds.sort
+        comparison-proc = 
+            {proc {a:{DirectedGraphNode-of TaskRecord},
+                   b:{DirectedGraphNode-of TaskRecord}}:bool
+                {if a.data.owner == b.data.owner then
+                    {return a.data.ord < b.data.ord}
+                }
+                {return a.data.owner < b.data.owner}
+            }
+    }
+    {for pred in sorted-preds do
+        ||FIXME: This inserts a dependency between tasks that are assigned
+        || to the same person if they are both required for the current
+        || task.
+        {if-non-null sibling then
+            {if sibling.data.owner == pred.data.owner then
+                {try
+                    {sibling.add-successor pred}
+                 catch ignored:Exception do
+                }
+            }
+        }
+        set sibling = pred
+    }
+  }
+
+  {method private {mark-critical-predecessor tn:TaskDinode}:void
+    let last:DateTime = {DateTime.date "1980-01-01"} ||""
+    let last-latest:DateTime = {DateTime.date "1980-01-01"} ||""
+    let ln:#TaskDinode = null
+    let lnl:#TaskDinode = null
+
+    {for pred in tn.predecessors do
+        {if-non-null end = pred.data.end then
+            {if pred.data.constraint == TaskConstraint.latest then
+                {if end > last-latest then
+                    set last-latest = end
+                    set lnl = pred
+                }
+             else
+                {if end > last then
+                    set last = end
+                    set ln = pred
+                }
+            }
+        }
+    }
+
+    || Now look for a "latest" task that is nevertheless critical
+    {if last-latest > last then
+        set last = last-latest
+        set ln = lnl
+    }
+
+    {if-non-null ln then
+        set ln.data.critical? = true
+        {self.mark-critical-predecessor ln}
+    }
+
+    || Now look for predecessors that are to be done "latest"
+    {for pred in tn.predecessors do
+        {if not pred.data.critical? then
+            || Adjust tasks that are to be done "latest"
+            {if pred.data.constraint == TaskConstraint.latest
+                and pred.data.status != TaskStatus.started
+                and pred.data.status != TaskStatus.finished
+             then
+                set pred.data.end = last
+                {self.compute-begin-date pred.data}
+            }
+        }
+    }
+  }
+
+  || Schedule the task given by id, and all the tasks that depend on it
+  || If predecessors were not scheduled, schedule them now.
+  || If id is 0, do all of the initial tasks, so all tasks are scheduled
+  {method public open {compute-schedule id:int}:void
+    {if self.busy? then
+        {return}
+    }
+    {with
+        self.busy? = true,
+        self.tasks.rs.batch-events? = true
+     do
+        {self.scheduled.clear}
+||--        {dump "-- compute-schedule", id}
+
+        def task-records = {self.tasks.rs.select}
+        {if id != 0 then
+            def tr = {self.tasks.get-TaskRecord-by-id id}
+            {self.schedule tr.depnode}
+         else
+            {for r:Record key ri in task-records do
+                def tr = {self.tasks.get-TaskRecord r}
+                {if tr.status == TaskStatus.started then
+                    set tr.end = null
+                 elseif tr.status == TaskStatus.none then
+                    set tr.begin = null
+                    set tr.end = null
+                }
+            }
+
+            || Now schedule each root project
+            {for tn:TaskDinode in self.tasks.initial-tasks do
+                || Schedule initial tasks to start as early as possible
+                ||FIXME: pay attention to constraint type
+                {self.schedule tn}
+            }
+        }
+
+        || Now find the critical paths
+        let n:int = 0
+        {for r:Record key ri in task-records do
+            ||FIXME: ord is not used if Gantt is based on BarLayer
+            || Order the records via the "_ord" field, with a gap for each
+            || project. This is sort of a hack.
+            {inc n}
+            {if r["_ord"] asa int == 0 then ||""
+                set r["_ord"] = n ||""
+            }
+            set r["critical"] = false ||""
+        }
+
+        {for ftn in self.tasks.final-tasks do
+            {if not ftn.data.has-subtasks? then
+                {self.add-owner-dependencies ftn}
+                set ftn.data.critical? = true
+                {self.mark-critical-predecessor ftn}
+            }
+        }
+
+        || Aggregate times and dates up the project tree
+        let ord:int = 0
+        {self.tasks.compute
+            post =
+                {proc {p:Record, children:{Array-of Record}, v:any = null}:void
+                    def ptr = {self.tasks.get-TaskRecord p} ||""
+                    {if children.size > 0 then
+                        let begin:DateTime = {DateTime.date "2030-01-01"} ||""
+                        let end:DateTime = {DateTime.date "1980-01-01"}   ||""
+                        let effort:Time = 0d
+                        {for cr:Record in children do
+                            def tr = {self.tasks.get-TaskRecord cr} ||""
+                            {inc effort, tr.effort}
+                            {if-non-null tb = tr.begin, te = tr.end then
+                                {if tb < begin then
+                                    set begin = tb
+                                }
+                                {if te > end then
+                                    set end = te
+                                }
+                            }
+                        }
+                        set ptr.effort = effort
+                        set ptr.begin = begin
+                        set ptr.end = end
+                     else
+                        || ptr is a leaf task
+                    }
+                }
+        }
+    }
+  }
+
+  {method private {preds-scheduled? tn:TaskDinode}:bool
+    {for pred in tn.predecessors do
+        {if not {self.scheduled.member? pred.data} then
+            {return false}
+        }
+    }
+    {return true}
+  }
+
+
+  || Schedule a task. Then schedule all tasks that depend on it, if possible.
+  {method protected open {schedule tn:TaskDinode}:void
+    {if tn.data.has-subtasks? then
+        || Not a real task
+        {return}
+    }
+
+    {assert tn.predecessors.size == 0} || Always schedule from initial tasks
+
+    || Figure out when this task starts and ends
+    {self.assign-begin-date tn.data}
+    {self.compute-end-date tn.data}
+
+    || Now compute the effect on subsequent tasks
+    def sorted-tasks = {tn.topological-sort-successors}
+||--    {dump tn.data.id, sorted-tasks.size}
+    {sorted-tasks.sort
+        comparison-proc =
+            {proc {a:{DirectedGraphNode-of TaskRecord},
+                   b:{DirectedGraphNode-of TaskRecord}}:bool
+                {return a.data.ord < b.data.ord}
+            }
+    }
+    {for dn in sorted-tasks do
+        || Find the latest predecessor and use it to determine the begin date
+        {if not {self.scheduled.member? dn.data}
+            and {self.preds-scheduled? dn asa TaskDinode}
+         then
+            let last:DateTime = self.begin-date
+            {dn.visit-predecessors
+                {proc {pred:{DirectedGraphNode-of TaskRecord}}:bool
+                    {if-non-null pred-end = pred.data.end then
+                        {if pred-end > last then
+                            set last = pred-end
+                        }
+                    }                    
+                    {return false}
+                }
+            }
+            || Compute the end date once the begin date is known
+            set dn.data.begin = {self.find-nearest-date dn.data.owner, last}
+||--            {dump "asap", dn.data.ord, dn.data.begin}
+            {self.compute-end-date dn.data}
+        }
+    }
+  }
+
+
+  {method protected open {note-dependency r:Record}:void
+    def dr = {DependencyRecord r}
+    {try
+        def tra = {self.tasks.get-TaskRecord-by-id dr.ida}
+        def trb = {self.tasks.get-TaskRecord-by-id dr.idb}
+        {trb.depnode.add-successor tra.depnode}
+     catch ignored:Exception do
+        || Graph throws exception of you add a successor when it is already
+||--        {dump "note-dependency", ignored}
+    }
+  }
+
+  || Recalculate the entire model
+  {method public open {refresh}:void
+
+    || This may happen during initialization
+||--    {if self.dependencies.rs == null then
+||--        {return}
+||--    }
+
+    || First refresh the tables that comprise the model
+    {self.resources.refresh}
+    {self.events.refresh}
+    {self.dependencies.refresh}
+    {self.tasks.refresh}
+
+    || Create the dependency graph from the dependency records
+    || FIXME: Recalc if a record is changed. incremental or rebuild?
+    || FIXME: probably a bad idea to rebuild dependencies unnecessarily
+    {with self.tasks.rs.batch-events? = true do
+        {self.graph.clear}
+        {for r:Record in self.tasks.rs do
+            def tr = {self.tasks.get-TaskRecord r}
+            {tr.depnode.clear-successors}
+            {if tr.status == TaskStatus.none then
+                set tr.begin = null
+                set tr.end = null
+            }
+        }
+        {for r:Record in self.dependencies.rs do
+            {if r.state != RecordState.deleted then
+                {self.note-dependency r}
+            }
+        }
+        {self.compute-schedule 0}
+    }
+  }
+
+  {getter public open {begin-date}:DateTime
+    {return self._begin-date}
+  }
+  {setter public open {begin-date v:DateTime}:void
+    set self._begin-date = v
+    {self.schedule-refresh}
+  }
+
+  {getter public open {end-date}:DateTime
+    {return self._end-date}
+  }
+  {setter public open {end-date v:DateTime}:void
+    set self._end-date = v
+    {self.schedule-refresh}
+  }
+
+  {getter public open {schedule-date}:DateTime
+    {return self._schedule-date}
+  }
+  {setter public open {schedule-date v:DateTime}:void
+    set self._schedule-date = v
+    {self.schedule-refresh}
+  }
+
+  {getter public open {resources}:ResourceTable
+    {return self._resources}
+  }
+  {setter public open {resources m:ResourceTable}:void
+    set self._resources = m
+    {self.schedule-refresh}
+  }
+
+  {getter public open {events}:EventTable
+    {return self._events}
+  }
+  {setter public open {events m:EventTable}:void
+    set self._events = m
+    {self.schedule-refresh}
+  }
+
+  {getter public open {tasks}:TaskTable
+    {return self._tasks}
+  }
+  {setter public open {tasks m:TaskTable}:void
+    set self._tasks = m
+    {self.schedule-refresh}
+  }
+
+  {getter public open {dependencies}:DependencyTable
+    {return self._dependencies}
+  }
+  {setter public open {dependencies m:DependencyTable}:void
+    set self._dependencies = m
+    {self.schedule-refresh}
+  }
+
+  {doc-next
+    {purpose
+        Add a task to the project model.
+    }
+  }
+  {method public open {add-task
+                          name:String,
+                          effort:Time,
+                          constraint:TaskConstraint = TaskConstraint.earliest,
+                          status:TaskStatus = TaskStatus.none
+                      }:Record
+    {return {self.tasks.new-task
+                name, effort,
+                constraint = constraint,
+                status = status
+            }
+    }
+  }
+
+
+  {doc-next
+    {purpose
+        Add a dependency from task {param a} to {param b}, with a default
+        of "a requires b".
+    }
+  }
+  {method public open {add-dependency
+                          a:int, b:int,
+                          dep-type:DependencyType = DependencyType.requires,
+                          delay:Time = 0s,
+                          replace?:bool = true
+                      }:Record
+    {if a == b then
+        {error {hlmessage A task cannot depend on itself.}}
+    }
+    def deptab = self.dependencies
+
+    def recs = {deptab.rs.select filter = {RecordData ida = a, idb = b}}
+    {if not replace? and recs.size > 0 then
+        {error
+            {hlmessage A dependency already exists between these two tasks.}
+        }
+    }
+    {assert recs.size <= 1}
+    def nr =
+        {if recs.size > 0 then
+            recs[0]
+         else
+            {deptab.new-dependency type = dep-type}
+        }
+    set nr["type"] = dep-type
+    set nr["ida"] = a
+    set nr["idb"] = b
+    set nr["delay"] = delay
+    {return nr}
+  }
+}
+
+{define-nonlocal-option public project-model:#ProjectModel = null}
+
+|| -------------------------------------------------------------------------
+
+|| Type-safe wrapper for a record that describes a Resource
+{define-class public open ResourceRecord
+
+  field protected record:Record
+
+  {constructor public {default r:Record}
+    set self.record = r
+  }
+
+  {setter public open {id i:int}
+    set self.record["id"] = i ||""
+  }
+  {getter public open {id}:int
+    {return self.record["id"] asa int} ||""
+  }
+
+  {setter public open {name v:String}
+    set self.record["name"] = v ||""
+  }
+  {getter public open {name}:String
+    {return self.record["name"] asa String} ||""
+  }
+
+  {setter public open {type v:String}
+    set self.record["type"] = v ||""
+  }
+  {getter public open {type}:String
+    {return self.record["type"] asa String} ||""
+  }
+
+  {setter public open {initials v:String}
+    set self.record["initials"] = v ||""
+  }
+  {getter public open {initials}:String
+    {return self.record["initials"] asa String} ||""
+  }
+
+  {setter public open {group v:String}
+    set self.record["group"] = v ||""
+  }
+  {getter public open {group}:String
+    {return self.record["group"] asa String} ||""
+  }
+
+  {setter public open {link v:String}
+    set self.record["link"] = v ||""
+  }
+  {getter public open {link}:String
+    {return self.record["link"] asa String} ||""
+  }
+
+  {setter public open {max-load v:double}
+    set self.record["max-load"] = v ||""
+  }
+  {getter public open {max-load}:double
+    {return self.record["max-load"] asa double} ||""
+  }
+
+}
+
+|| Table for storing resources and operaoitns on it
+{define-class public open ResourceTable {inherits ProjectDataTable}
+
+  {getter public open {fields}:RecordFields
+    {return self._fields}
+  }
+
+  || For any table that uses a foreign key into this table
+  field public-get protected-set resource-name-domain:ForeignFieldDomain
+
+  field protected _fields:RecordFields =
+      {RecordFields
+        {RecordField "id", ||""
+            caption = {lmessage id},
+            domain = int,
+            index-type = RecordFieldIndexType.unique
+        },
+        {RecordField "name", ||""
+            caption = {lmessage Name},
+            domain = String,
+            index-type = RecordFieldIndexType.unique
+        },
+        {RecordField "type", ||""
+            caption = {lmessage Type},
+            domain = String, ||FIXME: foreign key?
+            index-type = RecordFieldIndexType.none
+        },
+        {RecordField "initials",
+            caption = {lmessage Initials},
+            domain = String, nullable? = true,
+            index-type = RecordFieldIndexType.unique
+        },
+        {RecordField "group",
+            caption = {lmessage Group},
+            domain = String, ||FIXME: foreign key?
+            index-type = RecordFieldIndexType.none
+        },
+        {RecordField "link",
+            caption = {lmessage Link},
+            domain = String, ||FIXME foreign key?
+            index-type = RecordFieldIndexType.none
+        },
+        {RecordField "max-load",
+            caption = {lmessage Load},
+            domain = d3-domain,
+            index-type = RecordFieldIndexType.none
+        }
+      }
+
+  {getter public open {get-sql-create}:String
+    {return
+        ||FIXME: Review all SQL, or maybe remove it
+        |"CREATE TABLE resource (
+            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            type TEXT NOT NULL,
+            initials TEXT NOT NULL,
+            group TEXT NOT NULL,
+            link TEXT NOT NULL,
+            maxload DOUBLE NOT NULL
+          );"|
+    }
+  }
+
+  {getter public open {get-sql-insert-sample-data}:String
+    {return
+|"
+INSERT INTO resource VALUES (1,Fred,Programmer,"FP","Dev","http://www.curl.com","free",1.0);
+"|
+    }
+  }
+
+
+  {constructor public {default
+                          project-model:ProjectModel,
+                          file-name:String,
+                          ...:EventHandler
+                      }
+    {construct-super
+        project-model,
+        file-name,
+        {splice ...}
+    }
+
+    set self.resource-name-domain =
+        {ForeignFieldDomain self.rs, "id", "name"} ||""
+  }
+
+  {method public open {refresh}:void
+    || Nothing to compute for ResourceTable
+  }
+
+  {method public open {get-ResourceRecord id:int}:ResourceRecord
+    {if-non-null r = {self.rs.get-by-id id} then
+        def rr = {ResourceRecord r}
+        {return rr}
+    }
+    {error {hlformat "Unable to locate resource id=%s", id}}
+  }
+
+||--  || Find resource records that match specified criteria
+||--  {method public open {find-resource
+||--                          name:String = "",
+||--                          type:String = "",
+||--                          group:String = ""
+||--                      }:{Array-of Record}
+||--    let filter:RecordData = {RecordData}
+||--    {if name != "" then set filter["name"] = name}
+||--    {if type != "" then set filter["type"] = type}
+||--    {if group != "" then set filter["group"] = group}
+||--    {return {self.source.select filter = filter}}
+||--  }
+
+  || Find a resource that matches specified criteria and is available
+  || between the specified dates
+||--  {method public open {find-resource-for-dates
+||--                          name:String = "",
+||--                          type:String = "",
+||--                          group:String = "",
+||--                          begin-date:#DateTime = null,
+||--                          end-date:#DateTime = null
+||--                      }:{Array-of Record}
+||--    ||FIXME: better to return Array-of ResourceRecord?
+||--    def mr = {self.find-resource
+||--                 name = name, type = type, group = group
+||--             }
+||--    {if mr.size > 0 then
+||--        || Iterate and remove any not available between specified dates
+||--        def fp = {proc {r:Record}:bool
+||--                     def rr = {ResourceRecord r}
+||--                     {if (
+||--                          (rr.begin >= begin-date and tr.begin <= end-date)
+||--                              or (tr.end >= begin-date and tr.end <= end-date)
+||--                              or (tr.begin <= begin-date and tr.end >= end-date)
+||--                             )
+||--                      then
+||--                         {return true}
+||--                      else
+||--                         {return false}
+||--                     }
+||--                 }
+||--        {if end-date == null then
+||--            end-date = begin-date
+||--         elseif begin-date == null then
+||--            begin-date = end-date
+||--        }
+||--        {if-non-null begin-date, end-date then
+||--            def fr = {new {Array-of Record}}
+||--            {for r:Record in mr do
+||--                {if {fp r} then
+||--                    {fr.append r}
+||--                }
+||--            }
+||--            {return fr}
+||--        }
+||--    }
+||--    {return mr}
+||--  }
+
+  {method public open {new-resource}:int
+    let r:Record = {self.rs.new-record}
+    ||"" ((
+    def id = {self.rs.new-id}
+    set r["id"] = id
+    set r["name"] = ""
+    set r["type"] = ""
+    set r["initials"] = ""
+    set r["group"] = ""
+    set r["link"] = ""
+    set r["max-load"] = 1.0
+    ||"" ))
+    {self.rs.append r}
+    {return id}
+  }
+
+}
+
+|| -------------------------------------------------------------------------
+
+|| Type-safe wrapper for a record that represents a task
+{define-class public open TaskRecord
+  
+  field protected record:Record
+
+  {constructor public {default r:Record}
+    set self.record = r
+  }
+
+  {setter public open {id i:int}
+    set self.record["id"] = i ||""
+  }
+  {getter public open {id}:int
+    {return self.record["id"] asa int} ||""
+  }
+
+  {setter public open {parent-id i:int}
+    set self.record["_pid"] = i ||""
+  }
+  {getter public open {parent-id}:int
+    {return self.record["_pid"] asa int} ||""
+  }
+
+  {setter public open {c x:double}
+    set self.record["c"] = x ||""
+  }
+  {getter public open {c}:double
+    {return self.record["c"] asa double} ||""
+  }
+
+  {setter public open {scenario s:String}
+    set self.record["scenario"] = s ||""
+  }
+  {getter public open {scenario}:String
+    {return self.record["scenario"] asa String} ||""
+  }
+
+  {setter public open {basescenario s:String}
+    set self.record["basescenario"] = s ||""
+  }
+  {getter public open {basescenario}:String
+    {return self.record["name"] asa String} ||""
+  }
+
+  {setter public open {name name:String}
+    set self.record["name"] = name ||""
+  }
+  {getter public open {name}:String
+    {return self.record["name"] asa String} ||""
+  }
+
+
+  {setter public open {owner owner:int}
+    set self.record["owner"] = owner ||""
+  }
+  {getter public open {owner}:int
+    {return self.record["owner"] asa int} ||""
+  }
+
+  {setter public open {effort v:Time}
+    set self.record["effort"] = v ||""
+  }
+  {getter public open {effort}:Time
+    {return self.record["effort"] asa Time} ||""
+  }
+
+  {getter public open {duration}:Time
+    {if-non-null
+        begin = self.record["begin"] asa #DateTime,
+        end = self.record["end"] asa #DateTime
+     then
+        {return end - begin}
+    }
+    {return self.record["effort"] asa Time} ||""
+  }
+
+  {setter public open {constraint v:TaskConstraint}
+    set self.record["constraint"] = v ||""
+  }
+  {getter public open {constraint}:TaskConstraint
+    {return self.record["constraint"] asa TaskConstraint} ||""
+  }
+
+  {setter public open {constraintdate v:DateTime}
+    set self.record["constraintdate"] = v ||""
+  }
+  {getter public open {constraintdate}:DateTime
+    {return self.record["constraintdate"] asa DateTime} ||""
+  }
+
+  {setter public open {link s:String}
+    set self.record["link"] = s ||""
+  }
+  {getter public open {link}:String
+    {return self.record["link"] asa String} ||""
+  }
+
+  {setter public open {status v:TaskStatus}
+    set self.record["status"] = v ||""
+  }
+  {getter public open {status}:TaskStatus
+    {return self.record["status"] asa TaskStatus} ||""
+  }
+
+  {setter public open {depth v:int}
+    set self.record["_depth"] = v ||""
+  }
+  {getter public open {depth}:int
+    {return self.record["_depth"] asa int} ||""
+  }
+
+  {setter public open {ln v:int}
+    set self.record["_ln"] = v ||""
+  }
+  {getter public open {ln}:int
+    {return self.record["_ln"] asa int} ||""
+  }
+
+  {setter public open {rn v:int}
+    set self.record["_rn"] = v ||""
+  }
+  {getter public open {rn}:int
+    {return self.record["_rn"] asa int} ||""
+  }
+
+  {setter public open {begin v:#DateTime}
+    set self.record["begin"] = v ||""
+  }
+  {getter public open {begin}:#DateTime
+    {return self.record["begin"] asa #DateTime} ||""
+  }
+
+  {setter public open {end v:#DateTime}
+    set self.record["end"] = v ||""
+  }
+  {getter public open {end}:#DateTime
+    {return self.record["end"] asa #DateTime} ||""
+  }
+
+  {setter public open {depnode v:TaskDinode}
+    set self.record["depnode"] = v ||""
+  }
+  {getter public open {depnode}:TaskDinode
+    {return self.record["depnode"] asa TaskDinode} ||""
+  }
+
+  {setter public open {critical? v:bool}
+    set self.record["critical"] = v ||""
+  }
+  {getter public open {critical?}:bool
+    {return self.record["critical"] asa bool} ||""
+  }
+
+  {setter public open {ord i:int}
+    set self.record["_ord"] = i ||""
+  }
+  {getter public open {ord}:int
+    {return self.record["_ord"] asa int} ||""
+  }
+
+  {setter public open {check v:String}
+    set self.record["check"] = v ||""
+  }
+  {getter public open {check}:String
+    {return self.record["check"] asa String} ||""
+  }
+
+  {setter public open {expand? v:bool}
+    set self.record["expand?"] = v ||""
+  }
+  {getter public open {expand?}:bool
+    {return self.record["expand?"] asa bool} ||""
+  }
+
+  {setter public open {hide v:bool}
+    set self.record["_hide"] = v ||""
+  }
+  {getter public open {hide}:bool
+    {return self.record["_hide"] asa bool} ||""
+  }
+
+  {getter public open {has-subtasks?}:bool
+    {return self.rn - self.ln > 1}
+  }
+
+}
+
+
+|| Table of tasks and operations on it
+{define-class public open TaskTable {inherits ProjectDataTable}
+
+  || Notifications
+  || Change effort: recalc the downstream schedule  (FIXME)
+
+  {getter protected open {owner-field}:RecordField
+    || Foreign key into ResourceTable
+    {return
+        {RecordField "owner", ||""
+            caption = {lmessage Owner},
+            domain = self.project.resources.resource-name-domain,
+            index-type = RecordFieldIndexType.none
+        }
+    }
+  }
+
+  field protected _fields:#RecordFields = null
+
+  || Data definition for tasks/milestones
+  {getter public open {fields}:RecordFields
+    {if-non-null fields = self._fields then
+        {return fields}
+     else
+        set self._fields =
+            {RecordFields
+                {splice {RecordSetTreeModel.get-fields id-field = "id"}},
+                {RecordField "scenario",
+                    caption = "Scenario",
+                    domain = String,
+                    index-type = RecordFieldIndexType.none
+                },
+                {RecordField "basescenario",
+                    caption = "Based on",
+                    domain = String,
+                    index-type = RecordFieldIndexType.none
+                },
+                {RecordField "name", ||""
+                    caption = {lmessage Name},
+                    domain = String,
+                    index-type = RecordFieldIndexType.none
+                },
+                self.owner-field,
+                {RecordField "effort", ||""
+                    caption = {lmessage Effort},
+                    domain = duration-domain,
+                    index-type = RecordFieldIndexType.none
+                },
+                {RecordField "constraint", ||""
+                    caption = {lmessage Constraint},
+                    domain = TaskConstraint-domain,
+                    index-type = RecordFieldIndexType.none
+                },
+                {RecordField "constraintdate", ||""
+                    caption = {lmessage Constraint Date},
+                    domain = DateTime, nullable? = true,
+                    index-type = RecordFieldIndexType.none
+                },
+                {RecordField "link", ||""
+                    caption = {lmessage Link},
+                    domain = String, ||FIXME foreign key?
+                    index-type = RecordFieldIndexType.none
+                },
+                {RecordField "status", ||""
+                    caption = {lmessage Status},
+                    domain = TaskStatus-domain,
+                    index-type = RecordFieldIndexType.none
+                },
+                {RecordField "c", ||""
+                    caption = {lmessage % Complete},
+                    domain = d3-domain,
+                    index-type = RecordFieldIndexType.none
+                },
+                {RecordField "begin", ||""
+                    caption = {lmessage begin},
+||--                    domain = DateTime, nullable? = true,
+                    domain = locale-date-domain, nullable? = true,
+                    index-type = RecordFieldIndexType.none
+                },
+                {RecordField "end", ||""
+                    caption = {lmessage end},
+||--                    domain = DateTime, nullable? = true,
+                    domain = locale-date-domain, nullable? = true,
+                    index-type = RecordFieldIndexType.none
+                },
+                {RecordField "critical", ||""
+                    caption = {lmessage Critical},
+                    domain = bool,
+                    index-type = RecordFieldIndexType.none
+                },
+                {RecordField "depnode", ||""
+                    caption = "depnode", ||""
+                    domain = transient-domain, nullable? = true,
+                    index-type = RecordFieldIndexType.none
+                },
+                {RecordField "check", ||""
+                    caption = {lmessage check},
+                    domain = String,
+                    index-type = RecordFieldIndexType.none
+                }
+            }
+        {return {non-null self._fields}}
+    }
+  }
+
+  ||FIXME: add a paramete dbtarget = "sql" | "mysql" | "sqlite" | ...
+  {getter public open {get-sql-create}:String
+    {return
+        |"CREATE TABLE task (
+            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            pid INTEGER NOT NULL,
+            ord INTEGER NOT NULL,
+            scenario TEXT NOT NULL,
+            basescenario TEXT NOT NULL,
+            name TEXT NOT NULL,
+            owner TEXT NOT NULL,
+            effort DOUBLE NOT NULL,
+            constraint TEXT NOT NULL,
+            constraintdate TEXT NOT NULL,
+            link TEXT NOT NULL,
+            status TEXT NOT NULL,
+            depth INTEGER NOT NULL,
+            begin TEXT NOT NULL,
+            end TEXT NOT NULL,
+            check TEXT NOT NULL,
+            expand TEXT NOT NULL,
+            hide TEXT NOT NULL
+          );"|
+    }
+  }
+
+  {getter public open {get-sql-insert-sample-data}:String
+    {return
+|"
+INSERT INTO task VALUES (1,0,0,0,0,'Sample Task 1','JP','',1.0,0.0,0.0);
+"|
+    }
+  }
+
+  field protected task-record-map:{HashTable-of int, TaskRecord} =
+      {new {HashTable-of int, TaskRecord}}
+
+  field protected _base-date:DateTime = {DateTime.date}
+  {setter public open {base-date v:DateTime}:void
+    set self._base-date = v
+    {self.rs.handle-event {RecordsBulkChanges}}
+  }
+  {getter public open {base-date}:DateTime
+    {return self._base-date}
+  }
+
+  {constructor public {default
+                          project-model:ProjectModel,
+                          file-name:String,
+                          ...:EventHandler
+                      }
+    {construct-super
+        project-model,
+        file-name,
+        {splice ...}
+    }
+    {self.rs.add-event-handler
+        {on e:RecordsBulkChanges do
+            {self.rebuild}
+        }
+    }
+    {self.rs.add-event-handler
+        {on e:RecordRemoved do
+            || You can't do anything with e.record (r["id"] will throw an
+            || error) so we have to rebuild the task-record-map from scratch
+            {self.rebuild}
+        }
+    }
+    {self.rs.add-event-handler
+        {on e:RecordAdded do
+            {self.rebuild}
+||--            def tr = {self.get-TaskRecord e.record}
+        }
+    }
+  }
+
+  {method public open {rebuild}:void
+    || This can happen for relatively minor changes, such as expanding
+    || or contracting a node, so do as little work as possible.
+
+    def recs = {self.rs.select}
+    {if recs.size > self.task-record-map.size then
+        {for r:Record in recs do
+            || This will create new entries if needed
+            {self.get-TaskRecord r}
+        }
+     elseif self.rs.size < self.task-record-map.size then
+        || Records were deleted
+        def trm = {new {HashTable-of int, TaskRecord}}
+        {for r:Record in recs do
+            def id = r["id"] asa int
+            set trm[id] = self.task-record-map[id]
+        }
+        set self.task-record-map = trm
+    }
+    {assert self.rs.size == self.task-record-map.size}
+  }
+
+  {method public open {new-task
+                          name:String,
+                          effort:Time,
+                          constraint:TaskConstraint = TaskConstraint.earliest,
+                          status:TaskStatus = TaskStatus.none
+                      }:Record
+    let r:Record = {self.rs.new-record}
+    ||"" ((
+    def id = {self.rs.new-id}
+    set r["id"] = id
+    set r["name"] = name
+    ||"" ))
+    set r["effort"] = effort
+    set r["constraint"] = constraint
+    set r["status"] = status
+    def ntr = {self.get-TaskRecord r}
+    {self.rs.append r}
+    {return r}
+  }
+
+
+||--  {method public open {new-task}:int
+||--    let r:Record = {self.new-record}
+||--    ||"" ((
+||--    set r["effort"] = 1d
+||--    ||"" ))
+||--    {return r["id"] asa int}
+||--  }
+
+  {method public open {refresh}:void
+    ||FIXME: could there be spurious entries in the map?
+||--    {self.task-record-map.clear}
+  }
+
+||--  {method public open {note-record-added r:Record}:void
+||--    def tr = {self.get-TaskRecord r["id"] asa int} ||""
+||--  }
+
+  {method public open {get-TaskRecord-by-id id:int}:TaskRecord
+    def (tr, found?) = {self.task-record-map.get-if-exists id}
+    {if found? then
+        {return tr}
+    }
+    {if-non-null r = {self.rs.get-by-id id} then
+        {return {self.get-TaskRecord r}}
+    }
+    {error {hlformat "Unable to locate task id=%s", id}}
+  }
+  
+  || r is from the TaskTable (self.rs)
+  {method public open {get-TaskRecord r:Record}:TaskRecord
+    def (tr, found?) = {self.task-record-map.get-if-exists r["id"] asa int}
+    {if found? then
+        {return tr}
+    }
+
+    def ntr = {TaskRecord r}
+    {if r["depnode"] == null then
+        set r["depnode"] = {TaskDinode ntr, self.project.graph}
+     else
+        {error
+            {hlmessage Internal error: Task not in task-record-map}
+        }
+    }
+    set self.task-record-map[ntr.id] = ntr
+    {return ntr}
+  }
+
+  || You can only sort the successors, so you need the initial tasks to start
+  {getter public open {initial-tasks}:{Array-of TaskDinode}
+    def tasks = {new {Array-of TaskDinode}}
+    {for r in self.rs do
+        def tn = {self.get-TaskRecord r}
+        {if tn.depnode.source? then
+            {tasks.append tn.depnode}
+        }
+    }
+    {return tasks}
+  }
+
+  {getter public open {final-tasks}:{Array-of TaskDinode}
+    def tasks = {new {Array-of TaskDinode}}
+    {for r in self.rs do
+        def tn = {self.get-TaskRecord r}
+        {if not tn.depnode.source? then
+            {tasks.append tn.depnode}
+        }
+    }
+    {return tasks}
+  }
+
+  {method public open {compute
+                          pre:#{proc-type {
+                                           parent:Record,
+                                           records:{Array-of Record},
+                                           v:any = null
+                                          }:void
+                               } = null,
+                          post:#{proc-type {
+                                           parent:Record,
+                                           records:{Array-of Record},
+                                           v:any = null
+                                          }:void
+                               } = null,
+                          parent-id:int = 0,
+                          pf:String = "_pid", ||""
+                          v:any = null
+                      }:void
+    {with self.rs.batch-events? = true do
+        let parents:{Array-of Record} =
+            {if parent-id == 0 then
+                || Find all the roots (records with no parent)
+                {self.rs.select filter =
+                    {proc {fr:Record}:bool {return fr[pf] == 0}}
+                }
+             else
+                || Find the one record for parent-id and compute from there
+                def a = {new {Array-of Record}}
+                {if-non-null r =
+                    {self.rs.select-one
+                        filter =
+                            {proc {fr:Record}:bool
+                                {return fr["id"] == parent-id} ||""
+                            }
+                    }
+                 then
+                    {a.append r}
+                }
+                a
+            }
+
+        {for parent in parents do
+           def children =
+                {self.rs.select filter =
+                    {proc {fr:Record}:bool {return fr[pf] == parent["id"]}} ||""
+                }
+            {if-non-null pre then
+                {pre parent, children, v = v}
+            }
+            {for cr:Record in children do
+                {self.compute
+                    pre = pre, post = post,
+                    parent-id = cr["id"] asa int, v = v ||""
+                }
+            }
+            {if-non-null post then
+                {post parent, children, v = v}
+            }
+        }
+    }
+  }
+
+  || Return the tasks that overlap the span from begin-date to end-date
+  || NYI: implement the scenario fallback
+||--  {method public open {find-tasks
+||--                          parent-id:int = 0,
+||--                          owner:String = "",
+||--                          constraint:TaskConstraint = TaskConstraint.earliest,
+||--                          begin-date:DateTime = null,
+||--                          end-date:DateTime = null
+||--                      }:{Array-of TaskRecord}
+||--
+||--    def fp = {proc {r:Record}:bool
+||--                 def tr = {TaskRecord r}
+||--                 {if (owner == "" or tr.owner == owner)
+||--                     and (parent-id == 0 or tr.parent-id == parent-id)
+||--                     and (constraint == TaskConstraint.earliest or
+||--                          tr.constraint == constraint)
+||--                     and (
+||--                          (tr.begin >= begin-date and tr.begin <= end-date)
+||--                          or (tr.end >= begin-date and tr.end <= end-date)
+||--                          or (tr.begin <= begin-date and tr.end >= end-date)
+||--                         )
+||--                  then
+||--                     {return true}
+||--                  else
+||--                     {return false}
+||--                 }
+||--             }
+||--    def tasks = {new {Array-of TaskRecord}}
+||--    def mr = {self.source.select filter = fp}
+||--    {for r:Record in mr do
+||--        {tasks.append {TaskRecord r}}
+||--    }
+||--    {return tasks}
+||--  }
+
+}
+
+|| -------------------------------------------------------------------------
+
+{define-class public open DependencyRecord
+
+  field protected record:Record
+
+  {constructor public {default r:Record}
+    set self.record = r
+  }
+
+  {setter public open {id i:int}
+    set self.record["id"] = i ||""
+  }
+  {getter public open {id}:int
+    {return self.record["id"] asa int} ||""
+  }
+
+  {setter public open {scenario v:String}
+    set self.record["scenario"] = v ||""
+  }
+  {getter public open {scenario}:String
+    {return self.record["scenario"] asa String} ||""
+  }
+
+  {setter public open {basescenario v:String}
+    set self.record["basescenario"] = v ||""
+  }
+  {getter public open {basescenario}:String
+    {return self.record["basescenario"] asa String} ||""
+  }
+
+  {setter public open {type v:DependencyType}
+    set self.record["type"] = v ||""
+  }
+  {getter public open {type}:DependencyType
+    {return self.record["type"] asa DependencyType} ||""
+  }
+
+  {setter public open {ida v:int}
+    set self.record["ida"] = v ||""
+  }
+  {getter public open {ida}:int
+    {return self.record["ida"] asa int} ||""
+  }
+
+  {setter public open {idb v:int}
+    set self.record["idb"] = v ||""
+  }
+  {getter public open {idb}:int
+    {return self.record["idb"] asa int} ||""
+  }
+
+  {setter public open {delay v:Time}
+    set self.record["delay"] = v ||""
+  }
+  {getter public open {delay}:Time
+    {return self.record["delay"] asa Time} ||""
+  }
+
+}
+
+|| Table of dependencies and operations on it
+{define-class public open DependencyTable {inherits ProjectDataTable}
+
+  {getter public open {fields}:RecordFields
+    {return self._fields}
+  }
+
+  field protected _fields:RecordFields =
+      {RecordFields
+        {RecordField "id", ||""
+            caption = "id", ||""
+            domain = int,
+            index-type = RecordFieldIndexType.unique
+        },
+        {RecordField "scenario",
+            caption = "Scenario",
+            domain = String,
+            index-type = RecordFieldIndexType.none
+        },
+        {RecordField "basescenario",
+            caption = "Based on",
+            domain = String,
+            index-type = RecordFieldIndexType.none
+        },
+        {RecordField "type", ||""
+            caption = {lmessage Type},
+            domain = DependencyType-domain,
+            index-type = RecordFieldIndexType.none
+        },
+        {RecordField "ida", ||""
+            caption = "A", ||""
+            domain = int,
+            index-type = RecordFieldIndexType.none
+        },
+        {RecordField "idb", ||""
+            caption = "B", ||""
+            domain = int,
+            index-type = RecordFieldIndexType.none
+        },
+        {RecordField "delay", ||""
+            caption = {lmessage Delay},
+            domain = Time,
+            index-type = RecordFieldIndexType.none
+        }
+      }
+
+  {getter public open {get-sql-create}:String
+    {return
+        |"CREATE TABLE dependency (
+            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            scenario TEXT NOT NULL,
+            basescenario TEXT NOT NULL,
+            type TEXT NOT NULL,
+            ida INTEGER NOT NULL,
+            idb INTEGER NOT NULL,
+            delay TEXT NOT NULL
+          );"|
+    }
+  }
+
+  {getter public open {get-sql-insert-sample-data}:String
+    {return
+|"
+INSERT INTO dependency VALUES (1,"","",requires,2,3,0);
+"|
+    }
+  }
+
+  {constructor public {default
+                          project-model:ProjectModel,
+                          file-name:String,
+                          ...:EventHandler
+                      }
+    {construct-super
+        project-model,
+        file-name,
+        {splice ...}
+    }
+  }
+
+  {method public open {new-dependency
+                          type:DependencyType = DependencyType.requires
+                      }:Record
+    let r:Record = {self.rs.new-record}
+    ||"" ((
+    def id = {self.rs.new-id}
+    set r["id"] = id
+    ||"" ))
+    set r["type"] = type
+    {self.rs.append r}
+    {return r}
+  }
+
+  {method public open {refresh}:void
+    || Nothing to calculate on this table
+  }
+
+  {method public open {get-DependencyRecord id:int}:DependencyRecord
+    {if-non-null r = {self.rs.get-by-id id} then
+        def dr = {DependencyRecord r}
+        {return dr}
+    }
+    {error {hlformat "Unable to locate dependency id=%s", id}}
+  }
+
+}
+
+|| -------------------------------------------------------------------------
+
+{define-class public open EventRecord {inherits BaseEventSpec}
+
+  field protected record:Record
+
+  {constructor public {default r:Record}
+    {construct-super}
+    set self.record = r
+  }
+
+  {setter public open {id i:int}
+    set self.record["id"] = i ||""
+  }
+  {getter public open {id}:int
+    {return self.record["id"] asa int} ||""
+  }
+
+
+  {setter public open {descr v:String}
+    set self.record["descr"] = v ||""
+  }
+  {getter public open {descr}:String
+    {return self.record["descr"] asa String} ||""
+  }
+
+
+  {setter public open {first v:DateTime}
+    set self.record["first"] = v ||""
+  }
+  {getter public open {first}:DateTime
+    {return self.record["first"] asa DateTime} ||""
+  }
+
+
+  {setter public open {final v:#DateTime}
+    set self.record["final"] = v ||""
+  }
+  {getter public open {final}:#DateTime
+    {return self.record["final"] asa #DateTime} ||""
+  }
+
+
+  {setter public open {who v:int}
+    set self.record["who"] = v ||""
+  }
+  {getter public open {who}:int
+    {return self.record["who"] asa int} ||""
+  }
+
+
+  {setter public open {start v:Time}
+    set self.record["start"] = v ||""
+  }
+  {getter public open {start}:Time
+    {return self.record["start"] asa Time} ||""
+  }
+
+
+  {setter public open {duration v:Time}
+    set self.record["duration"] = v ||""
+  }
+  {getter public open {duration}:Time
+    {return self.record["duration"] asa Time} ||""
+  }
+
+
+  {setter public open {repeat v:RepeatPeriod}
+    set self.record["repeat"] = v ||""
+  }
+  {getter public open {repeat}:RepeatPeriod
+    {return self.record["repeat"] asa RepeatPeriod} ||""
+  }
+
+  {setter public open {note v:String}
+    set self.record["note"] = v ||""
+  }
+  {getter public open {note}:String
+    {return self.record["note"] asa String} ||""
+  }
+
+}
+
+|| Table of events and operations on it
+{define-class public open EventTable {inherits ProjectDataTable}
+
+  {getter protected open {who-field}:RecordField
+    || Foreign key into ResourceTable
+    {return
+        {RecordField "who", ||""
+            caption = {lmessage Who},
+            domain = self.project.resources.resource-name-domain,
+            index-type = RecordFieldIndexType.none
+        }
+    }
+  }
+
+  field protected _fields:#RecordFields = null
+
+  {getter public open {fields}:RecordFields
+    {if-non-null fields = self._fields then
+        {return fields}
+     else
+        set self._fields =
+            {RecordFields
+                {RecordField "id", ||""
+                    caption = "id", ||""
+                    domain = int,
+                    index-type = RecordFieldIndexType.unique
+                },
+                {RecordField "descr", ||""
+                    caption = {lmessage Desc.},
+                    domain = String,
+                    index-type = RecordFieldIndexType.none
+                },
+                {RecordField "first", ||""
+                    caption = {lmessage First}, ||""
+                    domain = DateTime,
+                    index-type = RecordFieldIndexType.none
+                },
+                {RecordField "final", ||""
+                    caption = {lmessage Final},
+                    domain = DateTime,
+                    nullable? = true,
+                    index-type = RecordFieldIndexType.none
+                },
+                self.who-field,
+                {RecordField "start", ||""
+                    caption = {lmessage Starts},
+                    domain = Time,
+                    index-type = RecordFieldIndexType.none
+                },
+                {RecordField "duration", ||""
+                    caption = {lmessage Duration},
+                    domain = Time,
+                    index-type = RecordFieldIndexType.none
+                },
+                {RecordField "repeat", ||""
+                    caption = {lmessage Repeat},
+                    domain = RepeatPeriod-domain,
+                    index-type = RecordFieldIndexType.none
+                },
+                {RecordField "note", ||""
+                    caption = {lmessage Note},
+                    domain = String,
+                    index-type = RecordFieldIndexType.none
+                }
+            }
+    }
+    {return {non-null self._fields}}
+  }
+
+  {getter public open {get-sql-create}:String
+    {return
+        |"CREATE TABLE event (
+            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            descr TEXT NOT NULL,
+            who INT NOT NULL,
+            first TEXT NOT NULL,
+            final TEXT,
+            start TEXT NOT NULL,
+            duration DOUBLE NOT NULL,
+            repeat TEXT NOT NULL,
+            note TEXT NOT NULL
+          );"|
+    }
+  }
+
+  {getter public open {get-sql-insert-sample-data}:String
+    {return
+|"
+INSERT INTO event VALUES (1,"New Years",0,2009-01-01,2020-01-01,00:00,86400,year,"random note");
+"|
+    }
+  }
+
+  field protected busy:{Array-of EventRecord} = {new {Array-of EventRecord}}
+
+  {constructor public {default
+                          project-model:ProjectModel,
+                          file-name:String,
+                          ...:EventHandler
+                      }
+    {construct-super
+        project-model,
+        file-name,
+        {splice ...}
+    }
+  }
+
+
+  {method public open {refresh}:void
+    {self.busy.clear}
+    {for r:Record in self.rs do
+        {if r["who"] asa int == 0 then ||""
+            {self.busy.append {EventRecord r}}
+        }
+    }
+  }
+
+  {method public open {get-EventRecord id:int}:EventRecord
+    {if-non-null r = {self.rs.get-by-id id} then
+        def rr = {EventRecord r}
+        {return rr}
+    }
+    {error {hlformat "Unable to locate event id=%s", id}}
+  }
+
+  {method public open {holiday? date:DateTime}:(bool, String)
+    {for er:EventRecord in self.busy do
+        {if {er.scheduled? date} then
+            {return (true, er.descr)}
+        }
+    }
+    {return (false, "")}
+  }
+
+  || Return true if owner is available on the given date
+  {method public open {available? owner:int, date:DateTime}:bool
+    def day-of-week = date.info.day-of-week
+    {if day-of-week == 6 or day-of-week == 7 then
+        {return false}
+    }
+    {for er:EventRecord in self.busy do
+        {if {er.scheduled? date} then
+            {return false}
+        }
+    }
+    {for r:Record in {self.rs.select filter = {RecordData who = owner}} do
+        def er = {EventRecord r}
+        {if {er.scheduled? date} then
+            {return false}
+        }
+    }
+    {return true}
+  }
+
+  {method public open {get-events owner:int}:{Array-of Record}
+    def events = {self.rs.select filter = {RecordData who = owner}}
+    {for er:EventRecord in self.busy do
+        {events.append er.record}
+    }
+    {return events}
+  }
+
+  ||FIXME: add params like add-task
+  {method public open {new-event}:int
+    let r:Record = {self.rs.new-record}
+    ||"" ((
+    def id = {self.rs.new-id}
+    set r["id"] = id
+    set r["descr"] = ""
+    set r["first"] = {DateTime.date}
+    set r["final"] = null
+    set r["who"] = 0
+    set r["start"] = 0s
+    set r["duration"] = 0s
+    set r["repeat"] = RepeatPeriod.none
+    set r["note"] = ""
+    ||"" ))
+    {self.rs.append r}
+    {return id}
+  }
+
+}
+
+|| ------------------------------------------------------------------------

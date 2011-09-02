@@ -1,0 +1,434 @@
+||| Copyright (C) 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An Open Curl project.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+
+{doc-next
+    {purpose
+        An abstract base class for classes such as {docref PaneTitleBar}
+        that can be used to drag a {docref BasePane} object.
+    }
+    {override
+        Concrete subclasses of this class also inherit from a subclass
+        of {docref Graphic}.
+        They listen for the standard set of pointer motion and drag events,
+        and trampoline such events to methods of this class such as
+        {docref-abbr PaneDragger.handle-pointer-motion}.
+    }
+}
+{define-class public open abstract PaneDragger
+  
+  {doc-next
+    {purpose
+        The {docref BasePane} that is attached to this {docref PaneDragger}.
+    }
+  }
+  field public constant pane:BasePane
+
+  {doc-next
+    {purpose
+        Construct a {docref PaneDragger} object.
+    }
+    {parameter pane,
+        The {docref BasePane} object that is attached to this {docref PaneDragger}.
+    }
+  }
+  {constructor package {default pane:BasePane}
+    set self.pane = pane
+    {add-context-popup self asa Visual, 
+        menu-pane-proc = 
+            {proc {v:Visual}:MenuPane
+                {return {self.make-context-menu}}
+            }
+    }
+  }
+
+  {doc-next
+    {purpose
+        Create the context menu for this {docref PaneDragger}.
+    }
+    {return-vals
+        The {docref MenuPane} object that should be used as this
+        {docref PaneDragger}'s context ({quote right-click}) menu.
+    }
+  }
+  {method protected open {make-context-menu}:MenuPane
+    let mp:MenuPane = {MenuPane}
+    {mp.add
+        {MenuAction 
+            label = {hlmessage &Dockable},
+            icon =
+                {if self.pane.state == PaneState.docked or
+                    self.pane.state == PaneState.dockable 
+                 then
+                    {bullet}
+                 else
+                    null
+                },
+            {on Action do
+                {if self.pane.state == PaneState.docked then
+                    {self.pane.float true}
+                 else
+                    set self.pane.state = PaneState.dockable
+                }
+            }
+        }
+    }
+    {mp.add
+        {MenuAction 
+            label = {hlmessage &Hide},
+            {on Action do
+                {self.pane.hide}
+            }
+        }
+    }
+    {mp.add
+        {MenuAction 
+            label = {hlmessage &Floating},
+            icon =
+                {if self.pane.state == PaneState.floating then
+                    {bullet}
+                 else
+                    null
+                },
+            {on Action do
+                {if self.pane.state == PaneState.docked then
+                    {self.pane.float false}
+                 else
+                    set self.pane.state = PaneState.floating
+                }
+            }
+        }
+    }
+    {return mp}
+  }
+  
+  || This field is set to true when a DragStarted event is seen,
+  || indicating that a drag can start.  When a PointerMotion event
+  || that is actually part of the drag is seen, then, this field
+  || is set back to false and the drag is actually started by calling
+  || self.start-drag.
+  field private can-start-drag?:bool
+  
+  || The (x,y) position of the pointer, in the coordinate system of the
+  || screen's root window, of the position where the drag started.
+  field private drag-x:Distance
+  field private drag-y:Distance
+  
+  || The View that is created in self.start-drag to act as a surrogate
+  || for the dragged BasePane during the drag gesture.
+  field private drag-view:#View
+  
+  || The position and size of self.drag-view at the beginning of the
+  || drag gesture.
+  field private drag-view-x:Distance
+  field private drag-view-y:Distance
+  field private drag-width:Distance
+  field private drag-height:Distance
+  
+  || Temporarily records whether the most recent event was one that
+  || should be considered part of an attempted docking gesture.
+  || This field is set to the value returned by the self.dockable?
+  || method, defined below.
+  field private dock?:bool
+  
+  {method private {can-drag? e:GuiInputEvent}:bool
+    {return e.state-mask.button-1? and not e.alt?}
+  }
+
+  {doc-next
+    {purpose
+        Called when a {docref DragStarted} event is fired at
+        this {docref PaneDragger}.
+    }
+    {parameter e,
+        The event that was fired.
+    }
+    {parameter drag-obj,
+        This object, viewed as a {docref Graphic}.
+    }
+    {details
+        This method continues the implicit pointer grab
+        and sets up state variables to prepare for dragging.
+    }
+  }
+  {method protected open {handle-drag-started e:DragStarted, drag-obj:Graphic}:void
+    {if {self.can-drag? e} then
+        {e.continue-implicit-pointer-grab drag-obj}
+        set self.can-start-drag? = true
+        {e.consume}
+    }
+  }
+
+  {method private {dockable? e:GuiInputEvent}:bool
+    {return ((self.pane.state == PaneState.dockable or
+             self.pane.state == PaneState.docked) and
+             not e.accel?)
+    }
+  }
+
+  {doc-next
+    {purpose
+        Called when a {docref PointerMotion} event or other {docref GuiInputEvent} is fired at
+        this {docref PaneDragger}.
+    }
+    {parameter e,
+        The event that was fired.
+    }
+    {parameter drag-obj,
+        This object, viewed as a {docref Graphic}.
+    }
+  }
+  {method protected open {handle-pointer-motion e:GuiInputEvent, drag-obj:Graphic}:void
+    {if {self.can-drag? e} then
+        {e.consume}
+
+        set self.dock? = {self.dockable? e}
+        
+        {if self.can-start-drag? and self.drag-view == null then
+            {if self.pane.state != PaneState.docked or
+                {self.allow-dragging? e} 
+             then
+                set self.can-start-drag? = false
+                {self.start-drag e, drag-obj}
+                {return}
+            }
+        }
+
+        {if-non-null v = self.drag-view then
+            {self.continue-drag v, e, drag-obj}
+        }
+    }
+  }
+
+  {doc-next
+    {purpose
+        Indicate whether this object is draggable when it is attached to
+        a {docref BasePane} that is docked.
+    }
+    {parameter e,
+        The event that might be the start of a drag gesture.
+    }
+    {return-vals
+        True if a drag should begin with the event {param e},
+        false otherwise.
+    }
+    {override
+        The base definition of this method always returns true.
+        Subclasses such as {docref TabDragger} override it to return
+        false under some conditions.
+    }
+  }
+  {method protected open {allow-dragging? e:GuiInputEvent}:bool
+    {return true}
+  }
+
+  {doc-next
+    {purpose
+        Called when a {docref PointerRelease} event is fired at
+        this {docref PaneDragger}.
+    }
+    {parameter e,
+        The event that was fired.
+    }
+    {parameter drag-obj,
+        This object, viewed as a {docref Graphic}.
+    }
+  }
+  {method protected open {handle-pointer-release
+                      e:PointerRelease,
+                      drag-obj:Graphic
+                  }:void
+    {if e.button == left-button then
+        set self.can-start-drag? = false
+        {e.consume}
+        set self.dock? = {self.dockable? e}
+        {if-non-null v = self.drag-view then
+            {self.end-drag v, e, drag-obj}
+        }
+    }
+  }
+
+  {doc-next
+    {purpose
+        Called when a {docref GrabRelease} event is fired at
+        this {docref PaneDragger}.
+    }
+  }
+  {method protected open {handle-grab-release}:void
+    {self.cancel-drag}
+  }
+
+  {doc-next
+    {purpose
+        Called when a {docref KeyPress} event is fired at
+        this {docref PaneDragger}.
+    }
+    {parameter e,
+        The event that was fired.
+    }
+    {details
+        If the key that has been pressed is the Escape key,
+        then the current drag operation is canceled.
+    }
+  }
+  {method protected open {handle-key-press e:KeyPress}:void
+    {if e.value == KeyPressValue.esc then
+        {{get-gui-manager}.release-implicit-pointer-grab}
+        {self.cancel-drag}
+    }
+  }
+
+  || This method is called from self.handle-pointer-motion for the first
+  || PointerMotion event that is seen during a drag gesture.
+  {method private {start-drag e:GuiInputEvent, drag-obj:Graphic}:void
+    let pane:BasePane = self.pane
+    {if-non-null floating-view = pane.floating-view then
+        def view = floating-view.view
+        set (pane.floating-width, pane.floating-height) = {view.get-size}
+        set (pane.floating-x, pane.floating-y) = {view.get-position}
+    }
+    set (self.drag-x, self.drag-y) = 
+        {drag-obj.transform-to-display-coordinates e.x, e.y}
+    let drag-view:View =
+        {self.pane.create-drag-view self.drag-x, self.drag-y}
+    set (self.drag-view-x, self.drag-view-y) = {drag-view.get-position}
+    set self.drag-view = drag-view
+    set (self.drag-width, self.drag-height) = {drag-view.get-size}
+  }
+  
+  {doc-next
+    {purpose
+        Compute the {docref DockingAction} and target {docref BasePane}
+        for a given pointer position during a docking drag gesture.
+    }
+    {parameter (x,y),
+        The current pointer position, in the coordinate frame of
+        {param drag-obj}.
+    }
+    {parameter drag-obj,
+        The graphical object relative to which the coordinates
+        {param x} and {param y} are measured.
+    }
+    {return-vals
+        The first return value is a {docref DockingAction} describing the docking action that
+        would occur if the drag gesture ended at the point
+        ({param x}, {param y}).
+        The second return value is the {docref BasePane} relative to which
+        the docking action will occur.
+        If this second return value is null,
+        then the docking action will occur relative to the top-level {docref PaneContainer}.
+    }
+  }
+  {method private {compute-docking-action
+                      e:GuiInputEvent,
+                      drag-obj:Graphic
+                  }:(state:DockingAction, target-pane:#BasePane)
+    def (x, y) = {drag-obj.transform-to-display-coordinates e.x, e.y}
+    let state:DockingAction = DockingAction.none
+    let target-pane:#BasePane
+    {if self.dock? then
+        def main = self.pane.root-container
+        {if-non-null tp = {main.get-single-pane-at x, y} then
+            {if {self.can-drop-on-self?} or self.pane != tp
+             then
+                set state = {tp.compute-docking-action x, y, e}
+                set target-pane = tp
+                {if-non-null parent = tp.pane-group then
+                    set (state, target-pane) = {parent.filter-docking-action state, tp}
+                }
+            }
+         else
+            set state = {main.compute-docking-action x, y, e}
+        }
+    }
+    {if state == DockingAction.over-pane then
+        || If, after all of the above work, the "over-pane" docking action is returned,
+        || map that to its semantic equivalent, "none".
+        set state = DockingAction.none
+    }
+    {return state, target-pane}
+  }
+
+  {method private {continue-drag
+                      drag-view:View,
+                      e:GuiInputEvent,
+                      drag-obj:Graphic
+                  }:void
+    def (state, target-pane) = {self.compute-docking-action e, drag-obj}
+    {if state != DockingAction.none then
+        {if-non-null target-pane then
+            {target-pane.show-drop-zone state, drag-view}
+         else
+            {self.pane.root-container.show-drop-zone state, drag-view}
+        }
+        {return}
+    }   
+    let (x:Distance, y:Distance) = 
+        {drag-obj.transform-to-display-coordinates e.x, e.y}
+    let dx:Distance = x - self.drag-x
+    let dy:Distance = y - self.drag-y
+    {drag-view.set-window-position-and-size 
+        self.drag-view-x + dx, self.drag-view-y + dy,
+        self.drag-width, self.drag-height
+    }
+  }
+
+  || TODO: Can the shared code patterns between this method and the previous
+  || one be shared better so there is less duplication?
+  {method private {end-drag
+                      drag-view:View,
+                      e:PointerRelease,
+                      drag-obj:Graphic
+                  }:void
+    def (state, target-pane) = {self.compute-docking-action e, drag-obj}
+    let pane:BasePane = self.pane
+    {if state == DockingAction.none then
+        || If there's no DockingAction to perform at the end of this drag, leave the dragged pane floating.
+        let drag-view:View = {non-null self.drag-view}
+        set (pane.floating-x, pane.floating-y) = {drag-view.get-position}
+        set (pane.floating-width, pane.floating-height) = 
+            {drag-view.get-size}
+        {if pane.state == PaneState.docked then
+            {self.pane.float true}
+         else
+            let view:View = {non-null {pane.get-view}}
+            set view.width = pane.floating-width
+            set view.height = pane.floating-height
+            {view.set-window-position pane.floating-x, pane.floating-y}
+        }
+     else
+        {pane.root-container.dock-pane pane, state, target-pane}
+    }
+    {self.cancel-drag}
+  }
+
+  {method private {cancel-drag}:void
+    {self.pane.set-status-text ""}
+    {if-non-null view = self.drag-view then
+        {view.destroy}
+        set self.drag-view = null
+    }
+  }
+
+  {doc-next
+    {purpose
+        Does this {docref PaneDragger} allow drop operations
+        onto its own {docref BasePane}?
+    }
+  }
+  {method protected open abstract {can-drop-on-self?}:bool}
+  
+}

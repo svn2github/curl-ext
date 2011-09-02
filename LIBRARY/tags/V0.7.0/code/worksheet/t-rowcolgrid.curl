@@ -1,0 +1,345 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0, 8.0 applet}
+
+{applet manifest = "../manifest.mcurl", locale = "en"}
+
+{import * from COM.CURL.EXT.WORKSHEET}
+{import * from CURL.GUI.CHARTS}
+
+{set-document-properties
+    font-family = "Calibri, Cordia, Arial",
+    font-size = 10pt
+}
+
+|| -------------------------------------------------------------------------
+
+{title font-size = 12pt, Test RowColGrid}
+
+1 x 1: {RowColGrid 1, 1}
+
+{let rc-prefix:String = ".."}
+{define-proc {init-rc r:int, c:int}:Graphic
+    {return
+        {Frame margin = 2pt,
+            {format "%sR%sC%s", rc-prefix, r, c}
+        }
+    }
+}
+
+
+{def errors = {VBox background = "#fff0e0", {bold Errors}}}
+
+{define-proc {get-description g:Graphic}:String
+    def content =
+        {type-switch g
+         case f:Frame do
+            {f.get-text}
+         case t:Null do
+            "NULL"
+         else 
+            {String g}
+        }
+    {return content}
+}
+
+{define-proc {check-RowColGrid rcg:RowColGrid, errors:Box}:bool
+    let err-count:int = 0
+    let fill-count:int = 0
+    def cells = {new {Array-of Graphic}}
+    let null-count:int = 0
+    {for ri = 0 below rcg.rows do
+        {for ci = 0 below rcg.cols do
+            def cell = {rcg.get-cell ri, ci}
+            {if-non-null cell then
+                {cells.append cell}
+             else
+                {inc null-count}
+            }
+        }
+    }
+    
+    let count:int = 0
+    || The only things in the grid should be known cells
+    {for g:Graphic in rcg.graphical-children do
+        {if count >= cells.size + rcg.rows + rcg.cols then
+            {errors.add
+                {format "Too many children in grid: %s", {get-description g}}
+            }
+            {inc err-count}
+||--         elseif  g != cells[count] then
+||--            {errors.add {format "child %s out of position", count}}
+||--            {inc err-count}
+        }
+        {if g isa Fill then
+            {inc fill-count}
+         else
+            {inc count}
+        }
+        {if {cells.find g} < 0 then
+            {if {g.style-element.find-string "grid-line"} < 0 then
+                {errors.add
+                    {format "Unknown Graphic in the grid: '%s'", 
+                        {get-description g}
+                    }
+                }
+                {inc err-count}
+            }
+        }
+    }
+    {if count + null-count != rcg.rows * rcg.cols then
+        {errors.add
+            {format "cell-count=%s + null-count=%s != rows x cols = %s",
+                count, null-count, rcg.rows * rcg.cols
+            }
+        }
+        {inc err-count}
+    }
+    {return err-count == 0}
+}
+
+{define-proc {test-ins-del-row count:int, errors:Box}:Graphic
+    def box = {VBox spacing = 3pt}
+    def maxr = count + 1
+    set rc-prefix = ".."
+    {for rcount = count + 1 to maxr do
+        def ccount = 3
+        {for ri = 0 to rcount do
+            {box.add
+                {format "init %s x %s: insert %s at %s",
+                    rcount, ccount, count, ri
+                }
+            }
+            def rcg =
+                {RowColGrid rcount, ccount,
+                    vertical-grid-line-width = 2px,
+                    horizontal-grid-line-width = 3px,
+                    grid-line-color = "cornflowerblue",
+                    border-width = 1px, border-color = "gray"
+                }
+            {for ri = 0 below rcount do
+                {for ci = 0 below ccount do
+                    {rcg.add-cell ri, ci, {init-rc ri, ci}}
+                }
+            }
+            {with rc-prefix = "++" do
+                {rcg.insert-rows ri, count, init-proc = init-rc}
+                {if rcg.rows != rcount + count then
+                    {errors.add
+                        {format "Should have %s rows but have %s",
+                            rcount + count, rcg.rows
+                        }
+                    }
+                }
+            }
+            {box.add rcg}
+        }
+    }
+
+    {for rcount = count + 1 to maxr do
+        def ccount = 3
+        {for ri = 0 to rcount - 1 do
+            {box.add
+                {format "init %s x %s: delete %s at %s",
+                    rcount, ccount, count, ri
+                }
+            }
+            def rcg =
+                {RowColGrid rcount, ccount,
+                    vertical-grid-line-width = 2px,
+                    horizontal-grid-line-width = 3px,
+                    grid-line-color = "cornflowerblue",
+                    border-width = 1px, border-color = "gray"
+                }
+            {for ri = 0 below rcount do
+                {for ci = 0 below ccount do
+                    {rcg.add-cell ri, ci, {init-rc ri, ci}}
+                }
+            }
+            {with rc-prefix = "--" do
+                {rcg.insert-rows ri, -count, init-proc = init-rc}
+                {if rcg.rows != {max ri, rcount - count} then
+                    {errors.add
+                        {format "Should have %s rows but have %s",
+                            {max ri, rcount - count}, rcg.rows
+                        }
+                    }
+                }
+            }
+            {box.add rcg}
+        }
+    }
+    {return box}
+}
+
+{define-proc {test-ins-del-col count:int, errors:Box}:Graphic
+    def box = {VBox spacing = 3pt}
+    def maxc = count + 2
+    set rc-prefix = ".."
+    {for ccount = count + 1 to maxc do
+        def rcount = 3
+        {for ci = 0 to ccount do
+            {box.add
+                {format "init %s x %s: insert %s at %s",
+                    rcount, ccount, count, ci
+                }
+            }
+            def rcg =
+                {RowColGrid rcount, ccount,
+                    border-width = 1px, border-color = "gray"
+                }
+            {for ri = 0 below rcount do
+                {for ci = 0 below ccount do
+                    {rcg.add-cell ri, ci, {init-rc ri, ci}}
+                }
+            }
+            {with rc-prefix = "++" do
+                {rcg.insert-cols ci, count, init-proc = init-rc}
+                {if rcg.cols != ccount + count then
+                    {errors.add
+                        {format "Should have %s cols but have %s",
+                            ccount + count, rcg.cols
+                        }
+                    }
+                }
+            }
+            {box.add rcg}
+        }
+    }
+
+    {for ccount = count + 1 to maxc do
+        def rcount = 3
+        {for ci = 0 to ccount - 1 do
+            {box.add
+                {format "init %s x %s: delete %s at %s",
+                    rcount, ccount, count, ci
+                }
+            }
+            def rcg =
+                {RowColGrid rcount, ccount,
+                    border-width = 1px, border-color = "gray"
+                }
+            {for ri = 0 below rcount do
+                {for ci = 0 below ccount do
+                    {rcg.add-cell ri, ci, {init-rc ri, ci}}
+                }
+            }
+            {with rc-prefix = "--" do
+                {rcg.insert-cols ci, -count, init-proc = init-rc}
+                {if rcg.cols != {max ci, ccount - count} then
+                    {errors.add
+                        {format "Should have %s cols but have %s",
+                            {max ci, ccount - count}, rcg.cols
+                        }
+                    }
+                }
+            }
+            {box.add rcg}
+        }
+    }
+    {return box}
+}
+
+{value
+    def rcount = 2
+    def ccount = 3
+    def rcg = 
+        {RowColGrid rcount, ccount,
+            vertical-grid-line-width = 2px,
+            horizontal-grid-line-width = 3px,
+            grid-line-color = "cornflowerblue",
+            border-width = 1px, border-color = "gray"
+        }
+    {for ri = 0 below rcount do
+        {for ci = 0 below ccount do
+            {rcg.add-cell ri, ci, {init-rc ri, ci}}
+        }
+    }
+    {rcg.insert-cols 1, -1}
+    rcg
+}
+
+{value
+    def errs = {VBox background = "#fff0e0", {bold ins-del-row Errors}}
+    {HBox
+        errs, 
+        {test-ins-del-row 2, errs}
+    }
+}
+
+{value
+    def errs = {VBox background = "#fff0e0", {bold ins-del-col Errors}}
+    {HBox
+        errs, 
+        {test-ins-del-col 2, errs}
+    }
+}
+
+{value
+    def rcg = {RowColGrid 4, 5,
+||--                  width = 3in, height = 1in,
+                  background = "beige"
+              }
+    {for r = 0 below rcg.rows do
+        {for c = 0 below rcg.cols do
+            {rcg.add-cell r, c,
+                {Frame margin = 2pt,
+                    {format "R%sC%s", r, c}
+                }
+            }
+        }
+    }
+    {text
+        {value errors}{br}
+        {value rcg}
+    }
+    {errors.add "Check 1"}
+    {check-RowColGrid rcg, errors}
+}
+
+{value
+    def rcg = {RowColGrid 2, 3, background = "beige"}
+    {for r = 0 below rcg.rows do
+        {for c = 0 below rcg.cols do
+            {rcg.add-cell r, c, {init-rc r, c}}
+        }
+    }
+    set rc-prefix = "I:"
+    {rcg.insert-rows 0, 1, init-proc = init-rc}
+    {try
+        {rcg.add-cell 0, 0, {Frame margin = 2pt, "ADDED"}}
+     catch e:Exception do
+        {errors.add
+            {format "'%s': %s",
+                e.message, "rcg.add (not expected)"
+            }
+        }
+    }
+    {errors.add "Check 2"}
+    {check-RowColGrid rcg, errors}
+    {after 2s do
+        {rcg.insert-rows 0, -1}
+        {errors.add "Check 3"}
+        {check-RowColGrid rcg, errors}
+    }
+    {text
+        {value errors}{br}
+        {value rcg}
+    }
+}
+

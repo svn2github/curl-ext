@@ -1,0 +1,143 @@
+||| Maintained by: mgordon
+
+{curl 7.0, 8.0 script}
+{script manifest = "manifest.mcurl",
+    {compiler-directives careful? = true}
+}
+
+{import * from COM.CURL.EXT.AUTO-TEST}
+{import * from COM.CURL.EXT.GUI}
+
+{import * from CURL.GRAPHICS.WINDOW}
+
+{import * from CURL.GUI.STANDARD} || For events
+{import * from CURL.GUI.CONTROL-BASE} || Control
+
+|| Run this script using curl.exe:
+|| "C:\Program Files\Curl Corporation\Surge\8\bin\curl.exe" %1 --manual
+
+{define-class public open RandomCompletionProvider
+  {inherits AutocompleteProvider}
+
+  field public rng:LinearRandom
+  field public digits:int
+
+  {constructor public {default
+                          max-results:int = 10,
+                          digits:int = 6
+                      }
+
+    {construct-super max-results}
+    set self.digits = digits
+    set self.rng =
+        {LinearRandom seed = ({DateTime}.info.fraction * 10000) asa int}
+  }
+
+  || Populate the dropdown by generating some random completions
+  {method public open {refresh acf:AutocompleteMixin}:void
+    def tf = acf.text-field
+    def s = tf.value
+    let items:StringArray = {StringArray}
+    def result-count = {max 10, self.max-results}
+    {if s.size < self.digits then
+        def n = self.digits - s.size
+        let a:int = 1
+        let b:int = {pow 10.0, n} asa int
+        let f:String = {format "%%s%%0%dd", n}
+        {for i = 0 below result-count do
+            {items.append {format f, s, {self.rng.next-in-range a, b - 1}}}
+        }
+    }
+    {acf.populate-from-strings items}
+  }
+}
+
+{def host = 
+    {if {{get-base-url}.name.find-string "wwwin"} > -1 then
+        "http://wwwin.curl.com/~mgordon"
+        else
+        "http://192.168.2.23/curltest"
+    }
+}
+{dump host}
+
+{define-proc {make-control ...}:AutocompleteTextField
+    {return
+        {AutocompleteTextField
+            value = "test",
+||--            {AsyncCompletionProvider host & "/words-containing.php?value=%s&max=%s"},
+            {RandomCompletionProvider},
+            width = 2.5in,
+            {splice ...}
+        }
+    }
+}
+
+|| -----------------
+|| Define the tests
+|| -----------------
+
+{def value-changed = {ValueChanged}}
+{def value-finished = {ValueFinished}}
+{def action = {Action}}
+{def key-press = {KeyPress}}
+
+{def test =
+    {GuiTest {make-control}, "Typing Test", results,
+        {UI.set-value ""},
+        {UI.focus},
+        {UI.type "af"},
+        {UI.click 10mm, 25mm},
+        {UI.check-events 
+            key-press, value-changed, 
+            key-press, value-changed,
+            value-changed, value-finished
+        },
+        {UI.set-value ""},
+        {UI.type "af"},
+        {UI.check-events 
+            key-press, value-changed, 
+            key-press, value-changed
+        }
+    }
+}
+
+
+{def view-height = 800px}
+{def view-width = 1024px}
+{let v:View =
+    {View
+        title = "GUI Automated Tests - AutocompleteTextField",
+        height = view-height,
+        width = view-width,
+        margin = 4pt,
+        center? = true,
+        {Dialog 
+            {GuiTest.setup "AutocompleteTextField Tests"}
+        },
+        {on WindowClose do
+            {exit}
+        }
+    }
+}
+
+{define-proc public {run-tests}:void
+    {test.run}
+    {GuiTest.finish script-args = script-args}
+}
+
+
+{do
+    {v.show}
+
+    {if {script-args.find "--manual"} >= 0 then
+        set v.visibility = WindowVisibility.normal
+     else
+        {after 1s do
+            {run-tests}
+        }
+    }
+
+    {event-loop}
+}
+

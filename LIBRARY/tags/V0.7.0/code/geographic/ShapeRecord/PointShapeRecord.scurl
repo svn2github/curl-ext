@@ -1,0 +1,53 @@
+||| Maintained by: kodan
+
+{define-class public PointShapeRecord {inherits ShapeRecord}
+  
+  field public x:double
+  field public y:double
+  
+  let public record-fields:RecordFields = 
+      {RecordFields
+        {RecordField "shape-type", domain = int},
+        {RecordField "x", domain = double},
+        {RecordField "y", domain = double}}
+  
+  {constructor public {default
+                          shape-type:int,
+                          x:double,
+                          y:double
+                      }
+    set self.shape-type = shape-type
+    set self.x = x
+    set self.y = y
+  }
+  
+  {factory public {from-Record record:Record}:PointShapeRecord
+    {with-compiler-directives allow-implicit-any-casts? = true do
+        {return
+            {PointShapeRecord
+                record["shape-type"] asa int,
+                record["x"],
+                record["y"]
+            }
+        }
+    }
+  }
+  
+  {method public {to-RecordData}:RecordData
+    let record-data:RecordData = {RecordData}
+    set record-data["shape-type"] = self.shape-type
+    set record-data["x"] = self.x
+    set record-data["y"] = self.y
+    {return record-data}
+  }
+  
+  {method public {to-polygons}:{Array-of {Array-of Double2d}}
+    let point:Double2d = {Double2d self.x, self.y}
+    let array1:{Array-of Double2d} = {{Array-of Double2d} point}
+    let array2:{Array-of {Array-of Double2d}} = {{Array-of {Array-of Double2d}} array1}
+    
+    {return array2}
+  }
+  
+  
+}

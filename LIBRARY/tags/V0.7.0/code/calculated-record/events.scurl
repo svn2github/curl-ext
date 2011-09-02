@@ -1,0 +1,176 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl-file-attributes character-encoding = "utf8"}
+
+{doc-next
+    {purpose
+        An event relating to the operation of a {docref CalculatedField}.
+    }
+}
+{define-class public open CalculatedFieldEvent {inherits Event}}
+
+
+{doc-next
+    {purpose
+        An event relating to a {docref CalculatedField} update.
+    }
+}
+{define-class public open CalculatedFieldUpdateEvent
+  {inherits CalculatedFieldEvent}
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+  }
+  {constructor public {default}}
+  
+}
+
+
+{doc-next
+    {purpose
+        An event relating to a {docref CalculatedField} update
+        in a particular update epoch.
+    }
+}
+{define-class public open CalculatedFieldSequentialUpdateEvent
+  {inherits CalculatedFieldUpdateEvent}
+  
+  {doc-next
+    {purpose
+        The update epoch this event was generated for.
+    }
+    {details
+        This integer tracks which numbered update cycle the event is
+        associated with.
+    }
+  }
+  field public constant epoch:int
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter epoch,
+        See {docref-abbr CalculatedFieldUpdateEvent.epoch}
+    }
+  }
+  {constructor public {default epoch:int}
+    {if epoch < 0 then
+        {throw
+            {CalculatedFieldUpdateEpochException
+                {hlmessage "Invalid negative epoch %d.", epoch}
+            }
+        }
+    }
+    set self.epoch = epoch
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        An event requesting a new {docref CalculatedField} update.
+    }
+}
+{define-class public open CalculatedFieldUpdateRequest
+  {inherits CalculatedFieldUpdateEvent}
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+  }
+  {constructor public {default}
+    {construct-super}
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        An event signaling that a {docref CalculatedField} update is beginning.
+    }
+}
+{define-class public open CalculatedFieldUpdateStart
+  {inherits CalculatedFieldSequentialUpdateEvent}
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter epoch,
+        See {docref-abbr CalculatedFieldUpdateEvent.epoch}
+    }
+  }
+  {constructor public {default epoch:int}
+    {construct-super epoch}
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        An event signaling that a {docref CalculatedField} update finished.
+    }
+}
+{define-class public open CalculatedFieldUpdateFinished
+  {inherits CalculatedFieldSequentialUpdateEvent}
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter epoch,
+        See {docref-abbr CalculatedFieldUpdateEvent.epoch}
+    }
+  }
+  {constructor public {default epoch:int}
+    {construct-super epoch}
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        An event signaling that a {docref CalculatedField} update aborted
+        before completing.
+    }
+}
+{define-class public open CalculatedFieldUpdateAborted
+  {inherits CalculatedFieldSequentialUpdateEvent}
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter epoch,
+        See {docref-abbr CalculatedFieldUpdateEvent.epoch}
+    }
+  }
+  {constructor public {default epoch:int}
+    {construct-super epoch}
+  }
+  
+}
+

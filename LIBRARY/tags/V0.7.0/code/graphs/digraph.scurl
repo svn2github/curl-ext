@@ -1,0 +1,877 @@
+{curl-file-attributes character-encoding = "utf8"}
+
+{doc-next
+    {purpose
+        A directed graph, or series of nodes (vertices) connected by
+        directional edges.
+    }
+    {details
+        This class is parameterized on two types: the labels for the
+        nodes (aka vertices) and edges (aka arcs). Alternatively,
+        the {italic values} for the nodes and the {italic weights}
+        for the edges.
+    }
+}
+{define-class public abstract open {Digraph-of t:Type, tWeight:Type}
+  {inherits {Graph-of t, tWeight}}
+
+  || ======== fields ========
+
+  || Whether it's known if we have a cycle.
+  || When this is false, the topological order is also false.
+  field private _acyclic-known?:bool = false
+  
+  || Whether we're acyclic.
+  field private _acyclic?:bool = false
+
+  || Because topological orderings can be quite expensive to produce,
+  || cache it weakly in case we get repeated calls where it matters.
+  field package weak _topological-order:#{Array-of {DigraphNode-of t, tWeight}}
+
+  || All nodes in the graph.
+  field package nodes:{Set-of {DigraphNode-of t, tWeight}}
+  
+  || ======== constructor ========
+
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+  }
+  {constructor public {default}
+    set self._topological-order = null
+    set self.nodes = {new {Set-of {DigraphNode-of t, tWeight}}}
+  }
+  
+  || ======== graph mutation ========
+  
+  {doc-next
+    {purpose
+        Removes a node from the graph.
+    }
+    {parameter node,
+        The node to remove.
+    }
+    {parameter error-if-missing?,
+        Whether an error should be thrown if this node is not contained
+        within the graph.
+    }
+    {details
+        This operation first removes all edges leading to or from the node.
+    }
+  }
+  {method public open {delete-node
+                          node:{GraphNode-of t},
+                          error-if-missing?:bool = true
+                      }:void
+    {if node.graph != self then
+        {if error-if-missing? then
+            {throw
+                {GraphInvalidNodeException
+                    {hlmessage "Cannot remove node from another graph."}
+                }
+            }
+         else
+            {return}
+        }
+    }
+    
+    {node.disconnect}
+    {self.nodes.remove node asa {DigraphNode-of t}}
+  }
+
+  {method public open {to-Iterator}:{Iterator-of {GraphNode-of t, tWeight}}
+    {return {new {DigraphNodeCastingIterator-of t, tWeight}, self}}
+  }
+
+  {method protected {note-edge-added
+                        head:{GraphNode-of t, tWeight},
+                        tail:{GraphNode-of t, tWeight}
+                    }:void
+    {super.note-edge-added head, tail}
+    {if (tail asa {DigraphNode-of t, tWeight}).outdegree != 0 then
+        set self._acyclic-known? = false
+    }
+  }
+  
+  || ======== graph queries ========
+
+  {doc-next
+    {purpose
+        Whether or not it is known that this graph is (a)cyclic.
+    }
+    {details
+        As determining whether a graph contains a cycle is an
+        expensive operation, in some cases it may be worthwhile to
+        check this before performing an operation that may
+        require an acyclic graph.
+    }
+  }  
+  {getter public open {acyclic-known?}:bool
+    {return self._acyclic-known?}
+  }
+  
+  {doc-next
+    {purpose
+        The number of edges within this graph.
+    }
+  }    
+  {getter public open {edge-count}:int
+    {return self._edge-count}
+  }
+  
+  {doc-next
+    {purpose
+        Whether this graph is acyclic.
+    }
+  }  
+  {getter public open {acyclic?}:bool
+    {if self.acyclic-known? then
+        {return self._acyclic?}
+     else
+        {if self.edge-count == 0 then
+            || A boring case, but trivially contains no cycles.
+            set self._acyclic-known? = true
+            set self._acyclic? = true
+         else            
+            || Start with a less expensive rejection check; all acyclic
+            || digraphs must have both a sink and a source.
+            let source-found?:bool = false
+            let sink-found?:bool = false
+            {for node in self.nodes do
+                def sink? = node.sink?
+                def source? = node.source?
+                || Ignore solitary nodes. We already know we have edges,
+                || so unconnected nodes don't prove anything.
+                {if not (sink? and source?) then
+                    {if node.sink? then set sink-found? = true}
+                    {if node.source? then set source-found? = true}
+                }
+                {if sink-found? and source-found? then
+                    {break}
+                }
+            }
+            {if not sink-found? or not source-found? then
+                set self._acyclic-known? = true
+                set self._acyclic? = false
+            }
+        }
+        
+        || If that passes, prove it by finding a topological sorting.
+        {try
+            {self.topological-sort}
+         catch e:GraphCycleException do
+            set self._acyclic-known? = true
+            set self._acyclic? = false
+            {return false}
+        }
+
+        || We found a topological sort, so the graph is acyclic.
+        set self._acyclic-known? = true
+        set self._acyclic? = true
+        {return true}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Return all nodes ordered such that no node is listed
+        before any of its predecessors.
+    }
+    {details
+        This function performs a {italic topological sort} on the
+        directed graph(s) defined by the nodes of this graph.
+        As such, it will only be able to complete successfully if the
+        graph is a directed acyclic graph; i.e. there cannot be a cycle
+        among the nodes.
+
+        As having a valid topological order implies being acyclic,
+        this method will also set {docref Digraph-of.acyclic-known?}
+        and {docref Digraph-of.acyclic-known?} to the appropriate
+        values (before throwing a {docref GraphCycleException}
+        if there is a cycle).
+    }
+    {return-vals
+        An array containing all the matching nodes in the given order.
+    }
+    {throws
+        {exception GraphCycleException,
+            if the graph contains a cycle.
+        }
+    }
+  }
+  {method public open {topological-sort
+                          out:#{Array-of {DigraphNode-of t, tWeight}} = null
+                      }:{Array-of {DigraphNode-of t, tWeight}}
+    {if self._acyclic-known? then
+        {if self._acyclic? then
+            {if-non-null ts = self._topological-order then
+                {return {ts.clone}}
+            }
+         else
+            {throw {GraphCycleException}}            
+        }
+    }
+    
+    {try
+        set self._topological-order =
+            {self.topological-sort-internal out = self._topological-order}
+     catch e:GraphCycleException do
+        set self._acyclic-known? = true
+        set self._acyclic? = false
+        {throw e}
+    }
+    
+    set self._acyclic-known? = true
+    set self._acyclic? = true
+    {if-non-null top-order = self._topological-order then
+        {if-non-null out then
+            {out.clear}
+            {out.concat top-order}
+            {return out}
+         else
+            {return {top-order.clone}}
+        }
+     else
+        {error {hlmessage "internal error"}}
+    }
+  }
+
+  || A version of the code in DigraphNode-of.topological-sort-subgraph,
+  || optimized for internal use.
+  {method private {topological-sort-internal
+                      out:#{Array-of {DigraphNode-of t, tWeight}} = null
+                  }:{Array-of {DigraphNode-of t, tWeight}}
+    
+    def ordered-list =
+        {if-non-null out then
+            out
+         else
+            {new {Array-of {DigraphNode-of t, tWeight}}}
+        }
+
+    def all-nodes = self.nodes
+    {if all-nodes.empty? then {return ordered-list}}
+
+    || The "internal indegree" of each node - indegree of set-internal edges.
+    def indegree-table = {new {HashTable-of {DigraphNode-of t, tWeight}, int}}
+    
+    || All nodes that are indegree 0 to start with.
+    def starter-source-set = {new {Set-of {DigraphNode-of t, tWeight}}}
+
+    || Count the indegree of each node.
+    {for node in all-nodes do
+        def c = node.indegree
+        {indegree-table.set node, c}
+        {if c == 0 then
+            {starter-source-set.insert node}
+        }
+    }
+
+    || Recurse into the internal source nodes to build the sort.
+    {for node in starter-source-set do
+        {ordered-list.append node}
+        {node.visit-successors
+            {proc {n:{DigraphNode-of t, tWeight}}:bool
+                def (ideg, valid?) = {indegree-table.get-if-exists n}
+                {if valid? then
+                    set indegree-table[n] = ideg - 1
+                    {if ideg == 1 then
+                        {ordered-list.append n}
+                        {return true}
+                    }
+                }
+                {return false}
+            }
+        }
+    }
+
+    || If we didn't push every node, there was a cycle.
+    {if ordered-list.size != all-nodes.size then
+        {throw {GraphCycleException}}
+    }
+    
+    {return ordered-list}
+
+  }
+  
+}
+
+{doc-next
+    {purpose
+        A single node in a directed graph.
+    }
+}
+{define-class public abstract open {DigraphNode-of t:Type, tWeight:Type}
+  {inherits {GraphNode-of t, tWeight}}
+
+  {doc-next
+    {purpose
+        Return all successor nodes to one or more nodes, ordered such
+        that no node is listed before any of its predecessors.
+    }
+    {parameter from-nodes,
+        A set of nodes from which to check successors.
+    }
+    {parameter out,
+        If supplied, this array will be filled with the results and returned.
+        It will not be cleared beforehand.
+    }
+    {parameter include-from?,
+        If {ctext true}, the {param from-nodes} will be included in the
+        returned list.
+    }
+    {details
+        This function performs a {italic topological sort} on the
+        directed graph(s) defined by the nodes passed in. As such, it will
+        only be able to complete successfully if the node set defines
+        a directed acyclic graph; i.e. there cannot be a cycle among
+        the base nodes or their successors.
+
+        Nodes passed in can have predecessors outside of their
+        successor set; these nodes are ignored for the purposes of
+        this sorting operation.
+    }
+    {return-vals
+        An array containing all the matching nodes in the given order.
+    }
+    {throws
+        {exception GraphCycleException,
+            if the successors form a cycle.
+        }
+    }
+  }
+  {define-proc public {topological-sort-subgraph
+                          from-nodes:{Set-of {DigraphNode-of t, tWeight}},
+                          out:#{Array-of {DigraphNode-of t, tWeight}} = null,
+                          include-from?:bool = true
+                      }:{Array-of {DigraphNode-of t, tWeight}}
+
+    || http://doi.acm.org/10.1145/366707.367589
+    || (Kahn, 1962) algorithm to iteratively pull out relative source nodes,
+    || though we track nodes' indegree to avoid heavy cycling on long
+    || dependency chains.
+    
+    def ordered-list =
+        {if-non-null out then
+            out
+         else
+            {new {Array-of {DigraphNode-of t, tWeight}}}
+        }
+
+    || Create a set of all nodes that will be updated.
+    def working-set = {new {Set-of {DigraphNode-of t, tWeight}}}
+
+    || First, get all successor nodes unordered.
+    {for node in from-nodes do
+        {if not {working-set.member? node} then
+            {node.get-all-successors out = working-set}
+            {if include-from? then
+                {working-set.insert node}
+            }
+        }
+    }
+
+    {if working-set.empty? then {return ordered-list}}
+
+    || The "internal indegree" of each node - indegree of set-internal edges.
+    def indegree-table = {new {HashTable-of {DigraphNode-of t, tWeight}, int}}
+    || All nodes that are internal indegree 0 to start with.
+    def starter-source-set = {new {Set-of {DigraphNode-of t, tWeight}}}
+
+    || Count the internal indegree of each node.
+    {for node in working-set do
+        let c:int = 0
+        {for pnode in node.predecessors do
+            {if {working-set.member? pnode} then {inc c}}
+        }
+        {indegree-table.set node, c}
+        {if c == 0 then
+            {starter-source-set.insert node}
+        }
+    }
+
+    || Recurse into the internal source nodes to build the sort.
+    {for node in starter-source-set do
+        {ordered-list.append node}
+        {node.visit-successors
+            {proc {n:{DigraphNode-of t, tWeight}}:bool
+                def (ideg, valid?) = {indegree-table.get-if-exists n}
+                {if valid? then
+                    set indegree-table[n] = ideg - 1
+                    {if ideg == 1 then
+                        {ordered-list.append n}
+                        {return true}
+                    }
+                }
+                {return false}
+            }
+        }
+    }
+
+    || If we didn't push every node, there was a cycle.
+    {if ordered-list.size != working-set.size then
+        {throw {GraphCycleException}}
+    }
+    
+    {return ordered-list}
+  }
+
+  || ======== FIELDS ========================
+
+  {doc-next
+    {purpose
+        All nodes that have edges leading to this node;
+        i.e. all {italic direct predecessors} to this node.
+    }
+    {notes
+        The contents of this container should not be directly manipulated.
+    }
+  }
+  field public constant predecessors:{Array-of {DigraphNode-of t, tWeight}}
+
+  {doc-next
+    {purpose
+        All nodes that have edges leading from this node;
+        i.e. all {italic direct successors} to this node.
+    }
+    {notes
+        The contents of this container should not be directly manipulated.
+    }
+  }
+  field public constant successors:{Array-of {DigraphNode-of t, tWeight}}
+  
+  || ======== CONSTRUCTORS ========================
+
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter data,
+        The data associated with this node.
+    }
+    {parameter graph,
+        The graph of which this node will be a member.
+    }
+  }
+  {constructor public {default data:t, graph:{Digraph-of t, tWeight}}
+    {construct-super data, graph}
+    set self.predecessors = {new {Array-of {DigraphNode-of t, tWeight}}}
+    set self.successors = {new {Array-of {DigraphNode-of t, tWeight}}}
+  }
+
+  || ======== edge queries  ========================
+
+  {getter public open {outdegree}:int
+    {return self.successors.size}
+  }  
+
+  {getter public open {indegree}:int
+    {return self.predecessors.size}
+  }
+
+  {doc-next
+    {purpose
+        Whether there is an edge leading from this node to another.
+    }
+    {parameter node,
+        The node to which we are testing for an edge.
+    }
+  }  
+  {method public open {has-edge? node:{GraphNode-of t, tWeight}}:bool
+    {type-switch node
+     case digraph-node:{DigraphNode-of t, tWeight} do
+        {return {self.successors.find digraph-node} != -1}
+    }
+    {return false}
+  }
+
+  {doc-next
+    {purpose
+        Visit all successor nodes to this node.
+    }
+    {parameter action-proc,
+        This procedure will be called once with each immediate successor
+        of this node. If it returns true, it will immediately recurse
+        in depth-first fashion onto the successors of the working node.
+        If it returns false, it will not recurse.
+    }
+  }  
+  {method public {visit-successors
+                     action-proc:{proc-type {{DigraphNode-of t, tWeight}}:bool}
+                 }:void
+    {for successor in self.successors do
+        {if {action-proc successor} then
+            {successor.visit-successors action-proc}
+        }
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Visit all predecessor nodes to this node.
+    }
+    {parameter action-proc,
+        This procedure will be called once with each immediate predecessor
+        of this node. If it returns true, it will immediately recurse
+        in depth-first fashion onto the predecessor of the working node.
+        If it returns false, it will not recurse.
+    }
+  }  
+  {method public {visit-predecessors
+                     action-proc:{proc-type {{DigraphNode-of t, tWeight}}:bool}
+                 }:void
+    {for predecessor in self.predecessors do
+        {if {action-proc predecessor} then
+            {predecessor.visit-predecessors action-proc}
+        }
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Visit all nodes adjacent to this node.
+    }
+    {parameter action-proc,
+        This procedure will be called once with each node adjacent to
+        this node.
+    }
+    {details
+        The {param action-proc} will be called with each
+        immediate predecessor and immediate successor of this node.
+        Adjacent nodes that are both predecessors and successors will
+        still only have the {param action-proc} called with them once.
+    }
+  }  
+  {method public {visit-adjacent
+                     action-proc:{proc-type {{GraphNode-of t, tWeight}}:void}
+                 }:void
+    {if self.indegree > 0 and self.outdegree > 0 then
+        def visited-set:{Set-of {DigraphNode-of t, tWeight}} =
+            {new {Set-of {DigraphNode-of t, tWeight}}}
+        {for n in self.predecessors do
+            {action-proc n}
+            {visited-set.append n}
+        }
+        {for n in self.successors do
+            {if not {visited-set.member? n} then
+                {action-proc n}
+            }
+        }
+     else
+        {for n in self.predecessors do
+            {action-proc n}
+        }
+        {for n in self.successors do
+            {action-proc n}
+        }
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Return all successor nodes to this node; i.e. all nodes that can
+        be reached by following one or more successor edges.
+    }
+    {parameter out,
+        If supplied, this set will be filled with the results and returned.
+        It will not be cleared beforehand.
+    }
+    {parameter edge-filter,
+        An optional proc that takes two nodes and returns a bool.
+        It will be called for each forward edge, with arguments of
+        the two endpoints, and if it returns {ctext false},
+        that edge will not be followed.
+    }
+    {return-vals
+        A set containing all the matching nodes.
+    }
+  }  
+  {method public open {get-all-successors
+                          out:#{Set-of {DigraphNode-of t, tWeight}} = null,
+                          edge-filter:#{proc-type
+                                           {{DigraphNode-of t, tWeight},
+                                            {DigraphNode-of t, tWeight}}:bool
+                                       } = null
+                      }:{Set-of {DigraphNode-of t, tWeight}}
+    def working-set =
+        {if-non-null out then
+            out
+         else
+            {new {Set-of {DigraphNode-of t, tWeight}}}
+        }
+    {self.visit-successors
+        {proc {n:{DigraphNode-of t, tWeight}}:bool
+            {if {working-set.member? n} then
+                {return false}
+             else
+                {if-non-null edge-filter then
+                    {if not {edge-filter self, n} then
+                        {return false}
+                    }
+                }
+                {working-set.insert n}
+                {return true}
+            }
+        }
+    }
+    {return working-set}
+  }
+  
+  {doc-next
+    {purpose
+        Return this node and all successor nodes in an array, ordered such
+        that no node is listed before any of its predecessors.
+    }
+    {parameter out,
+        If supplied, this array will be filled with the results and returned.
+        It will not be cleared beforehand.
+    }
+    {return-vals
+        An array containing all the matching nodes in the given order.
+    }
+    {details
+        This method performs a {italic topological sort} on the subgraph
+        defined by this node and its successors.
+    }
+    {throws
+        {exception GraphCycleException,
+            if this node's successors have a cycle.
+        }
+    }
+  }  
+  {method public open {topological-sort-successors
+                          out:#{Array-of {DigraphNode-of t, tWeight}} = null
+                      }:{Array-of {DigraphNode-of t, tWeight}}
+    def ordered-list =
+        {if-non-null out then
+            out
+         else
+            {new {Array-of {DigraphNode-of t, tWeight}}}
+        }
+    {return
+        {{DigraphNode-of t, tWeight}.topological-sort-subgraph
+            {new {Set-of {DigraphNode-of t, tWeight}}, self},
+            out = ordered-list,
+            include-from? = false
+        }
+    }
+  }
+
+  {doc-next
+    {purpose
+        Return all predecessor nodes to this node; i.e. all nodes that can
+        be reached by following one or more predecessor edges.
+    }
+    {parameter out,
+        If supplied, this set will be filled with the results and returned.
+        It will not be cleared beforehand.
+    }
+    {parameter edge-filter,
+        An optional proc that takes two nodes and returns a bool.
+        It will be called for each predecessor edge, with arguments of
+        the two endpoints, and if it returns {ctext false},
+        that edge will not be followed.
+    }
+    {return-vals
+        A set containing all the matching nodes.
+    }
+  }  
+  {method public open {get-all-predecessors
+                          out:#{Set-of {DigraphNode-of t, tWeight}} = null,
+                          edge-filter:#{proc-type
+                                           {{DigraphNode-of t, tWeight},
+                                            {DigraphNode-of t, tWeight}}:bool
+                                       } = null
+                      }:{Set-of {DigraphNode-of t, tWeight}}
+    def working-set =
+        {if-non-null out then
+            out
+         else
+            {new {Set-of {DigraphNode-of t, tWeight}}}
+        }
+    {self.visit-predecessors
+        {proc {n:{DigraphNode-of t, tWeight}}:bool
+            {if {working-set.member? n} then
+                {return false}
+             else
+                {if-non-null edge-filter then
+                    {if not {edge-filter self, n} then
+                        {return false}
+                    }
+                }
+                {working-set.insert n}
+                {return true}
+            }
+        }
+    }
+    {return working-set}
+  }
+
+  || ======== edge modification ========
+  
+  {doc-next
+    {purpose
+        Removes one edge leading from this node.
+    }
+    {parameter node,
+        The node to remove.
+    }
+    {parameter error-if-missing?,
+        If {ctext true}, an error will be thrown if the listed node is
+        not among the successors of this node.
+    }
+  }
+  {method public open {remove-successor
+                          node:{DigraphNode-of t, tWeight},
+                          error-if-missing?:bool = false
+                      }:void
+    {self.remove-successor-internal
+        node,
+        error-if-missing? = error-if-missing?,
+        reverse-delink? = true
+    }
+  }
+
+  {method package {remove-successor-internal
+                      node:{DigraphNode-of t, tWeight},
+                      error-if-missing?:bool = false,
+                      reverse-delink?:bool = true
+                  }:void
+    let removed?:bool = false
+    def index = {self.successors.find node}
+    {if index != -1 then
+        {self.successors.remove index}
+        set removed? = true
+    }
+    {if not removed? and error-if-missing? then
+        {throw
+            {GraphInvalidEdgeException
+                {hlmessage
+                    "Tried to remove %s from %s; not a direct successor.",
+                    node, self
+                }
+            }
+        }
+    }
+    {if reverse-delink? then
+        {node.remove-predecessor-internal
+            self,
+            error-if-missing? = error-if-missing?,
+            reverse-delink? = false
+        }
+        {(self.graph asa {Digraph-of t, tWeight}).note-edge-removed self, node}
+    }
+  }
+
+  {doc-next
+    {purpose
+        Clears all edges leading from this node.
+    }
+  }
+  {method public open {clear-successors}:void
+    {while not self.successors.empty? do
+        {self.remove-successor-internal
+            self.successors[0],
+            reverse-delink? = true
+        }
+    }
+  }
+
+  {doc-next
+    {purpose
+        Removes one edge leading to this node.
+    }
+    {parameter node,
+        The node to remove.
+    }
+    {parameter error-if-missing?,
+        If {ctext true}, an error will be thrown if the listed node is
+        not among the predecessors of this node.
+    }
+  }
+  {method public open {remove-predecessor
+                          node:{DigraphNode-of t, tWeight},
+                          error-if-missing?:bool = false
+                      }:void
+    {self.remove-predecessor-internal
+        node,
+        error-if-missing? = error-if-missing?,
+        reverse-delink? = true
+    }
+  }
+
+  {method package {remove-predecessor-internal
+                      node:{DigraphNode-of t, tWeight},
+                      error-if-missing?:bool = false,
+                      reverse-delink?:bool = true
+                  }:void
+    let removed?:bool = false
+    def index = {self.predecessors.find node}
+    {if index != -1 then
+        {self.predecessors.remove index}
+        set removed? = true
+    }
+    {if not removed? and error-if-missing? then
+        {throw
+            {GraphInvalidEdgeException
+                {hlmessage
+                    "Tried to remove %s from %s; not a direct predecessor.",
+                    node, self
+                }
+            }
+        }
+    }
+    {if reverse-delink? then
+        {node.remove-successor-internal
+            self,
+            error-if-missing? = error-if-missing?,
+            reverse-delink? = false
+        }
+        {(self.graph asa {Digraph-of t, tWeight}).note-edge-removed node, self}
+    }
+  }
+
+  {doc-next
+    {purpose
+        Clears all edges leading from this node, leaving no predecessors.
+    }
+  }
+  {method public open {clear-predecessors}:void
+    {while not self.predecessors.empty? do
+        {self.remove-predecessor-internal
+            {self.predecessors.top-of-stack},
+            reverse-delink? = true
+        }
+    }
+  }
+
+  {method public open {disconnect}:void
+    {self.clear-predecessors}
+    {self.clear-successors}
+  }
+    
+}
+
+
+|| Required to fulfill the Graph-of.to-Iterator return contract.
+{define-class package {DigraphNodeCastingIterator-of t:Type, tWeight:Type}
+  {inherits {Iterator-of {GraphNode-of t, tWeight}}}
+
+  field private node-iterator:{Iterator-of {DigraphNode-of t, tWeight}}
+  
+  {constructor package {default graph:{Digraph-of t, tWeight}}
+    set self.node-iterator = {graph.nodes.to-Iterator}
+  }
+  
+  {method public open {read-one}:(val:{GraphNode-of t, tWeight}, eof?:bool)
+    def (val, eof?) = {self.node-iterator.read-one}
+    {return val asa {GraphNode-of t, tWeight}, eof?}
+  }
+  
+  {method public open {reset}:void
+    {self.node-iterator.reset}
+  }
+  
+}
+

@@ -1,0 +1,257 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0, 8.0 applet}
+
+{applet manifest = "../manifest.mcurl", locale = "en"}
+
+{import * from CURL.UTIL.OBSERVER}
+||--{import * from COM.CURL.EXT.GUI}
+||--{import * from COM.CURL.EXT.DATA-ACCESS}
+||--{import * from CURL.IDE.DOCUMENTATION}
+
+{import * from COM.CURL.EXT.WORKSHEET}
+
+{set-document-properties
+    font-size = 9pt
+}
+
+{title ResizableArray-of Test}
+
+Note: it will assert if it fails.
+
+|| ----------------------------------------------------------------------------
+
+{def TestArray = {ResizableArray-of int}}
+
+{def display = {VBox}}
+
+{define-proc {show ...}:void
+    def buf = {StringBuf}
+    {for a in ... do
+        {if buf.size > 0 then
+            {buf.append ' '}
+        }
+        {buf.concat {format "%w", a}}
+    }
+    def s = {buf.to-String}
+    {display.add s}
+    {display.add {hrule color = "silver"}}
+    {dump s}
+}
+
+{define-proc {dump-array a:TestArray, message:String = ""}:void
+    def fmt =
+    {switch a.cols
+     case 0 do "<EMPTY>"
+     case 1 do "%2d: %02d"
+     case 2 do "%2d: %02d %02d"
+     case 3 do "%2d: %02d %02d %02d"
+     case 4 do "%2d: %02d %02d %02d %02d"
+     case 5 do "%2d: %02d %02d %02d %02d %02d"
+     case 6 do "%2d: %02d %02d %02d %02d %02d %02d"
+     case 7 do "%2d: %02d %02d %02d %02d %02d %02d %02d"
+     case 8 do "%2d: %02d %02d %02d %02d %02d %02d %02d %02d"
+     case 9 do "%2d: %02d %02d %02d %02d %02d %02d %02d %02d %02d"
+     else "too many columns"
+    }
+    {if a.rows == 0 and a.cols == 0 then
+        {output fmt}
+        {return}
+    }
+
+    def vals = {new {Array-of int}}
+    {for ri = 0 below a.rows do
+        {vals.clear}
+        {for ci = 0 below a.cols do
+            {vals.append a[ri, ci]}
+        }
+        def s =
+            {if ri == 0 and message != "" then
+                {format fmt & "   # %s", ri, {splice vals}, message}
+             else
+                {format fmt, ri, {splice vals}}
+            }
+        {output s}
+        {display.add s}
+    }
+    {display.add {hrule color = "silver"}}
+}
+
+|| Create a ResizableArray-of int with initial values 00 01... 10 11... etc.
+{define-proc {make-array rows:int, cols:int}:TestArray
+    def a = {new TestArray, rows, cols}
+    {return {init-rows a, 0, rows, 0}}
+}
+
+|| Initialize row for nr rows as if base rows aren't there
+{define-proc {init-rows a:TestArray, row:int, nr:int, base:int}:TestArray
+    {for ri = row below row + nr do
+        {for ci = 0 below a.cols do
+            set a[ri, ci] = (ri - base) * 10 + ci
+        }
+    }
+    {return a}
+}
+
+|| Reset a count rows at row to 0
+{define-proc {clear-rows v:TestArray, row:int, count:int}:TestArray
+    {for ri = row below row + count do
+        {for ci = 0 below v.cols do
+            set v[ri, ci] = 0
+        }
+    }
+    {return v}
+}
+
+|| Set nc columns at col to row * 10 + col as if base columns absent
+{define-proc {init-cols a:TestArray, col:int, nc:int, base:int}:TestArray
+    {for ci = col below col + nc do
+        {for ri = 0 below a.rows do
+            set a[ri, ci] = ri * 10 + (ci - base)
+        }
+    }
+    {return a}
+}
+
+|| Reset count cols at col to 0
+{define-proc {clear-cols v:TestArray, col:int, count:int}:TestArray
+    {for ci = col below col + count do
+        {for ri = 0 below v.rows do
+            set v[ri, ci] = 0
+        }
+    }
+    {return v}
+}
+
+{define-proc {test-basics}:void
+    let a = {new TestArray, 1, 1}
+    {show a.rows, a.cols, a[0,0]}
+
+    {dump-array a, message = "1 x 1 array"}
+    {dump-array {make-array 3, 3}, message = "3 x 3 array"}
+
+    {dump-array {a.clone}, message = "a.clone"}
+
+    {def b = {make-array 2, 4}}
+    {def c = {make-array 2, 4}}
+    {def d = {new TestArray, 2, 4}}
+
+    {assert not {a.equal? b}}
+    {assert {c.equal? b}}
+    {assert not {c.equal? d}}
+
+    def cc = {c.clone}
+    {c.clear}
+    {assert {c.equal? d}}
+    {assert not {cc.equal? d}}
+    {assert {cc.equal? b}}
+}
+{test-basics}
+
+{define-proc {test-rows}:void
+    {for n = 1 to 5 do
+        def a = {make-array n, 5}
+        {a.insert-rows n - 1, n}
+        def b = {make-array n + n, 5}
+        {clear-rows b, n - 1, n}
+        {init-rows b, n + n - 1, 1, n}
+        {assert {a.equal? b}}
+        {assert {b.equal? a}}
+    }
+    {for n = 1 to 5 do
+        def a = {make-array n, 5}
+        {a.insert-rows n - 1, n}
+        {a.insert-rows n - 1, -n}
+        def b = {make-array n, 5}
+        {assert {a.equal? b}}
+        {assert {b.equal? a}}
+    }
+
+    {display.add "test insert-rows"}
+    {def a = {make-array 2, 4}}
+    {dump-array a, message = "original a"}
+    {a.insert-rows 2, 1}
+    {dump-array a, message = "insert 1 at 2"}
+    {a.insert-rows 2, -1}
+    {dump-array a, message = "delete 1 at 2"}
+    {a.insert-rows 1, 2}
+    {dump-array a, message = "insert 2 at 1"}
+    {a.insert-rows 1, -2}
+    {dump-array a, message = "delete 2 at 1"}
+
+    {def b = {make-array 2, 4}}
+    {dump-array b, message = "original b"}
+    {b.insert-rows 0, 1}
+    {dump-array b, message = "insert 1 at 0"}
+    {b.insert-rows 1, 1}
+    {dump-array b, message = "insert 1 at 1"}
+    {b.insert-rows 2, 2}
+    {dump-array b, message = "insert 2 at 2"}
+    {b.insert-rows 6, 3}
+    {dump-array b, message = "insert 3 at 6"}
+}
+
+{define-proc {test-cols}:void
+    {for n = 1 to 3 do
+        def a = {make-array 5, n}
+        {a.insert-cols n - 1, n}
+        def b = {make-array 5, n + n}
+        {clear-cols b, n - 1, n}
+        {init-cols b, n + n - 1, 1, n}
+        {assert {a.equal? b}}
+        {assert {b.equal? a}}
+    }
+    {for n = 1 to 3 do
+        def a = {make-array 5, n}
+        {a.insert-cols n - 1, n}
+        {a.insert-cols n - 1, -n}
+        def b = {make-array 5, n}
+        {assert {a.equal? b}}
+        {assert {b.equal? a}}
+    }
+
+    {display.add "test insert-cols"}
+    {def a = {make-array 2, 3}}
+    {dump-array a, message = "original a"}
+    {a.insert-cols 2, 1}
+    {dump-array a, message = "insert 1 at 2"}
+    {a.insert-cols 2, -1}
+    {dump-array a, message = "delete 1 at 2"}
+    {a.insert-cols 1, 2}
+    {dump-array a, message = "insert 2 at 1"}
+    {a.insert-cols 1, -2}
+    {dump-array a, message = "delete 2 at 1"}
+
+    {def b = {make-array 2, 3}}
+    {dump-array b, message = "original b"}
+    {b.insert-cols 0, 1}
+    {dump-array b, message = "insert 1 at 0"}
+    {b.insert-cols 1, 1}
+    {dump-array b, message = "insert 1 at 1"}
+    {b.insert-cols 2, 2}
+    {dump-array b, message = "insert 2 at 2"}
+    {b.insert-cols 6, 2}
+    {dump-array b, message = "insert 2 at 6"}
+}
+
+{value display}
+
+{test-rows}
+{test-cols}
+
+

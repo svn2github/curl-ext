@@ -1,0 +1,23 @@
+{curl 8.0 manifest}
+{curl-file-attributes character-encoding = "shift-jis"}
+{manifest COM.CURL.EXT.TOOLS}
+
+{delegate-to COM.CURL.CDU,
+    location = "../lib/CDU/manifest.mcurl"
+}
+
+{delegate-to COM.CURL.EXT,
+    location = "../code/manifest.mcurl"
+}
+
+{component file deploy.curl,
+    location = "deploy.curl"
+}
+
+{component file deploy-batch.curl,
+    location = "deploy-batch.curl"
+}
+
+{component file deploy-specs.scurl,
+    location = "deploy-specs.scurl"
+}

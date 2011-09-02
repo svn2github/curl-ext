@@ -1,0 +1,351 @@
+||| Copyright (C) 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An Open Curl project.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+
+{doc-next
+    {purpose
+        A {docref PaneGroup} based on {docref TabContainer}.
+    }
+    {details
+        To customize the appearance, you can use the following
+        {docref-abbr Visual.style-element} values in your style rules.
+        
+        {Table
+            columns = 3,
+            border-width = 1in/300,
+            border-color = "black",
+            horizontal-line-width = 1in/300,
+            vertical-line-width = 1in/300,
+            cell-border-width = 0pt,
+            cell-margin = 2pt,
+            {header-cell style-element},
+            {header-cell Type},
+            {header-cell Description},
+            
+            {ctext TabbedPaneGroup}, {docref TabbedPaneGroup},
+            {text The {ctext TabbedPaneGroup} itself. You can use style rules
+                to set local and nonlocal options,
+                particularly the {docref-abbr TabbedPaneGroup.tab-placement} option,
+                which should be set at this level rather than on
+                {ctext TabbedPaneGroup/tab-container}.
+            },
+            
+            {ctext TabbedPaneGroup/tab-container}, {docref TabContainer},
+            {text The {docref TabContainer} object that contains the child panes
+                and manages their sizes.
+            }
+        }
+    }
+}
+{define-class public open TabbedPaneGroup {inherits PaneGroup}
+  
+  {doc-next
+    {purpose
+        The {docref TabContainer} object that underlies this pane group.
+    }
+  }
+  field protected constant tc:TabContainer
+  
+  {doc-next
+    {purpose
+        A {docref Frame} that surrounds the {docref TabContainer} object
+        that's pointed to by the {docref-abbr TabbedPaneGroup.tc} field.
+        This {docref Frame} performs adjustments on the {docref Elastic}s and origins.
+    }
+  }
+  field protected constant tc-wrapper:Box
+  
+  {doc-next
+    {purpose
+        Controls the placement of tabs for this {docref TabbedPaneGroup}.
+    }
+    {usage
+        The value of this option is propagated to the underlying {docref TabContainer}.
+        Style sheets should control the option on this {docref TabbedPaneGroup},
+        rather than setting it directly on the {docref TabContainer}.
+    }
+  }
+  {local-option public tab-placement:TabPlacement = TabPlacement.bottom
+    set self.tc.tab-placement = tab-placement
+  }
+  
+  {getter public open {style-element}:String
+    def _style-element = self._style-element
+    {if _style-element == "" then
+        {return "TabbedPaneGroup"}
+     else
+        {return _style-element}
+    }
+  }
+  
+||--  {doc-next
+||--    {purpose
+||--        Return the base style rules that describe the default style of this object.
+||--    }
+||--    {return-vals
+||--        An array of {docref StyleRule} objects that will be added to the base set of
+||--        style rules for the current applet
+||--        (using {docref StyleManager.append-base-style-rule})
+||--        to produce the default style for {docref TabbedPaneGroup} objects.
+||--    }
+||--  }
+||--  {define-proc public {get-base-style-rules}:{Array-of StyleRule}
+||--    {return
+||--        {new {Array-of StyleRule},
+||--            {StyleRule
+||--                "TabbedPaneGroup/tab-pane",
+||--                margin = 0px
+||--            }
+||--        }
+||--    }
+||--  }
+  
+  {doc-next
+    {purpose
+        Construct a {docref LinearPaneGroup} object.
+    }
+    {parameter root-container,
+        The {docref PaneContainer} that will contain this {docref LinearPaneGroup}.
+    }
+    {parameter percent,
+        The {quote percentage} to be used when this object is added to a {docref LinearPaneGroup}.
+        See {docref BasePane.percent} for further information.
+    }
+    {parameter current,
+        Indicates the index of the tab that is initially shown when this
+        {docref TabbedPaneGroup} is first constructed.
+    }
+    {parameter ...,
+        A list of {docref BasePane} objects that are initially in this group.
+    }
+  }
+  {constructor public {default
+                          root-container:PaneContainer,
+                          percent:double = -1.0,
+                          current:int = 0,
+                          ...:BasePane
+                      }
+    set self.tc =
+        {TabContainer
+            _style-element = "TabbedPaneGroup/tab-container",
+            tab-placement = self.tab-placement,
+            takes-focus? = false,
+            horigin = "left",
+            vorigin = "top",
+            {on CurrentPaneChanged do
+                || When the user switches to a new tab pane, make sure it gets the focus.
+                def new-index = self.tc.current-pane-index
+                {if new-index >= 0 then
+                    {self[new-index].request-pane-focus}
+                }
+            }
+        }
+    set self.tc-wrapper =
+        {Frame
+            height = {add-stretch},
+            width = {add-stretch},
+            hstretch? = true,
+            vstretch? = true,
+            self.tc
+        }
+    
+    {construct-super root-container, ...}
+    set self.percent = percent
+    {if debugging? then
+        set self.border-color = "magenta" || *temp* RHH
+        set self.border-width = 8pt       || *temp* RHH
+        set self.border-style = "ridge"   || *temp* RHH
+    }
+
+    {switch self.size
+     case 0 do
+        || No child objects to add!
+     case 1 do
+        || Only one child, so don't use the TabContainer just yet.
+        def pane = self.base-panes[0]
+        {self.add-internal pane}
+        {pane.mark-as-docked}
+     else
+        || More than one child, so do the full treatment with the TabContainer.
+        {for pane key i in self.base-panes do
+            def tp = {self.make-tab-pane pane}
+            {self.tc.add-pane tp}
+            {pane.mark-as-docked}
+        }
+        set self.tc.current-pane-index = current
+        {self.add-internal self.tc-wrapper}
+    }
+  }
+  
+  {getter public open {group-type}:String
+    {return "tab"}
+  }
+  
+  {method public open {note-child-gained-focus child:BasePane}:void
+    {if self.child == null or self.child.graphic != self.tc then
+        || If we are not currently displaying a tab container, then there's nothing to do.
+        {return}
+    }
+    || For a tab pane, when a child gains the focus make sure that child is displayed.
+    def index = {self.find child}
+    {assert index >= 0}
+    set self.tc.current-pane-index = index
+  }
+  
+  {method protected open {make-tab-pane pane:BasePane}:TabPane
+    def tab = {TabDragger pane}
+    def tp =
+        {TabPane
+            label = tab,
+            _style-element = "TabbedPaneGroup/tab-pane",
+            margin = 0px,
+            pane
+        }
+    set tab.tab-pane = tp
+    {return tp}
+  }
+
+  {method public {add-pane-at-index pane:BasePane, index:int}:void
+    {if self.size < 1 then
+        || If we will have only one child, then don't use the tab container.
+        {super.add-pane-at-index pane, index}
+        {self.add-internal pane, replace? = true}
+     else
+        {if self.child.graphic != self.tc-wrapper then
+            || If we have more than one child but the tab container isn't currently in our
+            || hierarchy, then we must be going from one child to two, so put the tab container
+            || and the already existing child in there first.
+            {assert self.size == 1}
+            {self.tc.clear}
+            {self.add-internal self.tc-wrapper, replace? = true}
+            def tp = {self.make-tab-pane self.base-panes[0]}
+            {self.tc.add-pane-at-index tp, 0}
+        }
+        {super.add-pane-at-index pane, index}
+        def tp = {self.make-tab-pane pane}
+        {self.tc.add-pane-at-index tp, index, show? = true}
+    }
+  }
+  
+  {method public open {remove-pane child:BasePane, for-replace?:bool}:void
+    def child-index = {self.find child}
+    {assert child-index >= 0}
+    def tc = self.tc
+    
+    || Compute the path to save in the child pane.
+    {child.store-path}
+    || Compute the percentage value to save in the child pane.
+    set child.percent = {child.get-percent-before-undocking}
+    
+    || Then finally remove the child from us.
+    {if not for-replace? then
+        {switch self.size
+         case 1 do
+            {super.remove-pane child, for-replace?}
+            || This PaneGroup is now empty, so remove it from the hierarchy.
+            {self.detach-this-pane}
+            {return}
+         case 2 do
+            {tc.remove-pane-at-index child-index}
+            {super.remove-pane child, for-replace?}
+            
+            || If there is only one pane left in this group, stop using the tab container so
+            || we get more value out of the screen real estate.
+            {assert self.child.graphic == self.tc-wrapper}
+            def only-child = self.base-panes[0]
+            {tc.remove-pane-at-index 0}
+            {self.add-internal only-child, replace? = true}
+            {return}
+        }
+    }
+    {tc.remove-pane-at-index child-index}
+    {super.remove-pane child, for-replace?}
+  }
+  
+  {method public open {get-child-percent child:BasePane}:double
+    || Since there is no meaningful percentage value within a tab container, return
+    || the tab container's percentage within its ancestry hierarchy, which may be
+    || handy if the child in question is docked back into that hierarchy after
+    || this tab container has been spliced out.
+    {return {self.get-percent-before-undocking}}
+  }
+  
+  {method public open {heuristic-add-pane pane:BasePane, index:int}:void
+    {self.add-pane-at-index pane, index}
+  }
+  
+  {method public open {filter-docking-action
+                          state:DockingAction,
+                          target-pane:BasePane
+                      }:(state:DockingAction, target-pane:BasePane)
+    {assert target-pane.pane-group == self}
+    {switch state
+     case DockingAction.none, DockingAction.tab, DockingAction.swap, DockingAction.replace do
+        || We can handle these docking actions performed on our child pane,
+        || so leave them alone.
+        {return state, target-pane}
+     case DockingAction.over-pane do
+        {return DockingAction.none, target-pane}
+    }
+    || Otherwise, for docking actions like left, right, top, bottom, let the docking
+    || be done outside this tab group rather than inside it.
+    {if-non-null parent = self.pane-group then
+        || Recursively, give our parent container a chance to adjust the
+        || docking action.
+        {return {parent.filter-docking-action state, self}}
+    }
+    {return state, self}
+  }
+  
+  {method public open {try-add-pane-near-target
+                          pane:BasePane,
+                          target:BasePane,
+                          action:DockingAction
+                      }:bool
+    {switch action
+     case DockingAction.tab do
+        let index:int = {self.find target}
+        {self.add-pane-at-index pane, index}
+        {return true}
+     else
+        {return false}
+    }
+  }
+  
+  {method public open {try-add-pane-near-me
+                          pane:BasePane,
+                          action:DockingAction
+                      }:bool
+    {if action != DockingAction.tab then {return false}}
+    let index:int = self.size
+    {self.add-pane-at-index pane, index}
+    {return true}
+  }
+
+  {method public {save-state out:TextOutputStream}:void
+    {format out = out, "\n\{tabbed-pane-group current = %d", self.tc.current-pane-index}
+    {self.write-state-info out}
+    {for child in self.base-panes do
+        {out.write-one-string ", "}
+        {child.save-state out}
+    }
+    {out.write-one-string "\}"}
+  }
+}
+
+||--{do
+||--    {StyleManager.append-base-style-rule {splice {TabbedPaneGroup.get-base-style-rules}}}
+||--}

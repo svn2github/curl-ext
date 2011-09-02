@@ -1,0 +1,256 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0, 8.0 applet}
+
+{applet manifest = "../manifest.mcurl", locale = "en"}
+
+{import * from CURL.GUI.CHARTS}
+{import * from CURL.IO.JSON}
+
+{import * from COM.CURL.EXT.WORKSHEET}
+
+{set-document-properties
+    font-family = "Arial, Calibri, Cordia",
+    font-size = 10pt
+}
+
+|| -------------------------------------------------------------------------
+
+{title heading? = false, Mortgage Calculator}
+
+{def model = {WorksheetModel 40, 7}}
+
+{def term-ref = {model.get-ref row = 2, col = 2}}
+{def amount-ref = {model.get-ref row = 3, col = 2}}
+{def rate-ref = {model.get-ref row = 4, col = 2}}
+{def payment-ref = {model.get-ref row = 5, col = 2}}
+||--{def total-paid-ref = {model.get-ref row = 6, col = 2}}
+
+|| RecordSet containing computed values
+{def rs =
+    {RecordSet
+        {RecordFields
+            {RecordField "n",
+                domain = int,
+                modifiable? = false,
+                index-type = RecordFieldIndexType.unique
+            },
+            {RecordField "interest", domain = DataSource.currency-domain},
+            {RecordField "principal", domain = DataSource.currency-domain},
+            {RecordField "balance", domain = DataSource.currency-domain}
+        }
+    }
+}
+
+|| Turn the RecordSet into a DataSource
+{def rds = {RecordSetDataSource rs}}
+
+|| If the term is changed, need to rebuild the recordset from scratch
+{define-proc {rebuild-rs}:void
+    {with rs.batch-events? = true do
+        {rs.delete-all}
+        {rs.commit}
+        {for i = 1 to term-ref.as-double * 12 do
+            {rs.append {RecordData n = i}}
+        }
+    }
+}
+
+
+|| ------------------
+|| Computation procs
+|| ------------------
+
+|| M = P * (i*(1 + i)^n) / ((1 + i)^n - 1)
+{def compute-payment =
+    {proc {dest:DataRef, a-ref:DataRef, i-ref:DataRef, y-ref:DataRef}:void
+        def amount = a-ref.as-double
+        def ir = i-ref.as-double/(100.0 * 12)
+        def n = y-ref.as-double * 12
+        set dest.value =
+            amount * (ir * {pow (1.0 + ir), n})/({pow (1.0 + ir), n} - 1)
+        
+    }
+}
+
+|| Balance remaining after m months
+{def compute-balance =
+    {proc {dest:DataRef, 
+           a-ref:DataRef, i-ref:DataRef, y-ref:DataRef, m-ref:DataRef
+          }:void
+        def amount = a-ref.as-double
+        def ir = i-ref.as-double/(100.0 * 12)
+        def n = y-ref.as-double * 12
+        def m = m-ref.as-double
+        set dest.value =
+            (amount * ({pow (1.0 + ir), n} - {pow 1 + ir, m}))
+            /
+            ({pow (1.0 + ir), n} - 1)
+    }
+}
+
+|| proc to sum values provided (as range or some other aggregate)
+{def compute-sum =
+    {proc {dest:DataRef, src:DataRef}:void
+        let sum:double = 0.0
+        {for v in src do
+            {inc sum, v.as-double}
+        }
+        set dest.value = sum
+    }
+}
+
+|| proc to multiply all arguments
+{def compute-product =
+    {proc {dest:DataRef, ...:DataRef}:void
+        let a:double = 1.0
+        {for dr:DataRef in ... do
+            set a = a * dr.as-double
+        }
+        set dest.value = a
+    }
+}
+
+|| proc to subtract two arguments
+{def compute-difference =
+    {proc {dest:DataRef, p:DataRef, q:DataRef}:void
+        set dest.value = p.as-double - q.as-double
+    }
+}
+
+|| int-paid = tot-paid - principal-paid
+{def compute-interest-paid =
+    {proc {dest:DataRef, 
+           n-ref:DataRef, payment-ref:DataRef, ppaid-ref:DataRef
+          }:void
+        def tot-paid = n-ref.as-double * payment-ref.as-double
+        def ppaid = ppaid-ref.as-double
+        set dest.value = tot-paid - ppaid
+    }
+}
+
+|| -------------------------------------------------------------------------
+
+{def worksheet =
+    {Worksheet
+        model,
+        font-size = 9pt,
+        default-row-height = 18pt,
+        {widths 0.25in, 1.25in, 1.0in, 1.0in, 1.1in, 0.25in},
+
+        row = 0,
+        col = 1,
+        {value-cell colspan = 2, {bold Mortgage Calculator}},
+        col = 3, {value-cell halign = "right", "Date"},
+        {input-cell {DateTime.date}},
+
+        row = 2, col = 1,
+        "Term", 
+
+        row = 2, col = 2, {DropdownList 5, 10, 15, 30,
+                              value = 30,
+                              {on e:ValueFinished at ddl:DropdownList do
+                                  {rebuild-rs}
+                                  set term-ref.value = ddl.value
+                              }
+                          }, "(years)",
+
+        row = 3, col = 1, "Amount Borrowed", 
+        {currency-cell editable? = true, 100000},
+
+        row = 4, col = 1, "Interest Rate", {input-cell halign = "right",  4.0},
+                          "(percent)",
+
+        row = 5, col = 1, "Payment", 
+        {formula-cell halign = "right", 
+            domain = DataSource.currency-domain,
+            compute-payment, amount-ref, rate-ref, term-ref
+        }, "(monthly)",
+
+        row = 6, col = 1, "Total of all Payments",
+        {formula-cell
+            domain = DataSource.currency-domain,
+            halign = "right",
+            compute-product,
+            term-ref, payment-ref, {ValueRef 12.0}
+        },
+
+        row = 8, col = 1, "Month", "Interest", "Principal", "Balance",
+
+        row = 9, col = 0, rowspan = 12, {text},
+        row = 9, col = 1,
+        rowspan = 12, colspan = 5,
+        {EmbeddedRecordGrid
+            takes-focus? = true,
+            width = 6in, 
+            height = 2.3in,
+            record-source = rs,
+            region-selection-enabled? = true,
+            automatic-columns? = false,
+            {RecordGridColumn halign = "right", "n"},
+            {RecordGridColumn halign = "right", "interest"},
+            {RecordGridColumn halign = "right", "principal"},
+            {RecordGridColumn halign = "right", "balance"}
+        },
+
+        || Add a LayeredChart
+        row = 22, col = 1,
+        {value-cell
+            rowspan = 15,
+            colspan = 6,
+            vstretch? = true, hstretch? = true,
+            {LayeredChart
+                height = 3in,
+                font-size = 8pt, font-family = "Tahoma",
+                {LineLayer
+                    {ChartDataSeries rs, "interest"},
+                    {ChartDataSeries rs, "principal"},
+                    {ChartDataSeries rs, "balance"},
+                    legend-enabled? = true
+                }
+            }
+        }
+    }
+}
+
+|| Add the formulas and display the complete Worksheet
+{value
+    {def n-ref = {rds.get-ref "n"}}
+    {def principal-ref = {rds.get-ref "principal"}}
+    {def interest-ref = {rds.get-ref "interest"}}
+    {def balance-ref = {rds.get-ref "balance"}}
+    {rds.make-formula balance-ref, DataSource.currency-domain, compute-balance,
+        amount-ref, rate-ref, term-ref, n-ref
+    }
+    {rds.make-formula principal-ref, DataSource.currency-domain, compute-difference, 
+        amount-ref, balance-ref
+    }
+    {rds.make-formula interest-ref, DataSource.double-domain, compute-interest-paid,
+        n-ref, payment-ref, principal-ref
+    }
+
+    {rebuild-rs}
+    {after 0s do
+        def model-data =
+            {JsonValue-to-String 
+                {model.get-data}, prettify? = true
+            }
+        {dump model-data}
+    }
+    worksheet || display the worksheet
+}

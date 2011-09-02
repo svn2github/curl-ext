@@ -1,0 +1,662 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl-file-attributes character-encoding = "utf8"}
+
+{doc-next
+    {purpose
+        An edge-weighted, directed graph.
+    }
+}
+{define-class public open {DefaultDirectedGraph-of t:Type}
+  {inherits {DirectedGraph-of t}}
+
+  || ======== fields ========
+
+  || Whether it's known if we have a cycle.
+  field private _acyclic-known?:bool = false
+  
+  || Whether we're acyclic.
+  || This value is only valid when acyclic-known? is true; otherwise it's junk.
+  field private _acyclic?:bool = false
+
+  || A count of all edges.
+  field private _edge-count:int
+
+  || Because topological orderings can be quite expensive to produce,
+  || cache it weakly in case we get repeated queries.
+  field package weak topological-order:#{Array-of {DirectedGraphNode-of t}}
+
+  || All nodes in the graph.
+  field package _nodes:{Set-of {DefaultDirectedGraphNode-of t}}
+
+  || ======== constructors ========
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+  }
+  {constructor public {default}
+    {construct-super}
+    set self._nodes = {new {Set-of {DefaultDirectedGraphNode-of t}}}
+  }
+
+  || ======== node queries ========
+  
+  {doc-next
+    {purpose
+        Whether this graph is acyclic.
+    }
+  }
+  {getter public open {acyclic?}:bool
+    {if self._acyclic-known? then
+        {return self._acyclic?}
+     else
+        {try
+            {self.topological-sort}
+         catch e:GraphCycleException do
+            {return false}
+        }
+        {return self._acyclic?}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Whether it is known if this graph is acyclic.
+    }
+    {details
+        Determining if a graph contains a cycle can be an expensive
+        operation, so in some cases it may be useful to balance the
+        utility of a cycle test versus its expense.
+    }
+  }
+  {getter public open {acyclic-known?}:bool
+    {return self._acyclic-known?}
+  }
+  
+  {getter public open {node-count}:int
+    {return self._nodes.size}
+  }
+  
+  {getter package {nodes}:{Set-of {DefaultDirectedGraphNode-of t}}
+    {return self._nodes}
+  }
+  
+  {method public open {to-Iterator}:{Iterator-of {GraphNode-of t}}
+    {return
+        {new {DefaultDirectedGraphNodeCastingIterator-of t}, self}
+    }
+  }
+  
+  {method public open {visit-nodes
+                          visit-proc:{proc-type {{GraphNode-of t}}:void},
+                          safe?:bool = false
+                      }:void
+    {if safe? then
+        def clone-nodes = {self.nodes.clone}
+        {for node in clone-nodes do
+            {visit-proc node}
+        }
+     else
+        {for node in self.nodes do
+            {visit-proc node}
+        }
+    }
+  }
+  
+  || If we already know the answer, just return that.
+  || Otherwise, call the super implementation and then save the result.
+  {method public open {topological-sort}:{Array-of {DirectedGraphNode-of t}}
+    {if self._acyclic-known? then
+        {if self._acyclic? then
+            {if-non-null ts = self.topological-order then
+                {return ts}
+            }
+         else
+            {throw {GraphCycleException}}            
+        }
+    }
+    
+    {try
+        def new-order = {super.topological-sort}
+        set self.topological-order = new-order
+        set self._acyclic-known? = true
+        set self._acyclic? = true
+        {return new-order}
+     catch e:GraphCycleException do
+        set self._acyclic-known? = true
+        set self._acyclic? = false
+        {throw e}
+    }
+    
+  }
+  
+  || ======== node modification ========
+  
+  {method public open {create-node data:t}:{GraphNode-of t}
+    def new-node = {new {DefaultDirectedGraphNode-of t}, data, self}
+    {self._nodes.insert new-node}
+    {if-non-null topo = self.topological-order then
+        || New nodes have no edges, so we can just toss it into the array.
+        {topo.append new-node}
+    }
+    {return new-node}
+  }
+
+  {method public open {delete-node
+                          node:{GraphNode-of t},
+                          error-if-missing?:bool = true
+                      }:void
+    {if node.graph != self then
+        {throw
+            {GraphInvalidNodeException
+                {hlmessage "Node not in graph."}
+            }
+        }
+    }
+    def cast-node = node asa {DefaultDirectedGraphNode-of t}
+    {node.disconnect}
+    {if-non-null topo = self.topological-order then
+        def topo-index = {topo.find cast-node}
+        {if topo-index >= 0 then
+            {topo.remove topo-index}
+        }
+    }
+    {self._nodes.remove cast-node}
+    set cast-node.graph = null
+  }
+  
+  {method public open {clear}:void
+    set self.topological-order = null
+    {for node in self.nodes do
+        {self.delete-node node}
+    }
+    || If we're empty, we're acyclic. Not useful information, but still.
+    set self._acyclic-known? = true
+    set self._acyclic? = true
+  }
+  
+  || ======== edge information ========
+  
+  {getter public open {edge-count}:int
+    {return self._edge-count}
+  }
+  
+  {method protected open {note-edge-added
+                             head:{GraphNode-of t},
+                             tail:{GraphNode-of t}
+                         }:void
+    {inc self._edge-count}
+    {if tail.outdegree != 0 then
+        set self._acyclic-known? = false
+    }
+  }
+  
+  {method protected open {note-edge-removed
+                             head:{GraphNode-of t},
+                             tail:{GraphNode-of t}
+                         }:void
+    
+    {dec self._edge-count}
+  }
+  
+  || ======== other ========
+  
+  {method public open {clone}:{Graph-of t}
+    def g = {new {DefaultDirectedGraph-of t}}
+    def map =
+        {new {HashTable-of {GraphNode-of t}, {GraphNode-of t}},
+            efficient-size = self.nodes.size
+        }
+    {for n in self.nodes do
+        def new-n = {g.create-node n.data}
+        {map.set n, new-n}
+    }
+    {for n in self.nodes do
+        def new-n = {map.get n}
+        {for successor in n do
+            {new-n.add-edge {map.get successor}}
+        }
+    }
+    {return g}
+  }
+  
+}
+
+
+{doc-next
+    {purpose
+        A single node in a directed, weighted graph.
+    }
+}
+{define-class public open {DefaultDirectedGraphNode-of t:Type}
+  {inherits {DirectedGraphNode-of t}}
+
+  || ======== fields ========
+
+  {doc-next
+    {purpose
+        All nodes that have edges leading to this node;
+        i.e. all {italic direct predecessors} to this node.
+    }
+    {notes
+        The contents of this container should not be directly manipulated.
+    }
+  }
+  field public constant predecessors:{Array-of {DefaultDirectedGraphNode-of t}}
+
+  {doc-next
+    {purpose
+        All nodes that have edges leading from this node;
+        i.e. all {italic direct successors} to this node.
+    }
+    {notes
+        The contents of this container should not be directly manipulated.
+    }
+  }
+  field public constant successors:{Array-of {DefaultDirectedGraphNode-of t}}
+
+  || ======== constructors ========
+  
+  {doc-next
+    {purpose
+        Instantiate this object.
+    }
+    {parameter data,
+        The data associated with this node.
+    }
+    {parameter graph,
+        The graph of which this node will be a member.
+    }
+  }
+  {constructor public {default
+                          data:t,
+                          graph:{DefaultDirectedGraph-of t}
+                      }
+    set self.predecessors = {new {Array-of {DefaultDirectedGraphNode-of t}}}
+    set self.successors = {new {Array-of {DefaultDirectedGraphNode-of t}}}
+    {construct-super data, graph}
+  }
+  
+  || ======== edge queries ========
+  
+  {method public open {has-edge? node:{GraphNode-of t}}:bool
+    {type-switch node
+     case default-node:{DefaultDirectedGraphNode-of t} do
+        {return {self.successors.find default-node} != -1}
+    }
+    {return false}
+  }
+
+  {getter public open {indegree}:int
+    {return self.predecessors.size}
+  }
+  
+  {getter public open {outdegree}:int
+    {return self.successors.size}
+  }
+  
+  {method public open {get i:int}:{GraphNode-of t}
+    {return self.successors[i]}
+  }
+  
+  {getter public open {for-loop-count}:int
+    {return self.successors.size}
+  }
+  
+  {method public open {visit-neighbors
+                          action-proc:{proc-type {{GraphNode-of t}}:void}
+                      }:void
+    {for predecessor in self.predecessors do
+        {action-proc predecessor}
+    }
+    {for successor in self.successors do
+        || We're supposed to not call the same neighbor twice, so
+        || we need to check for bidirectional linkages.
+        {if {self.predecessors.find successor} == -1 then
+            {action-proc successor}
+        }
+    }
+  }
+  
+  {method public open {visit-successors
+                          visit-proc:{proc-type
+                                         {{DirectedGraphNode-of t}}:bool},
+                          safe?:bool = false
+                      }:void
+    {if safe? then
+        def cast-graph = self.graph asa {DefaultDirectedGraph-of t}
+        || If we know we're acyclic, no need to worry about cycling.
+        {if cast-graph.acyclic-known? and cast-graph.acyclic? then
+            {self.visit-successors-unsafe visit-proc}
+         else
+            def working-set = {new {Set-of {DirectedGraphNode-of t}}}
+            {self.visit-successors-safe visit-proc, working-set}
+        }
+     else
+        {self.visit-successors-unsafe visit-proc}        
+    }    
+  }
+  
+  {method private {visit-successors-unsafe
+                      visit-proc:{proc-type {{DirectedGraphNode-of t}}:bool}
+                  }:void
+    {for successor in self.successors do
+        {if {visit-proc successor} then
+            {successor.visit-successors-unsafe visit-proc}
+        }
+    }
+  }
+  
+  {method private {visit-successors-safe
+                      visit-proc:{proc-type {{DirectedGraphNode-of t}}:bool},
+                      working-set:{Set-of {DirectedGraphNode-of t}}
+                  }:void
+    {for successor in self.successors do
+        {if not {working-set.member? successor} then
+            {working-set.insert successor}
+            {if {visit-proc successor} then
+                {successor.visit-successors-safe visit-proc, working-set}
+            }
+        }
+    }
+  }
+  
+  {method public {visit-predecessors
+                     visit-proc:{proc-type {{DirectedGraphNode-of t}}:bool},
+                     safe?:bool = false
+                 }:void
+    {if safe? then
+        def cast-graph = self.graph asa {DefaultDirectedGraph-of t}
+        || If we know we're acyclic, no need to worry about cycling.
+        {if cast-graph.acyclic-known? and cast-graph.acyclic? then
+            {self.visit-predecessors-unsafe visit-proc}
+         else
+            def working-set = {new {Set-of {DirectedGraphNode-of t}}}
+            {self.visit-predecessors-safe visit-proc, working-set}
+        }
+     else
+        {self.visit-predecessors-unsafe visit-proc}        
+    }
+  }
+  
+  {method private {visit-predecessors-unsafe
+                      visit-proc:{proc-type {{DirectedGraphNode-of t}}:bool}
+                  }:void
+    {for predecessor in self.predecessors do
+        {if {visit-proc predecessor} then
+            {predecessor.visit-predecessors-unsafe visit-proc}
+        }
+    }    
+  }
+  
+  {method private {visit-predecessors-safe
+                      visit-proc:{proc-type {{DirectedGraphNode-of t}}:bool},
+                      working-set:{Set-of {DirectedGraphNode-of t}}
+                  }:void
+    {for predecessor in self.predecessors do
+        {if not {working-set.member? predecessor} then
+            {working-set.insert predecessor}
+            {if {visit-proc predecessor} then
+                {predecessor.visit-predecessors-safe visit-proc, working-set}
+            }
+        }
+    }
+  }
+  
+  || ======== edge modification ========
+  
+  {method public open {add-edge
+                          to-node:{GraphNode-of t},
+                          error-if-present?:bool = true
+                      }:void
+    {self.add-successor-internal
+        to-node asa {DefaultDirectedGraphNode-of t},
+        error-if-present? = error-if-present?,
+        reverse-link? = true
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Add an edge leading from this node.
+    }
+    {parameter node,
+        The node to which to add an edge.
+    }
+    {parameter weight,
+        The weight of the edge.
+    }
+    {parameter error-if-present?,
+        Whether to throw an error if the listed node already
+        has an edge leading to it from this node.
+    }
+  }
+  {method public open {add-successor
+                          successor-node:{DirectedGraphNode-of t},
+                          error-if-present?:bool = true
+                      }:void
+    {self.add-successor-internal
+        successor-node asa {DefaultDirectedGraphNode-of t},
+        error-if-present? = error-if-present?,
+        reverse-link? = true
+    }  
+  }
+  
+  {method package {add-successor-internal
+                      node:{DefaultDirectedGraphNode-of t},
+                      error-if-present?:bool = true,
+                      reverse-link?:bool = true
+                  }:void
+    {if node.graph != self.graph then
+        {throw
+            {GraphInvalidEdgeException
+                {hlmessage "Cannot link two nodes in different graphs."}
+            }
+        }
+     elseif node == self then
+        {throw
+            {GraphInvalidEdgeException
+                {hlmessage "%s cannot be its own successor.", node}
+            }
+        }
+    }
+    {if {self.successors.find node} == -1 then
+        {self.successors.append node}
+     else
+        {if error-if-present? then
+            {throw
+                {GraphInvalidEdgeException
+                    {hlmessage "%s already a successor of %s.", node, self}
+                }
+            }
+         else
+            {return}
+        }
+    }
+    {if reverse-link? then
+        {node.add-predecessor-internal self}
+        {self.graph.note-edge-added self, node}
+    }
+  }
+  
+  {method package {add-predecessor-internal
+                      node:{DefaultDirectedGraphNode-of t},
+                      error-if-present?:bool = true
+                  }:void
+    {if node == self then
+        {throw
+            {GraphInvalidEdgeException
+                {hlmessage "%s cannot be its own predecessor.", node}
+            }
+        }
+    }
+    {if {self.predecessors.find node} == -1 then
+        {self.predecessors.append node}
+     else
+        {if error-if-present? then
+            {throw
+                {GraphInvalidEdgeException
+                    {hlmessage "%s already a predecessor of %s.", node, self}
+                }
+            }
+        }
+    }
+  }
+  
+  {method public open {remove-edge
+                          to-node:{GraphNode-of t},
+                          error-if-missing?:bool = true
+                      }:void
+    {self.remove-successor-internal
+        to-node asa {DefaultDirectedGraphNode-of t},
+        error-if-missing? = error-if-missing?,
+        reverse-delink? = true
+    }    
+  }
+  
+  {doc-next
+    {purpose
+        Removes one edge leading from this node.
+    }
+    {parameter node,
+        The node to remove.
+    }
+    {parameter error-if-missing?,
+        If {ctext true}, an error will be thrown if the listed node is
+        not among the successors of this node.
+    }
+  }
+  {method public open {remove-successor
+                          node:{DirectedGraphNode-of t},
+                          error-if-missing?:bool = false
+                      }:void
+    {self.remove-successor-internal
+        node asa {DefaultDirectedGraphNode-of t},
+        error-if-missing? = error-if-missing?,
+        reverse-delink? = true
+    }
+  }
+  
+  {method package {remove-successor-internal
+                      node:{DefaultDirectedGraphNode-of t},
+                      error-if-missing?:bool = false,
+                      reverse-delink?:bool = true
+                  }:void
+    let removed?:bool = false
+    def index = {self.successors.find node}
+    {if index != -1 then
+        {self.successors.remove index}
+        set removed? = true
+    }
+    {if not removed? and error-if-missing? then
+        {throw
+            {GraphInvalidEdgeException
+                {hlmessage
+                    "Tried to remove %s from %s; not a direct successor.",
+                    node, self
+                }
+            }
+        }
+    }
+    {if reverse-delink? then
+        {node.remove-predecessor-internal
+            self,
+            error-if-missing? = error-if-missing?
+        }
+        {self.graph.note-edge-removed self, node}
+    }
+  }
+  
+  {method package {remove-predecessor-internal
+                      node:{DefaultDirectedGraphNode-of t},
+                      error-if-missing?:bool = false
+                  }:void
+    let removed?:bool = false
+    def index = {self.predecessors.find node}
+    {if index != -1 then
+        {self.predecessors.remove index}
+        set removed? = true
+    }
+    {if not removed? and error-if-missing? then
+        {throw
+            {GraphInvalidEdgeException
+                {hlmessage
+                    "Tried to remove %s from %s; not a direct predecessor.",
+                    node, self
+                }
+            }
+        }
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Clears all edges leading from this node.
+    }
+  }
+  {method public open {clear-predecessors}:void
+    {for i = self.predecessors.size - 1 downto 0 do
+        {self.predecessors[i].remove-successor self}
+    }
+  }
+  
+  {doc-next
+    {purpose
+        Clears all edges leading from this node.
+    }
+  }
+  {method public open {clear-successors}:void
+    {for i = self.successors.size - 1 downto 0 do
+        {self.remove-successor-internal
+            self.successors[i],
+            reverse-delink? = true
+        }
+    }
+  }
+  
+  {method public open {disconnect}:void
+    {self.clear-predecessors}
+    {self.clear-successors}
+  }
+    
+}
+
+
+|| Ugly, but required to fulfill the Graph-of.to-Iterator return contract.
+{define-class package {DefaultDirectedGraphNodeCastingIterator-of t:Type}
+  {inherits {Iterator-of {GraphNode-of t}}}
+
+  field private node-iterator:{Iterator-of {DefaultDirectedGraphNode-of t}}
+  
+  {constructor package {default graph:{DefaultDirectedGraph-of t}}
+    set self.node-iterator = {graph.nodes.to-Iterator}
+  }
+  
+  {method public open {read-one}:(val:{GraphNode-of t}, eof?:bool)
+    def (val, eof?) = {self.node-iterator.read-one}
+    {return val asa {GraphNode-of t}, eof?}
+  }
+  
+  {method public open {reset}:void
+    {self.node-iterator.reset}
+  }
+  
+}
+

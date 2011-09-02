@@ -1,0 +1,2803 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0, 8.0 package}
+
+{package COM.CURL.EXT.AUTO-TEST,
+    resource-directory = "curl://install/curl-resources", ||""
+    translations-file = "translations.ctd", ||""
+    default-locale = "en", ||""
+    version = "1.0", ||""
+    {compiler-directives stringent? = true}
+}
+
+{import * from CURL.GUI.STANDARD}
+{import * from CURL.GUI.CONTROL-BASE}
+{import * from CURL.GUI.TEXT-FORMATS}
+{import * from CURL.LANGUAGE.COMPILER}
+
+{import ScrollAxis from CURL.GRAPHICS.WINDOW}
+{import Property from CURL.LANGUAGE.REFLECTION}
+
+{import * from CURL.IDE.COVERAGE}
+
+|| Running a script:
+|| "C:\Program Files\Curl Corporation\Surge\8\bin\curl.exe" %1 %2 %3
+
+|#
+
+  To Do
+  - Better doc for platform
+  - For platform, allow any combination
+  - Every constructor should take delay
+  - check-property is really two different things
+  - Every gesture should allow platform, target, delay
+  - Seems strange to pass in the display table everywhere
+  o Should default constructor take all fields as args?
+  - Add a delay property and use amount for something else, or drop it
+  - Better explanation of the parameters. Put doc on the fields and
+    have the constructors refer to that
+  - Rename rclick to right-click, dclick to double-click
+  o Look for asa. Can we check in the UI constructor? (cf case UiGesture.focus)
+
+#|
+
+|| ------------------------------------------------------------------------
+
+{define-enum public LogLevel
+    trace, debug, info, warn, error, fatal
+}
+
+{define-class public open LogRecord
+
+  {getter public open {fields}:RecordFields
+    {return LogRecord._fields}
+  }
+
+  let public _fields:RecordFields =
+      {RecordFields
+        {RecordField "id", ||""
+            caption = {lmessage id},
+            domain = int,
+            index-type = RecordFieldIndexType.unique
+        },
+        {RecordField "level", ||""
+            caption = {lmessage Level},
+            domain = LogLevel,
+            index-type = RecordFieldIndexType.none
+        },
+        {RecordField "message", ||""
+            caption = {lmessage Message},
+            domain = String,
+            index-type = RecordFieldIndexType.none
+        },
+        {RecordField "time", ||""
+            caption = {lmessage Time},
+            domain = DateTime,
+            index-type = RecordFieldIndexType.none
+        },
+        {RecordField "tags",
+            caption = {lmessage Tags},
+            domain = String,
+            index-type = RecordFieldIndexType.none
+        }
+      }
+
+  field protected record:Record
+  field private tag-words:#StringArray = null
+
+  {constructor public {default r:Record}
+    set self.record = r
+  }
+
+  {setter public open {id i:int}
+    set self.record["id"] = i ||""
+  }
+  {getter public open {id}:int
+    {return self.record["id"] asa int} ||""
+  }
+
+  {setter public open {level v:LogLevel}
+    set self.record["level"] = v ||""
+  }
+  {getter public open {level}:LogLevel
+    {return self.record["level"] asa LogLevel} ||""
+  }
+
+  {setter public open {message v:String}
+    set self.record["message"] = v ||""
+  }
+  {getter public open {message}:String
+    {return self.record["message"] asa String} ||""
+  }
+
+  {setter public open {time v:DateTime}
+    set self.record["time"] = v ||""
+  }
+  {getter public open {time}:DateTime
+    {return self.record["time"] asa DateTime} ||""
+  }
+
+  {setter public open {tags v:String}
+    set self.record["tags"] = v ||""
+  }
+  {getter public open {tags}:String
+    {return self.record["tags"] asa String} ||""
+  }
+
+  {method public open {match-tag? v:String}:bool
+    {if self.tag-words == null then
+        set self.tag-words = {self.tags.split}
+    }
+    {for word in {non-null self.tag-words} do
+        let pos:int = {v.find-string word}
+        {if pos >= 0 then
+            || Make sure it matches a full word
+            {if pos == 0 or v[pos - 1] == ' ' then
+                {inc pos, word.size}
+                {if pos == self.tags.size or v[pos + 1] == ' ' then
+                    {return true}
+                }
+            }
+        }
+    }
+    {return false}
+  }
+}
+
+
+||--{define-class public open Logger
+||--
+||--  field protected messages:RecordSet
+||--
+||--  {constructor public {default
+||--                      }
+||--  }
+||--
+||--  {method public open {log}:void
+||--  }
+||--
+||--  {method public open {find 
+||--                          tags:String,
+||--                          levels:String = "iwe"
+||--                      }:{Array-of LogMessage}
+||--  }
+||--
+||--
+||--  {method public open {}:void
+||--  }
+||--}
+
+
+|| ------------------------------------------------------------------------
+
+{doc-next
+    {purpose A subclass of {docref Frame} that can be used to measure the
+        size of an object after layout.
+    }
+    {details
+        When a new layout is completed this object will fire an
+        {docref Adjustment} event at itself. An event handler can examine
+        the {ctext measured-width} and {ctext measured-height}
+        properties.  This can be useful for writing automated tests.
+    }
+}
+{define-class public open MeasuringFrame {inherits Frame}
+
+  {doc-next
+    {purpose Measured width of this {ctext Frame} when {docref-abbr
+        Graphic.set-size} is called.
+    }
+  }
+  field public measured-width:Distance = 1.8525mm
+
+  {doc-next
+    {purpose Measured height of this {ctext Frame} when {docref-abbr
+        Graphic.set-size} is called.
+    }
+  }
+  field public measured-height:Distance = 4.445mm
+
+  {constructor public {default ...}
+    {construct-super ...}
+  }
+
+  {method public open {set-size lc:LayoutContext, bounds:GRect}:void
+    {super.set-size lc, bounds}
+    let dc:DisplayContext = lc.layout-display-context
+    set self.measured-width = bounds.width
+    set self.measured-height = bounds.height
+    {after 0s do
+        {self.handle-event {Adjustment}}
+    }
+  }
+}
+
+|| ------------------------------------------------------------------------
+
+{doc-next
+    {purpose The gestures that can be scripted.}
+}
+{define-enum public UiGesture
+    || Mouse gestures
+    press,
+    release,
+    move,
+    click,
+    right-click,
+    double-click,
+
+    || Keyboard gestures
+    focus,
+    type,
+    press-key,
+
+    || Checking the target object
+    check-selection,
+    check-value,
+    check-events,
+    check-property,
+    check,
+
+    || Other actions
+    clear-selection,
+    do,
+    scroll,
+    set-value,
+    set-view,
+    wait
+}
+
+{doc-next
+    {purpose Represents a single UI gesture that can be executed by
+        by a {docref GuiTest}.
+    }
+    {details
+        Each instance of this class represents a step in an automated
+        test. There is a constructor for each type of "command" or "gesture".
+        Objects of this type are generally passed to the constructor for
+        a {docref GuiTest object} as in the following example.
+
+    }
+    {for-example
+        {curl-code
+            {GuiTest {TextField value = "123456789"},
+                "Cut Text Test",
+                {UI.focus},
+                {UI.press 4.0, 0mm},
+                {UI.move 5.0, 0mm},
+                {UI.move 7.0, 0mm},
+                {UI.release 7.0, 0mm},
+                {UI.type "x", command? = true},
+                {UI.check-value "123489"},
+                {UI.set-value "123456789"}
+            }
+        }
+    }
+}
+{define-value-class public final UI
+||--{define-class public final UI
+
+  || To keep it simple, there are fields for everything here.
+  || Different gestures use different combinations of this data
+  field public constant gesture:UiGesture
+
+  {doc-next
+    {purpose The x coordinate for the gesture.}
+    {details
+        The exact x grid location from where need to {ctext move}.
+        It represents a character position within some kind of text
+        control. 0.0 is before the first character. 1.0 is after the
+        first character and before the second. 0.5 is exactly in the middle.
+    }
+  }
+  field public constant x:any = 0m
+
+  {doc-next
+    {purpose The y coordinate for the gesture.}
+    {details
+        The value represents a character position within some kind of text
+        control. 0.0 is before the first character. 1.0 is after the
+        first character and before the second. 0.5 is exactly in the middle.
+    }
+  }
+  field public constant y:any = 0m
+
+  {doc-next
+    {purpose The state mask for a keyboard or mouse gesture.}
+  }
+  field public constant mask:StateMask = {StateMask.from-mask 0}
+
+  {doc-next
+    {purpose Identifies which mouse button is pressed,
+        {docref right-button} or {docref left-button} or
+        {docref middle-button}.
+    }
+  }
+  field public constant button:int = 0
+
+  {doc-next
+    {purpose The click count for a mouse event gesture.}
+  }
+  field public constant click-count:int = 0
+
+  {doc-next
+    {purpose The amount for scrolling and other gestures.}
+  }
+  field public constant amount:double = 0.0
+
+  {doc-next
+    {purpose Time delay until the next synthetic event.}
+  }
+  field public constant delay:Time = 0ms
+
+  {doc-next
+    {purpose Optional procedure to execute when the UI gesture is executed.}
+  }
+  field public constant do-proc:{proc-type {test:GuiTest}:void} =
+      {proc {test:GuiTest}:void}
+
+  {doc-next
+    {purpose Generic data field for use by a {docref UI} instance.}
+  }
+  field public constant data:any = null
+
+  {doc-next
+    {purpose Specifies the platform on which this {ctext UiGesture} should be
+        simulated.
+    }
+    {details
+        This value should be a string containing any combination of
+        "windows" "linux" and "mac", separated by spaces. When a test
+        is running, if the string representing the execution platform
+        is not found in this field then the gesture will be skipped.
+        If this field is blank, the gesture is included on all
+        platforms.
+    }
+  }
+  field public constant platform:String = ""
+
+  {doc-next
+    {purpose The name of a property to be checked.}
+  }
+  field public constant property-name:String = ""
+
+  {doc-next
+    {purpose
+        Test target other than GuiTest.target, if required.
+    }
+  }
+  field public constant target:#Graphic = null
+
+  {doc-next
+    {purpose Optional procedure to be executed when
+        {docref UI.check-property} is executed.
+    }
+    {details
+        The {param args} come from the {docref UI.check-property}
+        constructor. The procedure should return an array of expected
+        values and an array of actual values. If these do not match,
+        the test will fail.
+    }
+  }
+  field public constant check-proc:#{proc-type {t:Graphic,
+                                               args:Array
+                                              }:(expected:Array, actual:Array)
+                                   } = null
+
+  {doc-next
+    {purpose Values to be checked when {docref UI.check-property} is
+        executed.
+    }
+  }
+  field protected constant check-property-arg-list:Array =
+      {Array}
+
+
+  {doc-next
+    {purpose Construct a {ctext UI} object to represent one gesture.}
+  }
+  {constructor public {default
+                          gesture:UiGesture,
+                          x:any,
+                          y:any,
+                          button:int = left-button,
+                          click-count:int = 0,
+                          platform:String = "",
+                          target:#Graphic = null,
+                          delay:Time = 50ms
+                      }
+    set self.gesture = gesture
+    set self.x = x
+    set self.y = y
+    set self.button = button
+    set self.click-count = click-count
+    set self.platform = platform
+    set self.target = target
+    set self.delay = delay
+  }
+
+  {doc-next
+    {purpose Clear the selection.}
+    {parameter platform,
+        Specifies the platform on which this {ctext UiGesture} should be
+        simulated. See {docref UI.platform} for details.
+    }
+    {parameter delay, A time delay amount. It specifies
+        how long to wait before firing the next synthetic event.
+    }
+  }
+  {constructor public {clear-selection
+                          platform:String = "",
+                          target:#Graphic = null,
+                          delay:Time = 50ms
+                      }
+    set self.gesture = UiGesture.clear-selection
+    set self.platform = platform
+    set self.target = target
+    set self.delay = delay
+  }
+
+  {doc-next
+    {purpose Set the value of control to the specified value.}
+    {parameter data,
+        The value which is to be set for the control.
+    }
+    {for-example
+        {ctext set-value} for TextField can used in following way to
+        set the text "123456789".
+
+        {curl-code
+            {GuiTest {TextField value = "123456789"},
+                "Cut test",
+                {UI.focus},
+                {UI.press 4, 0mm},
+                {UI.move 5, 0mm},
+                {UI.move 7, 0mm},
+                {UI.release 7, 0mm},
+                {UI.type "x", ctrl? = true, platform = "win32 linux"},
+                {UI.type "x", command? = true, platform = "mac"},
+                {UI.check-value "123489"},
+                || Restore original value using set-value
+                {UI.set-value "123456789"}
+            }
+        }
+    }
+  }
+  {constructor public {set-value
+                          data:any,
+                          platform:String = "",
+                          target:#Graphic = null,
+                          delay:Time = 50ms
+                      }
+    set self.gesture = UiGesture.set-value
+    set self.data = data
+    set self.platform = platform
+    set self.target = target
+    set self.delay = delay
+  }
+
+  {doc-next
+    {purpose Set the {docref View} that for events to be fired at.}
+    {details
+        Normally simulated events are fired at the {docref View} that
+        contains the test target. If a test causes a different {ctext
+        View} to be shown, this action can be used to request that
+        subsequent events be fired at the new {ctext View}. 
+
+        If {param view} is closed, events will once again be fired at
+        the target's {ctext View}. You can also code {ctext
+        UI.set-view null} to reinstate the target {ctext View}.
+    }
+  }
+  {constructor public {set-view
+                          view-proc:{proc-type {}:#View},
+                          platform:String = "",
+                          target:#Graphic = null,
+                          delay:Time = 50ms
+                      }
+    set self.gesture = UiGesture.set-view
+    set self.data = view-proc
+    set self.platform = platform
+    set self.target = target
+    set self.delay = delay
+  }
+
+  {doc-next
+    {purpose Verify the current selection held by control against the
+        specified value.
+    }
+    {parameter data,
+        The value against which current selection need to be checked.
+    }
+    {parameter delay, A time delay amount. It specifies
+        how long to wait before firing the next synthetic event.
+    }
+    {parameter platform,
+        Specifies the platform on which this {ctext UiGesture} should be
+        simulated. See {docref UI.platform} for details.
+    }
+    {for-example
+        {ctext check-selection} verifies the selection in TextField as
+        follows,
+
+        {curl-code
+            {GuiTest {TextField value = "123456789"},
+                "Pgup keyboard event test",
+                {UI.focus},
+                {UI.click 9, 0mm},
+                {UI.press-key "pgup", shift? = true}, || shift + PgUp
+                {UI.check-selection "123456789"}
+            }
+        }
+    }
+  }
+  {constructor public {check-selection
+                          data:any,
+                          platform:String = "",
+                          target:#Graphic = null,
+                          delay:Time = 50ms
+                      }
+    set self.gesture = UiGesture.check-selection
+    set self.data = data
+    set self.platform = platform
+    set self.target = target
+    set self.delay = delay
+  }
+
+  {doc-next
+    {purpose Check properties of the test target.}
+    {parameter property-name,
+        The name of the property to be checked.
+    }
+    {parameter value,
+        The expected value of {param property}.
+    }
+    {parameter delay, A time delay amount. It specifies
+        how long to wait before firing the next synthetic event.
+    }
+    {parameter platform,
+        Specifies the platform on which this {ctext UiGesture} should be
+        simulated. See {docref UI.platform} for details.
+    }
+    {for-example
+        {curl-code
+            {GuiTest {CheckButton label = "CheckButton", label-inset = 8px},
+                "Check property of CheckButton and label-inset",
+                {UI.focus},
+                {UI.double-click 0, 0},
+                {UI.check-property "value", false},
+                {UI.check-selection "123456789"}
+            }
+        }
+    }
+  }
+  {constructor public {check-property
+                          property-name:String,
+                          value:any,
+                          platform:String = "",
+                          target:#Graphic = null,
+                          delay:Time = 50ms
+                      }
+    set self.gesture = UiGesture.check-property
+    set self.data = value
+    set self.property-name = property-name
+    set self.platform = platform
+    set self.target = target
+    set self.delay = delay
+  }
+
+  {doc-next
+    {purpose Check the test target using an arbitrary procedure.}
+    {parameter delay, A time delay amount. It specifies
+        how long to wait before firing the next synthetic event.
+    }
+    {parameter platform,
+        Specifies the platform on which this {ctext UiGesture} should be
+        simulated. See {docref UI.platform} for details.
+    }
+    {details
+        In the following example {ctext check-property} is used to verify
+        that the {ctext value} property is false. Then {ctext check} 
+        is used to apply the {ctext test-label-inset} procedure to the
+        test target. The value "8px" is passed to {ctext test-label-inset}.
+    }
+    {for-example
+        {curl-code
+            {GuiTest {CheckButton label = "CheckButton", label-inset = 8px},
+                "Check property of CheckButton and label-inset",
+                {UI.focus},
+                {UI.double-click 0, 0},
+                {UI.check-property "value", false},
+                {UI.check-selection "123456789"},
+                {UI.check check-proc = test-label-inset, "8px"}
+            }
+        }
+    }
+  }
+  {constructor public {check
+                          platform:String = "",
+                          target:#Graphic = null,
+                          delay:Time = 50ms,
+                          check-proc:#{proc-type {t:Graphic,
+                                                 args:Array
+                                                }:(expected:Array, actual:Array)
+                                     } = null,
+                          ...
+                      }
+    set self.gesture = UiGesture.check
+    set self.check-proc = check-proc
+    set self.platform = platform
+    set self.target = target
+    set self.delay = delay
+    {for variable in ... do
+        {self.check-property-arg-list.append variable}
+    }
+  }
+
+  {doc-next
+    {purpose Verify the value of control against the specified value.
+    }
+    {parameter data,
+        The value against which value of control need to be checked.
+    }
+    {parameter delay, A time delay amount. It specifies
+        how long to wait before firing the next synthetic event.
+    }
+    {parameter platform,
+        Specifies the platform on which this {ctext UiGesture} should be
+        simulated. See {docref UI.platform} for details.
+    }
+    {for-example
+        {curl-code
+            {GuiTest {TextField value = "123456789"},
+                "Cut test",
+                {UI.focus},
+                || cut command(ctrl+x)
+                {UI.press 4, 0mm},
+                {UI.move 5, 0mm},
+                {UI.move 7, 0mm},
+                {UI.release 7, 0mm},
+                {UI.type "x", ctrl? = true, platform = "win32 linux"},
+                {UI.type "x", command? = true, platform = "mac"},
+                {UI.check-value "123489"}
+            }
+        }
+    }
+  }
+  {constructor public {check-value
+                          data:any,
+                          platform:String = "",
+                          target:#Graphic = null,
+                          delay:Time = 50ms
+                      }
+    set self.gesture = UiGesture.check-value
+    set self.data = data
+    set self.platform = platform
+    set self.target = target
+    set self.delay = delay
+  }
+
+  {doc-next
+    {purpose Fire synthetic mouse press event.
+    }
+    {parameter x,
+        The exact x grid location where need to fire press event.
+        It represents a character position within some kind of text
+        control. 0.0 is before the first character. 1.0 is after the
+        first character and before the second. 0.5 is exactly in the middle.
+    }
+    {parameter y,
+        The exact y grid location where need to fire press event.
+        It represents a character position within some kind of text
+        control. 0.0 is before the first character. 1.0 is after the
+        first character and before the second. 0.5 is exactly in the middle.
+    }
+    {parameter button,
+        The mouse button, it can be right or left.
+    }
+    {parameter shift?,
+        Normal modifier keys.
+    }
+    {parameter ctrl?,
+        Normal modifier keys.
+    }
+    {parameter alt?,
+        Normal modifier keys.
+    }
+    {parameter menu?,
+        Normal modifier keys.
+    }
+    {parameter command?,
+        Normal modifier keys.
+    }
+    {parameter delay, A time delay amount. It specifies
+        how long to wait before firing the next synthetic event.
+    }
+    {parameter platform,
+        Specifies the platform on which this {ctext UiGesture} should be
+        simulated. See {docref UI.platform} for details.
+    }
+    {for-example
+        {curl-code
+            {GuiTest {TextField value = "123456789"},
+                "Cut test",
+                {UI.focus},
+                {UI.press 4, 0mm}
+            }
+        }
+    }
+  }
+  {constructor public {press
+                          x:any,
+                          y:any,
+                          button:int = left-button,
+                          shift?:bool = false,
+                          ctrl?:bool = false,
+                          alt?:bool = false,
+                          menu?:bool = false,
+                          command?:bool = false,
+                          platform:String = "",
+                          target:#Graphic = null,
+                          delay:Time = 50ms
+                      }
+
+    {platform-switch
+     case "mac" do
+     else
+        {if command? and not ctrl? then
+            set command? = false
+            set ctrl? = true
+        }
+    }
+
+    set self.mask = {StateMask.from-test-flags
+                        shift?, ctrl?, alt?, menu?, command?, button = button
+                    }
+
+    set self.gesture = UiGesture.press
+    set self.x = x
+    set self.y = y
+    set self.button = button
+    set self.platform = platform
+    set self.target = target
+    set self.delay = delay
+  }
+
+  {doc-next
+    {purpose Fire synthetic mouse release event.
+    }
+    {parameter x,
+        The exact x grid location where need to fire release event.
+        It represents a character position within some kind of text
+        control. 0.0 is before the first character. 1.0 is after the
+        first character and before the second. 0.5 is exactly in the middle.
+    }
+    {parameter y,
+        The exact y grid location where need to fire release event.
+        It represents a character position within some kind of text
+        control. 0.0 is before the first character. 1.0 is after the
+        first character and before the second. 0.5 is exactly in the middle.
+    }
+    {parameter button,
+        The mouse button, it can be right or left.
+    }
+    {parameter delay, A time delay amount. It specifies
+        how long to wait before firing the next synthetic event.
+    }
+    {parameter platform,
+        Specifies the platform on which this {ctext UiGesture} should be
+        simulated. See {docref UI.platform} for details.
+    }
+    {for-example
+        {curl-code
+            {GuiTest {TextField value = "123456789"},
+                "Cut test",
+                {UI.focus},
+                {UI.press 4, 0mm},
+                {UI.release 4, 0mm}
+            }
+        }
+    }
+  }
+  {constructor public {release
+                          x:any,
+                          y:any,
+                          button:int = left-button,
+                          platform:String = "",
+                          target:#Graphic = null,
+                          delay:Time = 50ms
+                      }
+    set self.gesture = UiGesture.release
+    set self.x = x
+    set self.y = y
+    set self.button = button
+    set self.platform = platform
+    set self.target = target
+    set self.delay = delay
+  }
+
+  {doc-next
+    {purpose Specify a synthetic mouse move event.}
+    {parameter x, Coordinate for the event. See {docref UI.x}.}
+    {parameter y, Coordinate for the event. See {docref UI.y}.}
+    {parameter button, Identifies which mouse button is pressed,
+        {docref right-button} or {docref left-button} or
+        {docref middle-button}.
+    }
+    {parameter shift?, The state of the shift key in the event.}
+    {parameter ctrl?, The state of the control key in the event.}
+    {parameter alt?, The state of the alt key in the event.}
+    {parameter menu?, The state of the menu key in the event.}
+    {parameter command?, The state of the command key in the event.
+        Since there is no command key on Windows or Linux, this flag
+        provides a default value for the control key on these
+        platforms.
+    }
+    {parameter delay, A time delay amount in milliseconds. It specifies
+        how long to wait before firing the next synthetic event.
+    }
+    {parameter platform,
+        Specifies the platform on which this {ctext UiGesture} should be
+        simulated. See {docref UI.platform} for details.
+    }
+    {for-example
+        {curl-code
+            {GuiTest {TextField value = "123456789"},
+                "Cut test",
+                {UI.focus},
+                {UI.press 4, 0mm},
+                {UI.move 5, 0mm},
+                {UI.move 7, 0mm},
+                {UI.release 7, 0mm},
+                {UI.type "x", ctrl? = true, platform = "win32 linux"},
+                {UI.type "x", command? = true, platform = "mac"},
+                {UI.check-value "123489"}
+            }
+        }
+    }
+  }
+  {constructor public {move
+                          x:any,
+                          y:any,
+                          button:int = left-button,
+                          shift?:bool = false,
+                          ctrl?:bool = false,
+                          alt?:bool = false,
+                          menu?:bool = false,
+                          command?:bool = false,
+                          platform:String = "",
+                          target:#Graphic = null,
+                          delay:Time = 50ms
+                      }
+    {platform-switch
+     case "mac" do
+     else
+        {if command? and not ctrl? then
+            set command? = false
+            set ctrl? = true
+        }
+    }
+
+    set self.mask = {StateMask.from-test-flags
+                        shift?, ctrl?, alt?, menu?, command?, button = button
+                    }
+
+    set self.gesture = UiGesture.move
+    set self.x = x
+    set self.y = y
+    set self.button = button
+    set self.platform = platform
+    set self.target = target
+    set self.delay = delay
+  }
+
+  {doc-next
+    {purpose Specify a synthetic mouse click event (press followed by release).}
+    {parameter x, Coordinate for the event. See {docref UI.x}.}
+    {parameter y, Coordinate for the event. See {docref UI.y}.}
+    {parameter button, Identifies which mouse button is pressed,
+        {docref right-button} or {docref left-button} or
+        {docref middle-button}.
+    }
+    {parameter shift?, The state of the shift key in the event.}
+    {parameter ctrl?, The state of the control key in the event.}
+    {parameter alt?, The state of the alt key in the event.}
+    {parameter menu?, The state of the menu key in the event.}
+    {parameter command?, The state of the command key in the event.
+        Since there is no command key on Windows or Linux, this flag
+        provides a default value for the control key on these
+        platforms.
+    }
+    {parameter delay, A time delay amount. It specifies
+        how long to wait before firing the next synthetic event.
+    }
+    {parameter platform,
+        Specifies the platform on which this {ctext UiGesture} should be
+        simulated. See {docref UI.platform} for details.
+    }
+    {for-example
+        {curl-code
+            {GuiTest {TextField value = "123456789"},
+                "Cut test",
+                {UI.focus},
+                {UI.press 4, 0mm}
+            }
+        }
+    }
+  }
+  {constructor public {click
+                          x:any,
+                          y:any,
+                          button:int = left-button,
+                          shift?:bool = false,
+                          ctrl?:bool = false,
+                          alt?:bool = false,
+                          menu?:bool = false,
+                          command?:bool = false,
+                          platform:String = "",
+                          target:#Graphic = null,
+                          delay:Time = 50ms
+                      }
+
+    {platform-switch
+     case "mac" do
+     else
+        {if command? and not ctrl? then
+            set command? = false
+            set ctrl? = true
+        }
+    }
+
+    set self.mask = {StateMask.from-test-flags
+                        shift?, ctrl?, alt?, menu?, command?, button = button
+                    }
+
+    set self.gesture = UiGesture.click
+    set self.x = x
+    set self.y = y
+    set self.button = button
+    set self.platform = platform
+    set self.target = target
+    set self.delay = delay
+  }
+
+  {doc-next
+    {purpose Specify a synthetic scroll event.}
+    {parameter axis,
+        Scrolling axis, it can be {ctext ScrollAxis.x} or
+        {ctext ScrollAxis.y}.
+    }
+    {parameter x, Coordinate for the event. See {docref UI.x}.}
+    {parameter y, Coordinate for the event. See {docref UI.y}.}
+    {parameter button, Identifies which mouse button is pressed,
+        {docref right-button} or {docref left-button} or
+        {docref middle-button}.
+    }
+    {parameter shift?, The state of the shift key in the event.}
+    {parameter ctrl?, The state of the control key in the event.}
+    {parameter alt?, The state of the alt key in the event.}
+    {parameter menu?, The state of the menu key in the event.}
+    {parameter command?, The state of the command key in the event.
+        Since there is no command key on Windows or Linux, this flag
+        provides a default value for the control key on these
+        platforms.
+    }
+    {parameter delay, A time delay amount in milliseconds. It specifies
+        how long to wait before firing the next synthetic event.
+    }
+    {parameter platform,
+        Specifies the platform on which this {ctext UiGesture} should be
+        simulated. See {docref UI.platform} for details.
+    }
+  }
+  {constructor public {scroll
+                          x:any,
+                          y:any,
+                          axis:ScrollAxis = ScrollAxis.y,
+                          shift?:bool = false,
+                          ctrl?:bool = false,
+                          alt?:bool = false,
+                          menu?:bool = false,
+                          command?:bool = false,
+                          amount:double = 1,
+                          platform:String = "",
+                          target:#Graphic = null,
+                          delay:Time = 50ms
+                      }
+    {platform-switch
+     case "mac" do
+     else
+        {if command? and not ctrl? then
+            set command? = false
+            set ctrl? = true
+        }
+    }
+
+    set self.mask = {StateMask.from-test-flags
+                        shift?, ctrl?, alt?, menu?, command?
+                    }
+
+    set self.gesture = UiGesture.scroll
+    set self.x = x
+    set self.y = y
+    set self.amount = amount
+    set self.delay = delay
+    set self.platform = platform
+    set self.target = target
+    set self.data = axis
+  }
+
+  {doc-next
+    {purpose Specify a synthetic right mouse click event.}
+    {parameter x, Coordinate for the event. See {docref UI.x}.}
+    {parameter y, Coordinate for the event. See {docref UI.y}.}
+    {parameter button, Identifies which mouse button is pressed,
+        {docref right-button} or {docref left-button} or
+        {docref middle-button}.
+    }
+    {parameter shift?, The state of the shift key in the event.}
+    {parameter ctrl?, The state of the control key in the event.}
+    {parameter alt?, The state of the alt key in the event.}
+    {parameter menu?, The state of the menu key in the event.}
+    {parameter command?, The state of the command key in the event.
+        Since there is no command key on Windows or Linux, this flag
+        provides a default value for the control key on these
+        platforms.
+    }
+    {parameter delay, A time delay amount in milliseconds. It specifies
+        how long to wait before firing the next synthetic event.
+    }
+    {parameter platform,
+        Specifies the platform on which this {ctext UiGesture} should be
+        simulated. See {docref UI.platform} for details.
+    }
+    {for-example
+        {curl-code
+            {GuiTest {TextField value = "123456789"},
+                "Cut test",
+                {UI.focus},
+                {UI.right-click 3.5,0mm}
+            }
+        }
+    }
+  }
+  {constructor public {right-click
+                          x:any,
+                          y:any,
+                          button:int = right-button,
+                          shift?:bool = false,
+                          ctrl?:bool = false,
+                          alt?:bool = false,
+                          menu?:bool = false,
+                          command?:bool = false,
+                          platform:String = "",
+                          target:#Graphic = null,
+                          delay:Time = 50ms
+                      }
+    {platform-switch
+     case "mac" do
+     else
+        {if command? and not ctrl? then
+            set command? = false
+            set ctrl? = true
+        }
+    }
+
+    set self.mask = {StateMask.from-test-flags
+                        shift?, ctrl?, alt?, menu?, command?, button = button
+                    }
+
+    set self.gesture = UiGesture.click
+    set self.x = x
+    set self.y = y
+    set self.button = button
+    set self.platform = platform
+    set self.target = target
+    set self.delay = delay
+  }
+
+  {doc-next
+    {purpose Specifies a synthetic double click event.}
+    {parameter x, Coordinate for the event. See {docref UI.x}.}
+    {parameter y, Coordinate for the event. See {docref UI.y}.}
+    {parameter button, Identifies which mouse button is pressed,
+        {docref right-button} or {docref left-button} or
+        {docref middle-button}.
+    }
+    {parameter shift?, The state of the shift key in the event.}
+    {parameter ctrl?, The state of the control key in the event.}
+    {parameter alt?, The state of the alt key in the event.}
+    {parameter menu?, The state of the menu key in the event.}
+    {parameter command?, The state of the command key in the event.
+        Since there is no command key on Windows or Linux, this flag
+        provides a default value for the control key on these
+        platforms.
+    }
+    {parameter delay, A time delay amount in milliseconds. It specifies
+        how long to wait before firing the next synthetic event.
+    }
+    {parameter platform,
+        Specifies the platform on which this {ctext UiGesture} should be
+        simulated. See {docref UI.platform} for details.
+    }
+    {for-example
+        {ctext do} could be used as follows
+
+        {curl-code
+            {def current-node-changed = {CurrentNodeChanged}}
+            {def (x-offset, y-offset) =
+                {platform-switch
+                 case "mac" do (2.8mm, 3.1mm)
+                 else (2.4mm, 2.4mm)
+                }
+            }
+            {def (x, y) =
+                {platform-switch
+                 case "win32" do (3.78mm, 4.5mm)
+                 case "linux" do (4.46mm, 5.56mm)
+                 case "mac" do (3.96mm, 5.029mm)
+                }
+            }
+            {let click:GuiTest =
+                {GuiTest
+                    {make-tree},
+                    "Click on toggle button test.",
+                    {UI.do
+                        {proc-type {t:GuiTest}:void
+                            def tree = t.target asa TreeControl
+                            {if-non-null root = tree.data-model.root then
+                                {tree.collapse-node root,
+                                    collapse-descendants? = true }
+                            }
+                            {tree.select-nothing}
+                            {tree.release-key-focus}
+                        }
+                    },
+                    {UI.click x-offset, y-offset},
+                    {UI.click x-offset + x, y-offset + y},
+                    {UI.click x-offset + x * 2, y-offset + y * 2},
+                    {UI.click x-offset + x * 3, y-offset + y * 6},
+                    {UI.click x-offset + x * 4, y-offset + y * 9},
+                    {UI.click x-offset + x * 5, y-offset + y * 12},
+                    {UI.click x-offset + x * 1, y-offset + y * 17},
+                    {UI.check-events current-node-changed}
+                }
+            }
+        }
+        {notes
+            Instead of each time writing a proc in do you can create a proc.
+            and pass it like {ctext {UI.do reset}}.
+        }
+    }
+  }
+  {constructor public {double-click
+                          x:any,
+                          y:any,
+                          button:int = left-button,
+                          shift?:bool = false,
+                          ctrl?:bool = false,
+                          alt?:bool = false,
+                          menu?:bool = false,
+                          command?:bool = false,
+                          platform:String = "",
+                          target:#Graphic = null,
+                          delay:Time = 50ms
+                      }
+    {platform-switch
+     case "mac" do
+     else
+        {if command? and not ctrl? then
+            set command? = false
+            set ctrl? = true
+        }
+    }
+
+    set self.mask = {StateMask.from-test-flags
+                        shift?, ctrl?, alt?, menu?, command?, button = button
+                    }
+
+    set self.gesture = UiGesture.double-click
+    set self.x = x
+    set self.y = y
+    set self.button = button
+    set self.platform = platform
+    set self.target = target
+    set self.delay = delay
+  }
+
+  {doc-next
+    {purpose Specify a sequence of synthetic key press events.}
+    {parameter s,
+        The string to by synthetically typed. Each character will be
+        fired as a separate KeyPress event.
+    }
+    {parameter shift?, The state of the shift key in the event.}
+    {parameter ctrl?, The state of the control key in the event.}
+    {parameter alt?, The state of the alt key in the event.}
+    {parameter menu?, The state of the menu key in the event.}
+    {parameter command?, The state of the command key in the event.
+        Since there is no command key on Windows or Linux, this flag
+        provides a default value for the control key on these
+        platforms.
+    }
+    {parameter delay, A time delay amount in milliseconds. It specifies
+        how long to wait before firing the next synthetic event.
+    }
+    {parameter platform,
+        Specifies the platform on which this {ctext UiGesture} should be
+        simulated. See {docref UI.platform} for details.
+    }
+    {for-example
+        {ctext do} could be used as follows
+
+        {curl-code
+            {GuiTest {TextField value = "123456789"},
+                "Cut test",
+                {UI.focus},
+                {UI.click 4, 0mm},
+                {UI.type "hello"},
+                {UI.check-value "1234hello56789"}
+            }
+        }
+    }
+  }
+  {constructor public {type
+                          s:String,
+                          view:#View = null,
+                          shift?:bool = false,
+                          ctrl?:bool = false,
+                          alt?:bool = false,
+                          menu?:bool = false,
+                          command?:bool = false,
+                          platform:String = "",
+                          target:#Graphic = null,
+                          delay:Time = 50ms
+                      }
+
+    || command? will imply ctrl? on Windows to make it easier to write
+    || scripts with shortcuts for all platforms
+    {platform-switch
+     case "mac" do
+     else
+        {if command? and not ctrl? then
+            set command? = false
+            set ctrl? = true
+        }
+    }
+
+    set self.mask = {StateMask.from-test-flags
+                        shift?, ctrl?, alt?, menu?, command?
+                    }
+
+    set self.gesture = UiGesture.type
+    set self.data = s
+    set self.platform = platform
+    set self.target = target
+    set self.delay = delay
+  }
+
+  {doc-next
+    {purpose Synthetic key press event.}
+    {parameter s,
+        A {ctext String} equivalent {docref KeyPressValue} of intended
+        KeyPress event.
+    }
+    {parameter shift?, The state of the shift key in the event.}
+    {parameter ctrl?, The state of the control key in the event.}
+    {parameter alt?, The state of the alt key in the event.}
+    {parameter menu?, The state of the menu key in the event.}
+    {parameter command?, The state of the command key in the event.
+        Since there is no command key on Windows or Linux, this flag
+        provides a default value for the control key on these
+        platforms.
+    }
+    {parameter delay, A time delay amount. It specifies
+        how long to wait before firing the next synthetic event.
+    }
+    {parameter platform,
+        Specifies the platform on which this {ctext UiGesture} should be
+        simulated. See {docref UI.platform} for details.
+    }
+    {for-example
+        {ctext do} could be used as follows
+
+        {curl-code
+        }
+    }
+  }
+  {constructor public {press-key
+                          s:String,
+                          shift?:bool = false,
+                          ctrl?:bool = false,
+                          alt?:bool = false,
+                          menu?:bool = false,
+                          command?:bool = false,
+                          platform:String = "",
+                          target:#Graphic = null,
+                          delay:Time = 50ms
+                      }
+
+    let key-press-value:char = {KeyPressValue.char-for-name s}
+    {if key-press-value == KeyPressValue.unknown then
+        {error {format "Unknown key: %s", s}}
+    }
+
+    || command? will imply ctrl? on Windows to make it easier to write
+    || scripts with shortcuts for all platforms
+    {platform-switch
+     case "mac" do
+     else
+        {if command? and not ctrl? then
+            set command? = false
+            set ctrl? = true
+        }
+    }
+
+    set self.mask = {StateMask.from-test-flags
+                        shift?, ctrl?, alt?, menu?, command?
+                    }
+
+    set self.gesture = UiGesture.press-key
+    set self.data = s
+    set self.platform = platform
+    set self.target = target
+    set self.delay = delay
+  }
+
+  {doc-next
+    {purpose Attempt to give focus to the test target.}
+    {details If the target can take focus, a test will fail if it does not.
+        If the target should not take focus, a test will fail if it does.
+    }
+  }
+  {constructor public {focus
+                          platform:String = "",
+                          target:#Graphic = null,
+                          delay:Time = 50ms
+                      }
+    set self.gesture = UiGesture.focus
+    set self.platform = platform
+    set self.target = target
+    set self.delay = delay
+  }
+
+  {doc-next
+    {purpose Execute an arbitrary procedure while running a test.}
+    {parameter do-proc,
+        The proc which will take a {docref GuiTest} as a argument.
+        No result is expected.
+    }
+    {for-example
+        Here is an example of using {ctext UI.do}.
+
+        {curl-code
+            {def current-node-changed = {CurrentNodeChanged}}
+            {def (x-offset, y-offset) =
+                {platform-switch
+                 case "mac" do (2.8mm, 3.1mm)
+                 else (2.4mm, 2.4mm)
+                }
+            }
+            {def (x, y) =
+                {platform-switch
+                 case "win32" do (3.78mm, 4.5mm)
+                 case "linux" do (4.46mm, 5.56mm)
+                 case "mac" do (3.96mm, 5.029mm)
+                }
+            }
+            {let click:GuiTest =
+                {GuiTest
+                    {make-tree},
+                    "Click on toggle button test.",
+                    {UI.do
+                        {proc-type {t:GuiTest}:void
+                            def tree = t.target asa TreeControl
+                            {if-non-null root = tree.data-model.root then
+                                {tree.collapse-node 
+                                    root, collapse-descendants? = true
+                                }
+                            }
+                            {tree.select-nothing}
+                            {tree.release-key-focus}
+                        }
+                    },
+                    {UI.click x-offset, y-offset},
+                    {UI.click x-offset + x, y-offset + y},
+                    {UI.click x-offset + x * 2, y-offset + y * 2},
+                    {UI.click x-offset + x * 3, y-offset + y * 6},
+                    {UI.click x-offset + x * 4, y-offset + y * 9},
+                    {UI.click x-offset + x * 5, y-offset + y * 12},
+                    {UI.click x-offset + x * 1, y-offset + y * 17},
+                    {UI.check-events current-node-changed}
+                }
+            }
+        }
+        {notes
+            Instead of each time writing a proc in do you can create a proc.
+            and pass it like {ctext {UI.do reset}}.
+        }
+    }
+  }
+  {constructor public {do
+                          do-proc:{proc-type {t:GuiTest}:void},
+                          delay:Time = 50ms,
+                          target:#Graphic = null,
+                          platform:String = ""
+                      }
+    set self.gesture = UiGesture.do
+    set self.do-proc = do-proc
+    set self.platform = platform
+    set self.target = target
+    set self.delay = delay
+  }
+
+  {doc-next
+    {purpose Check for the type and sequence of expected {docref GuiEvent}s.}
+    {parameter delay, A time delay amount. It specifies
+        how long to wait before firing the next synthetic event.
+    }
+    {parameter delay, A time delay amount. It specifies
+        how long to wait before firing the next synthetic event.
+    }
+    {parameter platform,
+        Specifies the platform on which this {ctext UiGesture} should be
+        simulated. See {docref UI.platform} for details.
+    }
+    {parameter ...,
+        List of expected {docref GuiEvent}s in expected sequence.
+    }
+    {notes
+        {ctext check-events} can take 0 or more events. One can call it as
+        {ctext {UI.check-events}} to check that {ctext no event is fired}.
+    }
+    {for-example
+        {ctext check-events} could be used as follows
+
+        {curl-code
+            || items is a proc which returns Array
+            {let item-y:Distance = 9.8pt}
+            {def value-changed = {ValueChanged}}
+            {def value-finished = {ValueFinished}}
+
+            {GuiTest
+                {ListBox
+                    1, 2, 3, 4
+                },
+                "visit all four list items",
+                {UI.focus},
+                {UI.set-value -1},
+                {UI.click 10mm, item-y},
+                {UI.check-value {items 1}},
+                {UI.click 12mm, item-y * 2},
+                {UI.check-value {items 2}},
+                {UI.click 12mm, item-y * 3},
+                {UI.check-value {items 3}},
+                {UI.click 12mm, item-y * 4},
+                {UI.check-value {items 4}},
+                {UI.check-events
+                    value-changed, value-finished,
+                    value-changed, value-finished,
+                    value-changed, value-finished,
+                    value-changed, value-finished
+                }
+            }
+        }
+
+        Selecting a {docref ListItem} from {docref ListBox} causes two 
+        events on {docref ListBox}, {docref ValueChanged} and
+        {docref ValueFinished}.
+    }
+  }
+  {constructor public {check-events
+                          platform:String="",
+                          target:#Graphic = null,
+                          delay:Time=50ms,
+                          ...:GuiEvent
+                      }
+    set self.gesture = UiGesture.check-events
+    set self.data = {new {Array-of GuiEvent}, {splice ...}}
+    set self.platform = platform
+    set self.target = target
+    set self.delay = delay
+  }
+
+  {doc-next
+    {purpose Specify a delay during script execution.}
+    {parameter delay,
+        The amount of time to wait.
+    }
+    {notes
+        This gesture can be used when a gesture takes time to complete,
+        such as scrolling a long list or triggering a animation sequence.
+    }
+    {for-example
+        {ctext UI.wait} could be used as follows
+
+        {curl-code
+            {let item-y:Distance = 9.8pt}
+            {def value-changed = {ValueChanged}}
+            {def value-finished = {ValueFinished}}
+
+            {GuiTest
+                {ListBox
+                    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
+                },
+                "Scroll test.",
+                {UI.focus},
+                {UI.set-value -1},
+                || Press on down scroll button.
+                {UI.press 10mm, 5mm},
+                {UI.wait 500},
+                {UI.release 10mm, 5mm},
+                || Click on list items.
+                {UI.click 10mm, item-y * 5},
+                {UI.check-value {items 15}},
+                {UI.check-events
+                    value-changed, value-finished
+                }
+            }
+        }
+    }
+  }
+  {constructor public {wait
+                          platform:String = "",
+                          delay:Time
+                      }
+    set self.gesture = UiGesture.wait
+    set self.delay = delay
+    set self.platform = platform
+  }
+}
+
+|| ------------------------------------------------------------------------
+
+{let public default-bias-x:Distance = 3pt}
+{platform-switch
+ case "mac" do set default-bias-x = 4pt
+ case "linux" do set default-bias-x = 4pt
+}
+
+{let public default-bias-y:Distance = 2pt}
+{platform-switch
+ case "mac" do set default-bias-y = 2pt
+ case "linux" do set default-bias-y = 2pt
+}
+
+{define-class public open GuiTest
+
+  let public coverage?:bool = false
+
+  let public tests:{Array-of GuiTest} = {new {Array-of GuiTest}}
+
+  let protected stats-frame:Frame = {Frame}
+  let protected header:HBox = {HBox spacing = 6pt}
+
+  let protected results:Table =
+      {Table columns = 3,
+        width = {add-stretch},
+        margin = 1px,
+        font-size = 8pt,
+        valign = "top"
+      }
+
+  let protected coverage-cb:CheckButton =
+      {CheckButton
+        label="Measure coverage",
+        value = GuiTest.coverage?,
+        {on ValueChanged at cb:CheckButton do
+            set GuiTest.coverage? = cb.value
+        }
+      }
+
+  let protected run-all-proc:#{proc-type {}:void}
+
+  let protected run-all-btn:CommandButton =
+      {CommandButton
+        label = "Run All",
+        takes-focus? = false,
+        {on Action at cb:CommandButton do
+            set cb.enabled? = false
+            set GuiTest.completed-count = 0
+            set GuiTest.failure-count = 0
+            {if GuiTest.coverage? then
+                {coverage-enable}
+                {GuiTest.start-coverage}
+            }
+            {if-non-null p = GuiTest.run-all-proc then
+                {p}
+             else
+                {for gt in GuiTest.tests do
+                    {gt.run}
+                }
+            }
+            set cb.enabled? = true
+            {after 0s do
+                {GuiTest.finish}
+            }
+        }
+      }
+
+  let public test-count:int = 0
+  let public completed-count:int = 0
+  let public failure-count:int = 0
+
+  let public event-time:Time = 0s
+  let package gm:GuiManager = {get-gui-manager}
+  let package mf:MeasuringFrame = {MeasuringFrame}
+
+  {doc-next
+    {purpose Amount added to the x coordinate in a gesture, to compensate
+        for decorations around the edges of a control.
+    }
+  }
+  field public bias-x:Distance = 0m
+
+  {doc-next
+    {purpose Amount added to the y coordinate in a gesture, to compensate
+        for decorations around the edges of a control.
+    }
+  }
+  field public bias-y:Distance = 0m
+
+  {doc-next
+    {purpose The sequence of {docref UI} gestures that comprise a test.}
+  }
+  field public-get protected-set steps:{Array-of UI}
+
+  field public-get protected-set current-step:int = -1
+
+  field public target:Graphic
+  field public target-view:#View
+  field public step-view:#View
+  field public target-width:any = null
+  field public target-height:any = null
+  field protected button:CommandButton
+  field public result:VBox
+  field public description:Visual
+  field public events:#{Array-of GuiEvent}
+  field public failed?:bool = false
+
+  {doc-next
+    {purpose The test framework puts every test into this {docref ScrollBox}
+        so it can ensure that the test target is visible when the test is run.
+    }
+  }
+  let public scrollbox:ScrollBox = {ScrollBox accept-focus? = false}
+
+  {doc-next
+    {purpose Construct a single test case.}
+  }
+  {constructor public {default
+                          target:Graphic,
+                          description:Visual,
+                          target-width:any = null,
+                          target-height:any = null,
+                          bias-x:Distance = default-bias-x,
+                          bias-y:Distance = default-bias-y,
+                          ...:UI
+                      }
+    set self.target = target
+    set self.target-width = target-width
+    set self.target-height = target-height
+    set self.description = description
+
+    set self.bias-x = bias-x
+    set self.bias-y = bias-y
+
+    set self.result =
+        {VBox
+            halign = "left", margin = 2pt,
+            border-width = 1in/300, border-color = "gray",
+            width = {add-stretch},
+            background = "silver",
+            description
+        }
+    set self.steps = {new {Array-of UI}, {splice ...}}
+    set self.button =
+        {CommandButton
+            label = "Test",
+            takes-focus? = false,
+            {on Action do
+                set self.result.background = "silver"
+                {self.run}
+            }
+        }
+
+    {GuiTest.tests.append self}
+    {inc GuiTest.test-count}
+
+    set self.events = {new {Array-of GuiEvent}}
+
+    {self.target.add-event-handler
+        {on e:GuiEvent do
+            {if e isa SelectionEvent then
+                || skip it
+             elseif e isa PointerEnvelopeEvent then
+                || skip it
+             elseif e isa PointerCrossing then
+                || skip it
+             else
+                {self.events.append e}
+            }
+        }
+    }
+
+||--    {self.target.add-event-handler
+||--        {on kp:KeyPress do
+||--            {self.events.append kp}
+||--        }
+||--    }
+||--    {self.target.add-event-handler
+||--        {on de:DialogEvent do
+||--            {self.events.append de}
+||--        }
+||--    }
+||--    {self.target.add-event-handler
+||--        {on ac:Action do
+||--            {self.events.append ac}
+||--        }
+||--    }
+||--    {self.target.add-event-handler
+||--        {on cnc:CurrentNodeChanged do
+||--            {self.events.append cnc}
+||--        }
+||--    }
+||--    {self.target.add-event-handler
+||--        {on cm:ContextMenuEvent do
+||--            {self.events.append cm}
+||--        }
+||--    }
+||--    {self.target.add-event-handler
+||--        {on adj:Adjustment do
+||--            {self.events.append adj}
+||--        }
+||--    }
+  }
+
+  {doc-next
+    {purpose To display the error log. And also prints on console.
+    }
+    {parameter test,
+        details or description of error string.
+    }
+    {parameter msg,
+        string to display as error.
+    }
+  }
+  {define-proc public {errlog test:String, msg:String}:String
+    {GuiTest.print-msg "Failure: *** Test: ", test, " ",  msg}
+    {return msg}
+  }
+
+  {doc-next
+    {purpose This resets the table of test results and starts
+        the coverage analyzer if requested.
+    }
+    {parameter title,
+        Title of the test page.
+    }
+    {parameter run-all-proc, A procedure that will run all of the desired
+        tests. If this procedure is not provided, the framework will call
+        all known tests once.
+    }
+    {parameter coverage?, If true, the framework will measure
+        coverage while the tests are running and display a coverage
+        report at the end.
+    }
+  }
+  {define-proc public {setup
+                          title:String,
+                          run-all-proc:#{proc-type {}:void} = null,
+                          coverage?:bool = false
+                      }:Graphic
+    set GuiTest.run-all-proc = run-all-proc
+    set GuiTest.coverage? = coverage?
+    {CURL.GUI.STANDARD.title heading? = false, {value title}}
+
+    set GuiTest.mf =
+        {MeasuringFrame
+            "5", || Want the size of a number
+            {on e:AttachEvent at mf:MeasuringFrame do
+                set GuiTest.event-time = 0s
+            }
+        }
+
+    {GuiTest.header.clear}
+    {GuiTest.header.add GuiTest.coverage-cb}
+    {GuiTest.header.add GuiTest.run-all-btn}
+    {GuiTest.header.add {Fill}}
+    {GuiTest.stats-frame.clear}
+    {GuiTest.header.add GuiTest.stats-frame}
+
+    {GuiTest.results.clear}
+    {GuiTest.results.add
+        {cell colspan = 2,
+            {bold {value title}}
+        }
+    }
+    {GuiTest.results.add
+        {cell {HBox {Fill}, {Dialog GuiTest.mf} }}
+    }
+
+    {for test:GuiTest in GuiTest.tests do
+        {GuiTest.results.add test.button}
+        {GuiTest.results.add test.target}
+        {GuiTest.results.add test.result}
+    }
+
+    {GuiTest.scrollbox.clear}
+    {GuiTest.scrollbox.add
+        {VBox spacing = 6pt,
+            GuiTest.header,
+            {HBox GuiTest.results, {Fill}}
+        }
+    }    
+    {return GuiTest.scrollbox}
+  }
+
+  {doc-next
+    {purpose Display the final statistics of the test script.
+    }
+  }
+  {define-proc public {finish
+                          exit-on-error?:bool = false
+                      }:void
+    || Display the failure count at the end of each test script
+    {if GuiTest.coverage? then
+        {GuiTest.stop-coverage}
+        {coverage-view {coverage-results}}
+    }
+    def stats =
+        {format "%s tests, %s completed, %s failed",
+            GuiTest.test-count, GuiTest.completed-count, GuiTest.failure-count
+        }
+    {GuiTest.stats-frame.add replace? = true, stats}
+||--    {dump GuiTest.test-count}
+||--    {dump GuiTest.completed-count}
+||--    {dump GuiTest.failure-count}
+    {if GuiTest.failure-count > 0 then
+        {if exit-on-error? then
+            {exit 0}
+         else
+            {popup-message "Automated test failure"}
+        }
+    }
+  }
+
+  {doc-next
+    {purpose Display the final statistics of the test script.
+    }
+  }
+  {method public open {run}:void
+    {inc GuiTest.completed-count}
+    || Scroll view if needed
+    def sb = GuiTest.scrollbox
+    set self.target-view = {GuiTest.mf.get-view}
+    set self.step-view = null
+    def view-bounds = {self.target-view.get-bounds}
+    def object-bounds = {self.target.layout.get-bounds}
+    let (x:Distance, y:Distance, found?:bool) =
+        {self.target.get-origin-in-graphical-ancestor self.target-view}
+    {if y + object-bounds.height >= view-bounds.height or
+        x + object-bounds.width >= view-bounds.width
+     then
+        {sb.scroll-to-object self.target}
+    }
+
+    {self.result.clear}
+    {set self.result.background = "silver"}
+    {self.result.add self.description}
+    {self.events.clear}
+    {if-non-null view = self.target-view then
+        {type-switch self.target-width
+         case d:Distance do
+            set self.target.width = d
+         case n:Null do
+            || ignore
+         else
+            set self.target.width =
+                (self.target-width asa double) * GuiTest.mf.measured-width
+        }
+        {type-switch self.target-height
+         case d:Distance do
+            set self.target.height = d
+         case n:Null do
+            || ignore
+         else
+            set self.target.height =
+                (self.target-height asa double) * GuiTest.mf.measured-height
+        }
+        {for step key si in self.steps do
+            set self.current-step = si
+            {self.do-step step}
+        }
+        set self.current-step = -1
+     else
+        set self.result.background = "yellow"
+        {self.result.add "?? No view"}
+    }
+  }
+
+  || Estimate the value for the x,y parameters. It uses a common base
+  || implementation class for ui objects of text controls.
+  {method private {interpolate-position
+                      tcui:BaseTextControlUIImpl,
+                      x:double,
+                      y-parm:any
+                  }:(x:Distance, y:Distance)
+
+    {if x < 0.0 then
+        set x = 0.0
+    }
+    let p1:int = {floor x} asa int
+    let p2:int = {ceiling x} asa int
+
+    let x1:Distance = x * GuiTest.mf.measured-width + self.bias-x
+    let y1:Distance = 0m
+
+    let y-spec:Distance = 0m
+    {type-switch y-parm
+     case d:Distance do
+        set y-spec = d
+     else
+        let yd:double = y-parm asa double
+        set y-spec =  yd * GuiTest.mf.measured-height + self.bias-y
+    }
+
+    {try
+        set (x1,y1) = {tcui.get-position-for-caret-index p1}
+     catch e:Exception do
+        || Ignore illegal caret index
+    }
+
+    let x2:Distance = x1 + GuiTest.mf.measured-width
+    let y2:Distance = y1 + GuiTest.mf.measured-height
+    {try
+        set (x2,y2) = {tcui.get-position-for-caret-index p2}
+     catch e:Exception do
+        || Ignore illegal caret index
+    }
+
+    def x0 = ({floor x} asa double)
+    def dd = x2/1m - x1/1m
+    def dv = x - x0
+
+    {return x1 + (dv * dd * 1m), {if y-spec == 0m then y1 else y-spec}}
+  }
+
+  {doc-next
+    {purpose Decide whether to allow a UiGesture on the current platform.}
+    {parameter step,
+        {docref UiGesture} to be checked.
+    }
+  }
+  {method protected open {proceed? step:UI}:bool
+    let proceed?:bool = true
+    {if step.platform != "" then
+        {platform-switch
+         case "win32" do
+            set proceed? = {step.platform.find-string "win32"} >= 0
+         case "mac" do
+            set proceed? = {step.platform.find-string "mac"} >= 0
+         case "linux" do
+            set proceed? = {step.platform.find-string "linux"} >= 0
+        }
+    }
+    {return proceed?}
+  }
+
+  {doc-next
+    {purpose Compares result of a test with the expected result.}
+    {details 
+        In addition to returning false if the test failed, a message
+        is added to {docref GuiTest.result} with a background that
+        indicates success (green) or failure (pink). The counter
+        {docref GuiTest.failure-count} is incremented if a test fails.
+    }
+    {parameter actual,
+        The actual value of {ctext target} control.
+    }
+    {parameter expected,
+        The expected value of {ctext target} control.
+    }
+    {parameter prefix,
+        The string which will be displayed before the result string.
+    }
+  }
+  {method protected open {compare-result
+                             actual:any, expected:any,
+                             prefix:any = "Value"
+                         }:bool
+    let good?:bool = false
+    {if actual == expected then
+        set good? = true
+     else
+        def msg = {format "?? %s: %w Expected: %w", prefix, actual, expected}
+        {self.result.add msg}
+        {GuiTest.errlog {self.description.get-text}, msg}
+        {if not self.failed? then
+            {inc GuiTest.failure-count}
+            set self.failed? = true
+        }
+    }
+    set self.result.background = 
+        {if self.failed? then "mistyrose" else "#A7FF8F"}
+    {return good?}
+  }
+
+  {doc-next
+    {purpose Implements each different kind of {docref UiGesture}.}
+    {parameter step,
+        {docref UiGesture} of this event.
+    }
+    {parameter view,
+        View associated to the key event.
+        This set the View for this GuiWindowEvent. This is necessary
+        as we need to fire the event at the GuiManager so that it can
+        dispatch it to the specified View.
+    }
+  }
+  {method protected open {do-step step:UI}:void
+    {if not {self.proceed? step} then
+        {return}
+    }
+
+    {if-non-null sv = self.step-view then
+        {if sv.destroyed? then
+            set self.step-view = null
+        }
+    }
+    let view:View = {if-non-null sv = self.step-view then
+                        sv
+                     else
+                        {non-null self.target-view}
+                    }
+    {dispatch-events false}
+    {inc GuiTest.event-time, 50ms}
+
+    let nx:Distance = 0m
+    let ny:Distance = 0m
+
+    || Compute ny first so that it can be overridden if the x position
+    || is specified as a character position.
+    {type-switch step.y
+     case d:Distance do
+        set ny = d
+     else
+        set ny = (step.y asa double) * GuiTest.mf.measured-height
+    }
+
+    {type-switch step.x
+     case d:Distance do
+        set nx = d
+     else
+        set nx = (step.x asa double  * GuiTest.mf.measured-width) + self.bias-x
+        {type-switch self.target
+         case c:MultiUIControlFrame do
+            {type-switch c.ui-object
+             case tcui:BaseTextControlUIImpl do
+                let (x:Distance, y:Distance) =
+                    {self.interpolate-position tcui, step.x asa double , step.y}
+                set nx = x
+                set ny = y
+            }
+        }
+    }
+
+    let (x:Distance, y:Distance) =
+        {transform-coordinates nx, ny, self.target, view}
+
+    let target:Graphic =
+        {if-non-null step.target then
+            step.target
+         else
+            self.target
+        }
+
+    {switch step.gesture
+
+     case UiGesture.set-view do
+        set self.step-view = {(step.data asa {proc-type {}:#View})} asa #View
+
+     case UiGesture.press do
+        def e = {PointerPress}
+        set e.event-time = GuiTest.event-time
+        set e.x = x
+        set e.y = y
+        set e.button = step.button
+        set e.click-count = 1
+        set e.state-mask = step.mask
+        {e.set-view view}
+        {GuiTest.gm.handle-event e}
+
+     case UiGesture.release do
+        def e = {PointerRelease}
+        set e.event-time = GuiTest.event-time
+        set e.x = x
+        set e.y = y
+        set e.button = step.button
+        set e.click-count = 1
+        set e.state-mask = step.mask
+        {e.set-view view}
+        {GuiTest.gm.handle-event e}
+
+     case UiGesture.move do
+        def e = {PointerMotion}
+        set e.event-time = GuiTest.event-time
+        set e.x = x
+        set e.y = y
+        set e.state-mask = step.mask
+        {e.set-view view}
+        {GuiTest.gm.handle-event e}
+
+     case UiGesture.scroll do
+        let e:PointerScroll = {PointerScroll}
+        set e.event-time = GuiTest.event-time
+        set e.x = x
+        set e.y = y
+        set e.amount = step.amount asa int
+        set e.axis = step.data asa ScrollAxis
+        set e.state-mask = step.mask
+        {e.set-view view}
+        {GuiTest.gm.handle-event e}
+        {dispatch-events false}
+
+     case UiGesture.click, UiGesture.right-click do
+        let e:PointerButtonEvent = {PointerPress}
+        set e.event-time = GuiTest.event-time
+        set e.x = x
+        set e.y = y
+        set e.button = step.button
+        set e.click-count = 1
+        set e.state-mask = step.mask
+        {e.set-view view}
+        {GuiTest.gm.handle-event e}
+        {dispatch-events false}
+
+        {inc GuiTest.event-time, 50ms}
+        set e = {PointerRelease}
+        set e.event-time = GuiTest.event-time
+        set e.x = x
+        set e.y = y
+        set e.button = step.button
+        set e.click-count = 1
+        set e.state-mask = step.mask
+        {e.set-view view}
+        {GuiTest.gm.handle-event e}
+
+     case UiGesture.double-click do
+        {def gui-manager = {get-gui-manager}}
+        set gui-manager.double-click-hysteresis = 1pt
+        let e:PointerButtonEvent = {PointerPress}
+        set e.event-time = GuiTest.event-time
+        set e.x = x
+        set e.y = y
+        set e.button = step.button
+        set e.click-count = 1
+        {e.set-view view}
+        {GuiTest.gm.handle-event e}
+        {dispatch-events false}
+
+        {inc GuiTest.event-time, 50ms}
+        set e = {PointerRelease}
+        set e.event-time = GuiTest.event-time
+        set e.x = x
+        set e.y = y
+        set e.button = step.button
+        set e.click-count = 1
+        {e.set-view view}
+        {GuiTest.gm.handle-event e}
+
+        set e = {PointerPress}
+        set e.event-time = GuiTest.event-time
+        set e.x = x
+        set e.y = y
+        set e.button = step.button
+        set e.click-count = 2
+        {e.set-view view}
+        {GuiTest.gm.handle-event e}
+        {dispatch-events false}
+
+        {inc GuiTest.event-time, step.delay}
+        set e = {PointerRelease}
+        set e.event-time = GuiTest.event-time
+        set e.x = x
+        set e.y = y
+        set e.button = step.button
+        set e.click-count = 2
+        {e.set-view view}
+        {GuiTest.gm.handle-event e}
+
+     case UiGesture.focus do
+        || If takes-focus?=true it will set the focus
+        || If takes-focus?=false it will raise an exception
+        || Failure could occur in two cases
+        || 1) takes-focus?=true and still exception is raised
+        || 2) takes-focus?=false and exception is not raised
+        {try
+            ||FIXME: type-switch, or check in the constructor
+            def control = target asa ActiveTraversor
+            {try
+                {control.request-key-focus}
+                {self.compare-result
+                    control.takes-focus?,
+                    true, 
+                    prefix = "takes-focus?"
+                }
+             catch e:Exception do
+                {self.compare-result
+                    control.takes-focus?,
+                    false,
+                    prefix = "takes-focus?"
+                }
+                {if step.data == true then
+                    {self.result.add e.message}
+                }
+            }
+         catch e:Exception do
+            {self.result.add e.message}
+        }
+        {self.events.clear}
+
+     case UiGesture.type do
+        let s:String = step.data asa String
+        {for c:char in s do
+            {self.do-key view, step, c}
+        }
+     case UiGesture.press-key do
+        let s:String = step.data asa String
+        {self.press-key view, step, s}
+
+     case UiGesture.check-selection do
+        {type-switch target
+            || multiple cases could be added for other controls
+         case sc:SpinControl do
+            def sc-ui = sc.ui-object asa SpinControlUI
+            set target = sc-ui.focus-object asa TextField
+         case df:DateField do
+            def df-ui = df.ui-object asa DateFieldUI
+            def df-spc = df-ui.focus-object asa DateFieldSpinControl
+            set target = df-spc.focus-object asa TextField
+         case rg:RecordGrid do
+            def selection = rg.selection
+            def rec-itr = selection.records
+            def rec-itr-size = selection.record-count
+            def col-itr = selection.columns
+            def col-itr-size = selection.column-count
+            def reg-itr = selection.regions
+            def reg-itr-size = selection.region-count
+            
+            let expected-items-row:{Array-of int} = {{Array-of int}}
+            let expected-items-col:StringArray = {StringArray}
+            let expected-items-region:{Array-of RecordGridRegion} =
+                {{Array-of RecordGridRegion}}
+            let (row:bool, col:bool, region:bool) = (false, false, false)
+            {type-switch step.data
+                || Row selection
+             case row-items:{Array-of int} do
+                set expected-items-row = row-items
+                set row = true
+                || Column selection
+             case col-items:StringArray do
+                set expected-items-col = col-items
+                set col = true
+                || Row Column selection
+             case row-col-items:Array do
+                set expected-items-row = row-col-items[0] asa {Array-of int}
+                set expected-items-col = row-col-items[1] asa StringArray
+                set row = true
+                set col = true
+                || Region selection
+             case record-grid-region:{Array-of RecordGridRegion} do
+                set expected-items-region = record-grid-region
+                set region = true
+            }
+            || Row selection
+            {if not expected-items-row.size == 0 and row then
+                def data-size = expected-items-row.size
+                let equal?:bool =
+                    {self.compare-result
+                        prefix = "Row selection set size",
+                        rec-itr-size, data-size
+                    }
+                {if equal? then
+                    let index:int = 0
+                    let actual-data-set:{Set-of int} = {{Set-of int}}
+                    let expected-data-set:{Set-of int} = {{Set-of int}}
+                    {for each-element:int in rec-itr do
+                        {actual-data-set.insert each-element}
+                        {expected-data-set.insert expected-items-row[index]}
+                        {inc index}
+                    }
+                    let set-equal?:bool =
+                        {actual-data-set.equal? expected-data-set}
+                    {if set-equal? then
+                        || to indicated test success
+                        {self.compare-result
+                            prefix = "Row selection set equivalence",
+                            set-equal?, true
+                        }
+                     else
+                        def actual = {GuiTest.string-from actual-data-set}
+                        def expected = {GuiTest.string-from expected-data-set}
+                        {self.compare-result
+                            prefix = "Row selection set equivalence",
+                            actual, expected
+                        }
+                    }
+                }
+            }
+            || Column selection
+            {if not expected-items-col.size == 0 and col then
+                def data-size = expected-items-col.size
+                let equal?:bool =
+                    {self.compare-result
+                        prefix = "Column selection set size",
+                        col-itr-size, data-size
+                    }
+                {if equal? then
+                    let index:int = 0
+                    let actual-data-set:{Set-of String} = {{Set-of String}}
+                    let expected-data-set:{Set-of String} = {{Set-of String}}
+                    {for each-element:RecordGridColumn in col-itr do
+                        {actual-data-set.insert each-element.field-name}
+                        {expected-data-set.insert expected-items-col[index]}
+                        {inc index}
+                    }
+                    let set-equal?:bool =
+                        {actual-data-set.equal? expected-data-set}
+                    {if set-equal? then
+                        || to indicated test success
+                        {self.compare-result
+                            prefix = "Column selection set equivalence",
+                            set-equal?, true
+                        }
+                     else
+                        def actual = {GuiTest.string-from actual-data-set}
+                        def expected = {GuiTest.string-from expected-data-set}
+                        {self.compare-result
+                            prefix = "Column selection set equivalence",
+                            actual, expected
+                        }
+                    }
+                }
+            }
+            || Region selection
+            {if not expected-items-region.size == 0 and region then
+                def data-size = expected-items-region.size
+                let equal?:bool =
+                    {self.compare-result
+                        prefix = "Region selection equal?",
+                        reg-itr-size, data-size
+                    }
+                {if equal? then
+                    let index:int = 0
+                    let actual-data-set:{Set-of RecordGridRegion} =
+                        {{Set-of RecordGridRegion}}
+                    let expected-data-set:{Set-of RecordGridRegion} =
+                        {{Set-of RecordGridRegion}}
+                    {for each-element:RecordGridRegion in reg-itr do
+                        {actual-data-set.insert each-element}
+                        {expected-data-set.insert expected-items-region[index]}
+                        {inc index}
+                    }
+                    let set-equal?:bool =
+                        {actual-data-set.equal? expected-data-set}
+                    {if set-equal? then
+                        || to indicated test success
+                        {self.compare-result
+                            prefix = "Row selection set equivalence",
+                            set-equal?, true
+                        }
+                     else
+                        def actual = {GuiTest.string-from actual-data-set}
+                        def expected = {GuiTest.string-from expected-data-set}
+                        {self.compare-result
+                            prefix = "Row selection set equivalence",
+                            actual, expected
+                        }
+                    }
+                }
+            }
+         case tree:TreeControl do
+            def selection = tree.selection
+            def nodes = selection.nodes
+            def node-itr = {nodes.to-Iterator}
+            def itr-size = nodes.size
+            def expected-items = step.data asa {Array-of TreeNode}
+            def data-size = expected-items.size asa int
+            let equal?:bool =
+                {self.compare-result
+                    prefix = "Selection iterator size",
+                    itr-size, data-size
+                }
+            {if equal? then
+                let index:int = 0
+                let actual-data-set:{Set-of String} = {{Set-of String}}
+                let expected-data-set:{Set-of String} = {{Set-of String}}
+                {for each-element:TreeNode in node-itr do
+                    {actual-data-set.insert each-element.node-data asa String}
+                    {expected-data-set.insert
+                        expected-items[index].node-data asa String
+                    }
+                    {inc index}
+                }
+                let set-equal?:bool =
+                    {actual-data-set.equal? expected-data-set}
+                {if set-equal? then
+                    || to indicated test success
+                    {self.compare-result
+                        prefix = "Selection iterator equivalence",
+                        set-equal?, true
+                    }
+                 else
+                    def actual = {GuiTest.string-from actual-data-set}
+                    def expected = {GuiTest.string-from expected-data-set}
+                    {self.compare-result
+                        prefix = "Selection iterator equivalence",
+                        actual, expected
+                    }
+                }
+            }
+        }
+        {type-switch target
+         case tf:TextSelectionContext do
+            {self.compare-result
+                prefix = "Selection",
+                {tf.selection.get-text}, step.data}
+        }
+
+     case UiGesture.check-property do
+        let ctype:ClassType = {type-of target} asa ClassType
+        let prop:#Property = {ctype.get-property-for-get step.property-name}
+        {if-non-null prop then
+            {self.compare-result
+                prefix = step.property-name,
+                {prop.get-value target}, step.data
+            }
+        }
+
+     case UiGesture.check do
+        let (expected:Array, actual:Array) =
+            {step.check-proc target, step.check-property-arg-list}
+        {if expected.size == actual.size then
+            {for count = 0 below actual.size do
+                {self.compare-result
+                    prefix = step.property-name,
+                    actual[count], expected[count]
+                }
+            }
+         else
+            {self.compare-result
+                prefix = "check",
+                expected.size, actual.size
+            }
+        }
+
+     case UiGesture.clear-selection do
+        let target:Graphic = self.target
+        {type-switch target
+            || multiple cases could be added for other controls
+         case sc:SpinControl do
+            def sc-ui = sc.ui-object asa SpinControlUI
+            set target = sc-ui.focus-object asa TextField
+         case df:DateField do
+            def df-ui = df.ui-object asa DateFieldUI
+            def df-spc = df-ui.focus-object asa DateFieldSpinControl
+            set target = df-spc.focus-object asa TextField
+        }
+        {type-switch target
+         case tf:TextSelectionContext do
+            {tf.select-nothing}
+        }
+
+     case UiGesture.set-value do
+        || Other control will add accordingly
+        {type-switch self.target
+         case cb:ComboBox do
+            {type-switch step.data
+             case n:int do
+                {cb.select-index n}
+             else
+                set cb.value = step.data asa String
+            }
+         case d-list:DropdownList do
+            {d-list.select-index step.data asa int}
+         case list:ListBox do
+            set list.value = step.data
+         case muvc-dt:{MultiUIValueControlFrame-of #DateTime} do
+            {set muvc-dt.value = step.data asa DateTime}
+         case muvc-any:{MultiUIValueControlFrame-of any} do
+            {set muvc-any.value = step.data}
+         case muvc-bool:{MultiUIValueControlFrame-of bool} do
+            set muvc-bool.value = step.data asa bool
+            || For TextField, TextArea, PasswordField
+         case tc:{MultiUIValueControlFrame-of String} do
+            {set tc.value = step.data asa String}
+            || For RichTextArea
+         case rtc:{MultiUIValueControlFrame-of RichTextString} do
+            {set rtc.value = {RichTextString.from-string step.data asa String}}
+         case cf:ControlFrame do
+            {type-switch cf
+             case sb:Scrollbar do
+                {sb.set-scroll-value step.data asa double}
+             case mb:MenuButton do
+                set mb.menu-label = step.data
+            }
+        }
+
+     case UiGesture.check-value do
+        {type-switch self.target
+         case tree:TreeControl do
+            let tn:#TreeNode = tree.current-node
+            {if-non-null tn then
+                {self.compare-result
+                    prefix = "Current node",
+                    tn.node-data, step.data
+                }
+            }
+         case msc:MultipleSelectionControl do
+            {type-switch msc
+             case lb:ListBox do
+                def selected-items = step.data
+                {with-compiler-directives allow-any-calls? = true do
+                    def flag =
+                        {self.compare-result
+                            prefix = "Items selected",
+                            lb.value.size, selected-items.size
+                        }
+                    {if flag then
+                        let cnt:int = 0
+                        {for x:any in lb.value do
+                            {self.compare-result x, selected-items[cnt]}
+                            {inc cnt}
+                        }
+                    }
+                }
+            }
+         case vc:ValueControl do
+            {type-switch vc
+             case mvc-df:{MultiUIValueControlFrame-of #DateTime} do
+                {self.compare-result
+                    prefix = "DateTime",
+                    mvc-df.value, step.data
+                }
+             case mvc:{MultiUIValueControlFrame-of any} do
+                || SpinControl, Slider, DropdownList
+                {self.compare-result mvc.value, step.data}
+             else
+                || All the form control like TextField
+                {self.compare-result vc.form-value, step.data}
+            }
+         case cf:ControlFrame do
+            {type-switch cf
+             case sb:Scrollbar do
+                {self.compare-result {sb.get-scroll-value}, step.data}
+            }
+        }
+
+     case UiGesture.do do
+        {step.do-proc self}
+
+     case UiGesture.check-events do
+        def events = self.events
+        def data = step.data asa {Array-of GuiEvent}
+        def events-size = events.size
+        def data-size = data.size
+        let equal?:bool
+        let result?:bool
+        set equal? =
+            {self.compare-result
+                prefix = "Event count", events-size, data-size
+            }
+        {for i = 0 below {max data-size, events.size} do
+            {if equal? then
+                set result? =
+                    {self.compare-result
+                        prefix = {format "Event %s:", i + 1},
+                        {type-of events[i]},
+                        {type-of data[i]}
+                    }
+             else
+                {self.result.add
+                    {format "expected: %s found: %s",
+                        {if i < data.size then data[i] else "<none>"},
+                        {if i < events.size then events[i] else "<none>"}
+                    }
+                }
+            }
+        }
+        {self.events.clear}
+
+     case UiGesture.wait do
+||--        {for i = 1 to (step.delay/1ms) asa int do
+||--            {dispatch-events false}
+||--            {sleep 1ms}
+||--        }
+||--        {return}
+    }
+
+    {dispatch-events false}
+    {for i = 1 to (step.delay/5ms) asa int do
+        {dispatch-events false}
+        {sleep 3ms}
+    }
+||--    {dispatch-events false}
+    {dispatch-events false}
+    {dispatch-events false}
+    {dispatch-events false}
+  }
+
+  {doc-next
+    {purpose Create and dispatch a character sequence.}
+    {parameter view, The {ctext View} that contains the test object.}
+    {parameter step,
+        {docref UiGesture} of this event.
+    }
+    {parameter c,
+        A {ctext char} equivalent {docref KeyPressValue} of intended
+        KeyPressEvent.
+    }
+  }
+  {method protected open {do-key view:View, step:UI, c:char}:void
+    let x:Distance = 0m
+    let y:Distance = 0m
+    def ep = {RawKeyPress}
+    set ep.event-time = GuiTest.event-time
+    set ep.state-mask = step.mask
+    set ep.x = x
+    set ep.y = y
+    set ep.keycode = {Keycode.keycode-for-name {String c}}
+    {ep.set-view view}
+    {GuiTest.gm.handle-event ep}
+    {sleep 10ms}
+    {dispatch-events false}
+
+    def e = {KeyPress}
+    set e.event-time = GuiTest.event-time
+    set e.state-mask = step.mask
+    set e.flags = KeyPressFlag.normal
+    set e.x = x
+    set e.y = y
+    set e.value = c
+    {e.set-view view}
+    {GuiTest.gm.handle-event e}
+    {sleep 10ms}
+    {dispatch-events false}
+
+    def er = {RawKeyRelease}
+    set er.event-time = GuiTest.event-time
+    set er.state-mask = step.mask
+    set er.x = x
+    set er.y = y
+    {er.set-view view}
+    set er.keycode = {Keycode.keycode-for-name {String c}}
+    {GuiTest.gm.handle-event er}
+    {sleep 10ms}
+    {dispatch-events false}
+  }
+
+  {doc-next
+    {purpose Create and dispatch a KeyPress event.}
+    {parameter view, The {ctext View} that contains the test object.}
+    {parameter step,
+        {docref UiGesture} of this event.
+    }
+    {parameter key,
+        A {ctext String} equivalent {docref KeyPressValue} of intended
+        KeyPressEvent.
+    }
+  }
+  {method protected open {press-key view:View, step:UI, key:String}:void
+    let key-press-value:char = {KeyPressValue.char-for-name key}
+
+    let x:Distance = 0m
+    let y:Distance = 0m
+    def ep = {RawKeyPress}
+    set ep.event-time = GuiTest.event-time
+    set ep.state-mask = step.mask
+    set ep.x = x
+    set ep.y = y
+    {ep.set-view view}
+    {GuiTest.gm.handle-event ep}
+    {sleep 10ms}
+    {dispatch-events false}
+
+    def e = {KeyPress}
+    set e.event-time = GuiTest.event-time
+    set e.state-mask = step.mask
+    set e.flags = KeyPressFlag.keypad
+    set e.x = x
+    set e.y = y
+    set e.value = key-press-value
+    {e.set-view view}
+    {GuiTest.gm.handle-event e}
+    {sleep 10ms}
+    {dispatch-events false}
+
+    def er = {RawKeyRelease}
+    set er.event-time = GuiTest.event-time
+    set er.state-mask = step.mask
+    set er.x = x
+    set er.y = y
+    {er.set-view view}
+    {GuiTest.gm.handle-event er}
+    {sleep 10ms}
+    {dispatch-events false}
+  }
+
+  {doc-next
+    {purpose Create a string from a {docref {Set-of int}} or from a
+        {docref {Set-of String}}.
+        Useful in cases when we have data as {ctext Set}.
+    }
+    {parameter data-set,
+        {docref {Set-of int}} or a {docref {Set-of String}}.
+    }
+  }
+  {define-proc package {string-from data-set:any}:String
+    let str:StringBuf = {StringBuf "Index \{"}
+    {type-switch data-set
+     case data-set-of-int:{Set-of int} do
+        {for each-element:int in data-set-of-int do
+            {str.concat {String each-element, ", "}}
+        }
+     case data-set-of-string:{Set-of String} do
+        {for each-element:String in data-set-of-string do
+            {str.concat {String each-element, ", "}}
+        }
+    }
+    {str.trim-right}
+    {str.set str.size - 1, '\}'}
+    {return {str.to-String}}
+  }
+
+  {doc-next
+    {purpose Print any message to stdout. Every message has a fixed format
+        {ctext [ISO Date Time] <filename> : Your message here.}.
+    }
+    {parameter ...,
+        Any object which could be represented as string. Ideally it should
+        reflect the Issue/Failure cause properly.
+    }
+  }
+  {define-proc public {print-msg ...:any}:void
+    def file-name = {get-base-url}.filename
+    def datetime-info = {DateTime}.info
+    def str:String =
+        {String
+            "[", datetime-info.iso-date, " ",  datetime-info.iso-time, "] ",
+            file-name, ": ",
+            {splice ...}
+        }
+    {output str}
+  }
+
+  {define-proc public {start-coverage}:void
+    {coverage-enable test-name = "GuiAuto"}
+    {coverage-instrument}
+    {coverage-start}
+  }
+
+  {define-proc public {stop-coverage}:void
+    {coverage-stop}
+    {coverage-view {coverage-results}}
+  }
+
+}
+

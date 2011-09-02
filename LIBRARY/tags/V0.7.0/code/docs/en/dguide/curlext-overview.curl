@@ -1,0 +1,422 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0, 8.0 applet}
+
+{applet manifest = "manifest.mcurl", locale = "en"}
+
+{include "../utils/guide-header.scurl"}
+{include "../utils/support.scurl"}
+
+{chapter
+    index= {HeadingIndex primary-key="Curl Extensions Overview"},
+    Curl Extensions Overview
+}
+{summary
+    {paragraph
+        The Curl Extensions library provides components that are
+        useful for building many kinds of applets.
+    }
+}
+
+Note that this page contains links to the class documentation included
+with the library. You must install the library for these links to
+work. You can install the library by choosing the {bold Install
+Library...} item from the Help menu in the documentation viewer.  Then
+navigate to the {ctext manifest.mcurl} file in the library.
+
+
+{privilege-note}
+
+{heading level=2,
+    The Curl Extensions Library
+}
+{itemize
+    {item {link href = {url "#autotest"}, Automated Test Framework}
+
+        This is a basic automated test framework that can be used to
+        write test scripts to verify the operation of any GUI control.
+    }
+
+    {item {link href = {url "#background-tasks"}, Background Tasks}
+
+        Provides the abililty to execute tasks asynchronously from the
+        main applet.
+    }
+
+    {item {link href = {url "#calculated-recordset"}, Calculated RecordSet}
+
+        Provides calculated fields that can be used in a {docref RecordSet}
+    }
+
+    {item
+        {link href = {url "#data-access"},
+            Data Access APIs
+        }
+
+        A collection of useful classes and procedures for working with
+        {docref RecordSet} data and {docref RecordGrid}s.
+
+        This package includes the {link href = {url "#tree-grid"},
+        TreeGrid}, which is essentially a {docref RecordGrid} with a
+        tree hierarchy in the first column.
+    }
+
+    {item
+        {link href = {url "#gantt"},
+            Gantt Chart
+        }
+
+        The Curl Extensions library includes a number of classes that
+        can be used to create a Gantt chart. The demo applet shows how
+        a Gantt chart can be built using a {ctext TreeGrid} and
+        a {docref GanttCell}.
+    }
+
+    {item
+        {link href = {url "#geographic"}, Geographic Shape} API
+
+        Provides the ability to read and display geographic shape files.
+    }
+
+    {item
+        {link href = {url "#graphs"},
+            Graphs
+        }
+
+        An API for representing and processing directed or undirected
+        graphs (both weighted and unweighted).
+    }
+
+    {item
+        {link href = {url "#gui-utils"},
+            GUI Utilities
+        }
+
+        A package of useful GUI procedures and classes, including an
+        application shell that makes it easy to implement any
+        application with a file menu.
+
+        The {ctext TitledView} is a standalone View with a
+        skinnable title bar. 
+
+        The {ctext BalloonView} API is used to create a small popup
+        window with rounded corners and a pointer to some Graphic in
+        your applet. 
+
+        {link href = {url "#autocomplete"}, Autocompleting Text Fields}
+        will provide suggested completions when typing into a {docref
+        TextField} or {docref RecordGridCell}.
+    }
+
+    {item
+        {link href = {url "#splash-animation"},
+            Animated Splash Screen
+        }
+
+        An API for animated splash screens.
+    }
+
+    {item
+        {link href = {url "#tiled-windows"},
+            Tiled Windows
+        }
+
+        Provides a window hierarchy where individual windows can be
+        nested, split, or displayed in tabs. Windows can also be
+        floating and can be rearranged using drag and drop gestures.
+    }
+
+    {item
+        {link href = {url "#graphical-transitions"},
+            Graphical Transitions
+        }
+
+        A collection of animated transitions provides visually
+        interesting ways to switch from one graphic to another.
+    }
+
+    {item
+        {link href = {url "#view-animation"},
+            View Animations
+        }
+
+        An API for animating the opening and closing of a {docref View}.
+    }
+
+    {item
+        {link href = {url "#worksheet"},
+            Worksheet
+        }
+
+        A grid based display that works in many ways like a
+        spreadsheet.
+    }
+
+}
+
+{heading level = 2, More Information About the Library}
+
+{destination name = "autotest",
+{heading level = 3,
+    Automated Test Framework for Controls
+}}
+
+The automated testing API is provided in the package
+{docref COM.CURL.EXT.AUTO-TEST}
+
+This is a basic automated test framework that can be used to write
+test scripts to verify the operation of any GUI control.  The biggest
+limitation is that it can only test within one
+{docref View}. In particular menus and dialogs are not accessible
+to this framework if they pop up into a new {ctext View}.  The
+framework is most useful for testing one control at a time.
+
+This example is an
+{link href = {url "../../samples/sample-checkbutton-test.curl"},
+automated test for a {ctext CheckButton}.
+}
+written using the test framework. Click the Run All button to run all
+of the tests. You can click any Test button to run a single test.
+
+
+{destination name = "background-tasks",
+{heading level = 3,
+    Background Tasks
+}}
+||FIXME: where is the Mandelbrot sample?
+{paragraph
+    The package {docref COM.CURL.EXT.BACKGROUND-TASK} provides an API
+    {docref BackgroundTaskQueue.async-start-task} to run code in a subapplet
+    and get the results back. This lets an applet run CPU bound code
+    in a different thread so that it won't block UI interaction.  It
+    may allow an applet to take full advantage of the power of modern
+    CPUs that include multiple cores and/or hyper threading.
+}
+
+{destination name = "calculated-recordset",
+{heading level = 3,
+    Calculated RecordSet
+}}
+{paragraph
+    The package {docref COM.CURL.EXT.CALCULATED-RECORDSET} provides
+    a {docref CalculatedRecord}, {docref CalculatedField}, and various
+    supporting classes. These allow you to add calculated values to a
+    subclass of {ctext RecordSet} called {docref CalculatedRecordSet}.
+}
+
+{destination name = "data-access",
+{heading level = 3,
+    Data Access APIs
+}}
+{paragraph
+    Various useful data access classes are included in the package
+    {docref COM.CURL.EXT.DATA-ACCESS}. These include domains,
+    RecordGrid cells, the {docref TreeGrid}. See the
+    {link href = {url "data-access-apis.curl"}, Data Access APIs} section
+    for detailed information.
+}
+
+{destination name = "gantt",
+{heading level = 3,
+    Gantt Chart Demo }}
+
+The Curl Extensions library includes a number of classes designed for
+reating a Gantt chart. The {link href = {url
+"../../samples/gantt-demo.curl"}, Gantt Chart Demo } applet shows how
+a Gantt chart can be built using a {ctext TreeGrid} and a {docref
+GanttCell}. It also includes a simple {docref ProjectModel} class.
+
+
+
+{destination name = "geographic",
+{heading level = 3, Geographic Shape Files}
+}
+{paragraph
+    The package {docref COM.CURL.EXT.GEOGRAPHIC} 
+    provides the ability to read and display {link href = 
+        {url "http://en.wikipedia.org/wiki/Shapefile"},
+    geographic shape files.}
+}
+
+
+{destination name = "graphs",
+{heading level = 3,
+    Graphs
+}}
+{paragraph
+    The package {docref COM.CURL.EXT.GRAPHS} provides classes to
+    represent weighted and unweighted graphs.
+}
+
+
+{destination name = "gui-utils",
+{heading level = 3,
+    Useful GUI Utilities
+}}
+{paragraph
+    Several miscellaneous APIs for building a graphical user interface
+    are included in the library in the {docref COM.CURL.EXT.GUI}
+    package.
+}
+
+{destination name = "autocomplete",
+{heading level = 4,
+    Autocompleting Text Fields
+}}
+
+The {docref COM.CURL.EXT.GUI} package
+includes a set of classes that provide
+text fields with the ability to privide suggested completions as the
+user types into the field.
+
+Complete information and examples is given in the chapter
+{link href = {url "autocomplete-fields.curl"},
+Autocompleting Text Fields}.
+
+{destination name = "popup-balloon",
+{heading level = 4,
+    BalloonView
+}}
+
+{paragraph
+    The {docref BalloonView} is a small window with rounded corners
+    and a pointer to some Graphic in your applet.  It is usually used
+    to provide some additional information about the thing it is
+    pointing at. You can view the
+    {link href = {url "../../samples/sample-popup-balloon.curl"},
+    BalloonView sample applet} to see how it works and try various
+    features of the API.
+}
+
+{destination name = "file-app",
+{heading level = 4,
+    FileApp Application Base Class
+}}
+
+This is a class that does as much as possible to implement an
+application with a file menu. To build an application you create a
+subclass and implement the abstract methods to load a file, save a
+file, create a new file and so on. You also define and implement any
+additonal menus required by your applet. The {docref FileApp} class
+takes care of basic logic, such as promting the user to save before
+quitting.
+
+This class is the basis for the Gantt Chart demo and the TreeGrid
+applet mentioned earlier.
+
+
+{destination name = "TitledView",
+{heading level = 4,
+    TitledView
+}}
+{paragraph
+    The package 
+    The {docref TitledView} is intended for use by a detached applet
+    where it is desirable to customize the appearance of the applet's
+    views using a style sheet. (An ordinary {docref View} will use the
+    platform native look.)  It can also be used to create a custom
+    look for any standalone View, such as a modeless tool palette.
+
+    Try out the {link href =
+    {url "../../samples/sample-titled-view.curl"}, TitledView
+    sample applet } to see what it looks like.
+}
+
+
+{destination name = "splash-animation",
+{heading level = 3,
+    Animated Splash Screens
+}}
+{paragraph
+    The package {docref COM.CURL.EXT.VIEW-ANIMATION} provides various
+    interesting animations for opening and closing a {ctext View}.
+    The packages {docref COM.CURL.EXT.SPLASH-ANIMATION}
+    and {docref COM.CURL.EXT.SPLASH-SCREEN} provide APIs to create
+    {link href = {url "../../samples/sample-splash-animation.curl"},
+    animated splash screens}
+}
+
+{destination name = "tiled-windows",
+{heading level = 3,
+    Tiled Window
+}}
+{paragraph
+    Tiled windows are provided by the package {docref
+    COM.CURL.EXT.TILED-WINDOWS}.
+}
+
+
+{destination name = "graphical-transitions",
+{heading level = 3,
+    Graphical Transitions
+}}
+{paragraph
+COM.CURL.EXT.TRANSITION-LIBRARY 
+    Here is a sample applet to show some of the possible
+    {link href = {url "../../samples/sample-transition-frame.curl"},
+    frame transitions}.
+}
+
+
+{destination name = "view-animations",
+{heading level = 3,
+    View Animations
+}}
+{paragraph
+    The package {docref COM.CURL.EXT.VIEW-ANIMATION} provides the
+    ability to animate the showing and hiding of a {docref View}
+    Here is a sample applet to show some of the possible
+    {link href = {url "../../samples/sample-view-animation.curl"},
+    view animations}.
+}
+
+
+{destination name = "tree-grid",
+{heading level = 3,
+TreeGrid
+}}
+
+The {ctext TreeGrid} uses a custom RecordGridCell to display the tree
+structure from data stored in a RecordSet. It requires a small number
+of dedicated columns to keep track of the tree nodes, but any number
+of additional columns can be added and displayed in the
+RecordGrid. You can use drag and drop to rearrange the items in the
+tree.
+
+A {link href = {url "../../samples/sample-tree.curl"},
+sample TreeGrid applet} shows how to build an outliner application
+using a {docref TreeGrid} and {docref FileApp}.
+
+
+{destination name = "worksheet",
+{heading level = 3,
+Worksheet
+}}
+
+The {docref Worksheet} API provides a GUI object that works much like
+a spreadsheet. It supports a richer data model than a spreadsheet but
+the formulas are Curl procedures and consequently are not editable by
+the user. It can be used to create many useful kinds of applications,
+such as this {link href = {url "../../samples/demo-expenses.curl"},
+expense report demo} and this {link href = {url
+"../../samples/mortgage-worksheet.curl"}, mortgage payment
+worksheet}. More complete documentation is found in the section
+about {link href = {url "using-worksheet.curl"}, Using the Worksheet}.
+
+
+{curl-copyright}

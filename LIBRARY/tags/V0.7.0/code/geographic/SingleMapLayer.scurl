@@ -1,0 +1,139 @@
+||| Maintained by: kodan
+
+{doc-next
+    {purpose Class that manages the one figure.}
+    {details
+        This class manages one figure, 
+        analyzes the data from the shp file and 
+        the dbf file, and generates the Shape object.  
+    }
+}
+{define-class public SingleMapLayer {inherits EventTarget}
+  
+  {doc-next {purpose Decoder to analyze file.}}
+  field protected decoder:ShapeFileDecoder
+  
+  {doc-next {purpose Information on file header.}}
+  field public file-header-info:FileHeaderInfo
+  
+  {doc-next {purpose Information on dbf file.}}
+  field public dbf-recordset:RecordSet
+  
+  {doc-next {purpose Information on shp file.}}
+  field public shp-recordset:RecordSet
+  
+  {doc-next {purpose AreaShape object that composes this figure.}}
+  field public area-shapes:{Array-of AreaShape}
+  
+  {doc-next 
+    {purpose ShapeGroup with the AreaShape object that composes this figure. }
+  }
+  field public shape-group:ShapeGroup
+  
+  {doc-next {purpose Color of AreaShapes.}}
+  field public region-color:FillPattern
+  
+  {doc-next {purpose MapLayerManager that manages this object.}}
+  field public manager:#MapLayerManager
+  
+  field protected temp-index:int = -1
+  
+  {doc-next {purpose Radius of the point used in EllipseShape.}}
+  field public ellipse-radius:Distance
+  
+  {doc-next
+    {purpose Constructor.}
+    {parameter shp-file-name,
+        Shape File name without extension.
+    }
+    {parameter shp-file-dir,
+        Directory name with Shape File.
+    }
+    {parameter region-color,
+        Color of AreaShapes.
+    }
+    {parameter ellipse-radius,
+        It is a radius of the point used 
+        when the AreaShape object is EllipseShape. 
+    }
+  }
+  {constructor public {default
+                          shape-file-name:String,
+                          shape-file-dir:Url,
+                          region-color:FillPattern = "white",
+                          ellipse-radius:Distance = 1pt,
+                          ...
+                      }
+    {construct-super {splice ...}}
+    
+    set self.ellipse-radius = ellipse-radius
+    set self.area-shapes = {{Array-of AreaShape}}    
+    set self.region-color = region-color
+    set self.decoder = {ShapeFileDecoder shape-file-name, shape-file-dir}
+    set self.dbf-recordset = {self.decoder.decode-attributes}
+    set self.shp-recordset = {self.decoder.decode-shapes}
+    set self.file-header-info = self.decoder.file-header-info
+    set self.shape-group = {ShapeGroup}
+  }
+  
+  
+  {method protected {create-area-shapes}:void
+    let constant area-shapes:{Array-of AreaShape} = {{Array-of AreaShape}}
+    let constant shp-records:{Array-of Record} = {self.shp-recordset.select}
+    let constant dbf-records:{Array-of Record} = {self.dbf-recordset.select}
+    
+    {for shp-record:Record key index:int in shp-records do
+        let shape-record:ShapeRecord = {ShapeRecord.from-Record shp-record}
+        let country-shape:AreaShape = 
+            {self.create-area-shape
+                shape-record,
+                shp-record,
+                dbf-records[index],
+                object-id = index
+            }
+        {area-shapes.append country-shape}
+    }
+    set self.area-shapes = area-shapes
+    {self.add-area-shapes self.area-shapes}
+  }
+  
+  {method protected {create-area-shape
+                        shape-record:ShapeRecord,
+                        shp-data:Record,
+                        dbf-data:Record,
+                        object-id:int = -1
+                    }:AreaShape
+    
+    let area-shape:AreaShape =
+        {AreaShape
+            object-id = object-id,
+            shape-record,
+            dbf-data,
+            self,
+            self.region-color,
+            {on e:PointerPress at country-shape:AreaShape do
+                {self.handle-event {RegionSelectionEvent country-shape}}
+            },
+            {on e:PointerEnter at country-shape:AreaShape do
+                {self.handle-event {RegionEnterEvent country-shape}}
+            },
+            {on e:PointerLeave at country-shape:AreaShape do
+                {self.handle-event {RegionLeaveEvent country-shape}}
+            }
+        }
+    
+    {return area-shape}
+  }
+  
+  {method protected {add-area-shapes
+                        area-shapes:{Array-of AreaShape}
+                    }:void
+    {self.shape-group.clear}
+    {for area-shape:AreaShape in area-shapes do
+        {self.shape-group.add area-shape}
+    }
+  }
+  
+}
+
+

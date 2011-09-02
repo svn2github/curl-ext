@@ -1,0 +1,79 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0, 8.0 applet}
+
+{applet manifest = "manifest.mcurl", locale = "en"}
+
+{import * from COM.CURL.EXT.GUI}
+{import * from COM.CURL.EXT.DATA-ACCESS}
+
+
+{include "../utils/guide-header.scurl"}
+{include "../utils/support.scurl"}
+{include "../utils/example-support.scurl"}
+
+{chapter
+    index = {HeadingIndex primary-key="GUI APIs"},
+    GUI Components in the Curl Extensions Library
+}
+{summary
+    {itemize
+        {item
+            The package {docref COM.CURL.EXT.GUI} contains several
+            useful GUI classes and procedures.
+        }
+    }
+}
+
+{privilege-note}
+
+{heading level=2, Introduction}
+
+{paragraph
+    The Curl Extensions Library contains the following useful GUI
+    API's in the package COM.CURL.EXT.GUI.
+}
+{itemize
+    {item {docref choose-action-dialog} - A procedure that makes it
+        easy to create a dialog with buttons that represent actions
+        a user may want to take.
+    }
+    {item {docref clipper} - A variation on {docref ClipFrame} that
+        works better in many cases because it keeps the origin in
+        the upper left corner.
+    }
+    {item {docref LimitedWidthFrame} - A {docref Frame} that allows you to 
+        specify a maximum width.
+    }
+    {item {docref make-compressible} - A procedure that can be used as a 
+        width or height to get a compressible elastic with an object's
+        preferrend size.
+    }
+    {item {docref Click} and {docref click-recognizer} - Add a 
+        {ctext click-recognizer}
+        to a {docref Visual} object and {ctext Click} events will be
+        recognized fired at the object.
+    }
+    {item {docref EnumValueDropdown-of} and {docref EnumDropdown-of} -
+        Provide a {docref DropdownList} for choosing a value from an
+        enumerated type.
+    }
+    {item {docref FileApp} can be used as the basis for any
+        applet that requires a file menu.
+    }
+}

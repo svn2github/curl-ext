@@ -1,0 +1,163 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0, 8.0 applet}
+
+{applet manifest = "../manifest.mcurl", locale = "en"}
+
+{import * from COM.CURL.EXT.WORKSHEET}
+
+{set-document-properties
+    font-family = "Calibri, Cordia, Arial",
+    font-size = 10pt
+}
+
+|| -------------------------------------------------------------------------
+
+{title heading? = false, CellSpec Tests}
+
+{value
+    def above-rows = {RelativeRangeRef 10, 1, row = -11}
+    def prev-col = {RelativeCellRef 0, -1}
+
+    def rows = 30
+    def cols = 4
+    def worksheet =
+        {Worksheet rows, cols, default-column-width = 1.0in,
+            {widths 2in},
+            row =  0, col = 0, "Note", "Value", "Copy", "row",
+
+            row =  1, col = 0, "null", {ValueCell null}, prev-col,
+
+            row =  2, col = 0, "int", {value-cell 1}, prev-col,
+
+            row =  3, col = 0, "int, editable", {input-cell 1}, prev-col,
+
+            row =  4, col = 0, "double", 2.2, prev-col,
+
+            row =  5, col = 0, "double, editable", {input-cell 2.2}, prev-col,
+
+            row =  6, col = 0, "string", "a string", prev-col,
+
+            row =  7, col = 0, "string, editable",
+                               {input-cell "editable string"}, prev-col,
+
+            row =  8, col = 0, "Visual", {bold bold text}, prev-col,
+
+            row =  9, col = 0, "Control",
+                               {CommandButton label = "Control"}, prev-col,
+
+            row = 10, col = 0, "ValueControl",
+                               {TextField value = "ValueControl"}, prev-col,
+
+            row = 11, col = 0, "VisualProc",
+            {ValueCell
+                {bold foo},
+                ui-spec =
+                    {proc {cv:CellValue}:Visual
+                        {return {bold cv.value={value cv.value}}}
+                    },
+                margin = 2pt
+            }, prev-col,
+
+            row = 12, col = 0, "formula", 
+            {formula-cell
+                Formula.sum, domain = DataSource.double-domain, above-rows
+            }, prev-col,
+
+            row = 13, col = 0, "formula, custom ui",
+              {formula-cell
+                  Formula.sum, domain = DataSource.double-domain, above-rows,
+                  ui-spec =
+                    {proc {cv:CellValue}:Visual
+                        {return
+                            {if cv.value < 0 then
+                                {bold color = "red", ({value cv.value})}
+                             else
+                                {bold {value cv.value}}
+                            }
+                        }
+                    }
+              }, prev-col,
+
+            row = 14, col = 0, "editable, custom ui",
+            {ValueCell
+                "foo",
+                editable? = true,
+                ui-spec = ComboBox,
+                margin = 0pt
+            }, prev-col,
+
+            row = 15, col = 0, "locked, editable",
+            {ValueCell
+                "locked",
+                editable? = true, locked? = true
+            }, prev-col,
+
+            row = 16, col = 0, "locked, editable, custom",
+            {ValueCell
+                "locked",
+                editable? = true, locked? = true,
+                ui-spec = ComboBox
+            }, prev-col,
+
+            row = 17, col = 0, "locked, editable, proc gc",
+            {ValueCell
+                "locked",
+                editable? = true, locked? = true,
+                ui-spec = {proc {gc:GridCell}:ValueControl
+                              {dump {gc.get-content}}
+                              {return {ComboBox}}
+                          }
+            }, prev-col,
+
+            row = 18, col = 0, "NOT locked, editable",
+            {ValueCell
+                "unlocked",
+                editable? = true, locked? = false
+            }, prev-col,
+
+            row = 19, col = 0, "NOT locked, editable, custom",
+            {ValueCell
+                "unlocked",
+                editable? = true, locked? = false,
+                ui-spec = ComboBox
+            }, prev-col,
+
+            row = 20, col = 0, "NOT locked, editable, proc gc",
+            {ValueCell
+                "unlocked",
+                editable? = true, locked? = false,
+                ui-spec = {proc {gc:GridCell}:ValueControl
+                              {dump {gc.get-content}}
+                              {return {ComboBox}}
+                          }
+            }, prev-col,
+
+            row = rows - 1, col = 0, "END"
+        }
+    
+    def rowspec = {ValueCell 0, domain = DataSource.int-domain, halign = "right"}
+    {for i = 1 below rows do
+        {worksheet.init-cell row = i, col = 3, rowspec}
+        {worksheet.model.set-value i, 3, i}
+    }
+    worksheet
+}
+
+ 
+

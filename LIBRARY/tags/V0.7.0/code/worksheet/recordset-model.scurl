@@ -1,0 +1,661 @@
+||| Copyright (C) 1998-2009, Sumisho Computer Systems Corp. All Rights Reserved.
+|||
+||| An OpenCurl project.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+|| -----------------------------------------------------------------------------
+
+{doc-next
+    {purpose A {docref DataRef} bound to a single record.}
+    {notes
+        This kind of DataRef is only used internally for binding
+        arguments for a RecordSet formula.
+    }
+}
+{define-class public open RecordRef {inherits DataRef}
+
+  {doc-next
+    {purpose The {docref Record} that this {docref DataRef} refers to.}
+  }
+  field public-get protected-set record:#Record
+
+  {doc-next
+    {purpose One or more names of fields in the current record.}
+  }
+  field public-get protected-set field-names:StringArray
+
+  {doc-next
+    {purpose A getter for the data source as a {docref RecordSetDataSource}.}
+  }
+  {getter public open {record-source}:RecordSetDataSource
+    {return self.source asa RecordSetDataSource}
+  }
+
+  {doc-next
+    {purpose
+        A {docref DataRef} that contains one or more values from a single
+        record in a {docref RecordSetDataSource}.
+    }
+    {parameter source, The container for this data.}
+    {parameter record, The specific {docref Record} containing the data.}
+    {parameter field-spec, A string with the field name for the data
+        value, or several field names separated by commas (such as
+        "a,b,c").
+    }
+  }
+  {constructor public {default
+                          source:RecordSetDataSource,
+                          record:#Record,
+                          field-spec:String
+                      }
+    {construct-super source}
+    set self.record = record
+    set self.field-names =
+        {RecordSetDataSource.parse-fields field-spec, source.record-set}
+  }
+
+  || override
+  {method public open {resolve target:DataRef}:DataRef
+    {if target.source != self.source then
+        {error
+            {hlmessage Cannot resolve when target is in a different RecordSet.}
+        }
+    }
+    {type-switch target
+     case trsr:RecordSetRef do
+        set self.record = trsr.current-record
+     case trr:RecordRef do
+        set self.record = trr.record
+    }
+    {return self}
+  }
+
+  {doc-next
+    {purpose
+        Return the value that this reference points to.
+    }
+    {details
+        This type of reference can denote several fields in a single
+        record.  This method returns only the first value. You can
+        call {docref DataRef.composite?} to find out if there are
+        several values, and use {ctext self.to-Iterator} to iterate
+        through all of them.
+    }
+  }
+  {getter public open {value}:any
+    {if-non-null r = self.record then
+        {return r[self.field-names[0]]}
+     else
+        {return null}
+    }
+  }
+
+  {setter public open {value val:any}:void
+    ||FIXME: notify observers
+    {if-non-null r = self.record then
+        || Note that a Record will call Domain.convert for this assignment
+        set r[self.field-names[0]] = val
+    }
+  }
+
+  {getter public open {domain}:Domain
+    {return {self.get-field 0}.domain}
+  }
+
+  {doc-next
+    {purpose Return the {docref RecordField} for the field specified by {param i}.}
+    {details
+        A {docref RecordRef} can be specified with one or more field
+        names. The index {param i} refers to these field names, not the
+        field position in the underlying {docref RecordSet}.
+    }
+  }
+  {method public open {get-field i:int}:RecordField
+    {return self.record-source.record-set.fields[self.field-names[i]]}
+  }
+
+  {getter public open {as-String}:String
+    {return {self.domain.format self.value}}
+  }
+
+  {getter public open {as-double}:double
+    {return {any-to-double self.value}}
+  }
+
+  {getter public open {composite?}:bool
+    {return self.field-names.size > 1}
+  }
+
+  {method public open {to-Iterator}:{Iterator-of DataRef}
+    {if self.record == null then
+        {return DataSource.empty-iterator}
+     elseif self.field-names.size > 1 then
+        {return {RecordValueIterator self}}
+     else
+        {return {SingleIterator self}}
+    }
+  }
+}
+
+{doc-next
+    {purpose
+        Iterate through values in a record defined by a {docref RecordRef}.
+    }
+}
+{define-class public final RecordValueIterator
+  {inherits {Iterator-of DataRef}, DataRefIteratorMixin}
+
+  {doc-next
+    {purpose The record containing the values to be iterated over.}
+  }
+  field protected ref:RecordRef
+
+  {doc-next
+    {purpose The index of the field to be returned next.}
+  }
+  field protected fi:int
+
+  {doc-next
+    {purpose
+        Create a new {docref RecordValueIterator} for values specified
+        by {param ref}.
+    }
+  }
+  {constructor public {default
+                          ref:RecordRef
+                      }
+    {construct-super.{Iterator-of DataRef}}
+    {construct-super.DataRefIteratorMixin}
+    set self.ref = ref
+    {self.reset}
+  }
+
+  {method public {reset}:void
+    set self.fi = 0
+  }
+  
+  {method public {read-one}:(v:DataRef, eof?:bool)
+
+    || At the end?
+    {if self.fi >= self.ref.field-names.size then
+        {return ({uninitialized-value-for-type DataRef}, true)}
+    }
+
+    || current value
+    def f = {self.ref.get-field self.fi}
+    def v = self.ref.record[f.name]
+    {self.set-ref v, f.domain}
+
+    {inc self.fi, 1}
+    {return (self.value-ref, false)}
+  }
+}
+
+
+{doc-next
+    {purpose Reference to one or more columns in one or more records.}
+    {details
+        The reference is defined by a string such as "a=1,b=2[d,e,f]",
+        which means columns "d", "e", and "f" for records where field
+        "a" is 1 and field "b" is 2.
+    }
+}
+{define-class public open RecordSetRef {inherits DataRef}
+
+  {doc-next
+    {purpose Specifies the records and fields to be covered by this reference.
+    }
+  }
+  field public-get protected-set path:String = ""
+
+  {doc-next
+    {purpose
+        Specify the fields to be included in this rereference;
+        see {docref RecordSetDataSource.parse-fields}.
+    }
+  }
+  field public-get protected-set field-spec:String = ""
+
+  {doc-next
+    {purpose
+        A {docref RecordFilter} to specify a subset of the entire recordset.
+    }
+  }
+  field public-get protected-set filter:#RecordFilter = null
+
+  {doc-next
+    {purpose
+        During {docref RecordSetDataSource.recalc}, this will be the
+        index of the current record in the target record set.
+    }
+  }
+  field public current-record-index:int
+
+  {doc-next
+    {purpose
+        During {docref RecordSetDataSource.recalc}, this will be the
+        array of records being updated.
+    }
+  }
+  field public current-records:#{Array-of Record}
+
+  {doc-next
+    {purpose
+        Return the current record during {docref RecordSetDataSource.recalc}.
+    }
+  }
+  {getter public open {current-record}:#Record
+    {if-non-null recs = self.current-records then
+        def cri = self.current-record-index
+        {if cri >= 0 and cri < recs.size then
+            {return self.current-records[cri]}
+        }
+    }
+    {return null}
+  }
+
+  {doc-next
+    {purpose A getter for the data source as a {docref RecordSetDataSource}.}
+  }
+  {getter public open {record-source}:RecordSetDataSource
+    {return self.source asa RecordSetDataSource}
+  }
+
+  {doc-next
+    {purpose Initialize and return a new {docref RecordSetRef}.}
+    {parameter source, The {docref RecordSetDataSource} that this reference
+        points to.
+    }
+    {parameter path, Provides the initial value for
+        {docref RecordSetRef.path}
+    }
+  }
+  {constructor public {default
+                          source:RecordSetDataSource,
+                          path:String
+                      }
+    {construct-super source}
+    {self.parse-path path}
+  }
+
+  {method public open {resolve target:DataRef}:DataRef
+    ||FIXME: not sure this is correct if self and target are different RecordSets
+    {type-switch target
+     case trr:RecordRef do
+        {return
+            {RecordRef trr.record-source, trr.record, self.field-spec}
+        }
+     case trsr:RecordSetRef do
+        {return
+            {RecordRef
+                trsr.record-source,
+                trsr.current-record,
+                self.field-spec
+            }
+        }
+     else
+        {return self}
+||--        {error {hlmessage The formula target must be a RecordSetRef or RecordRef}}
+    }
+  }
+
+
+  {doc-next
+    {purpose
+        Split a path into the filter part and the field-spec part.
+    }
+    {parameter path, Provides the initial value for
+        {docref RecordSetRef.path}
+    }
+  }
+  {method public open {parse-path
+                     path:String
+                 }:void
+    set self.path = path
+    def parts = {path.split split-chars = {CharClass "[]"}}
+    {if parts.size == 0 then
+        set self.field-spec = ""
+     elseif parts.size == 1 then
+        || must be something like "a=3,b=2" or "a"
+        {if {parts[0].find '='} >= 0 then
+            set self.field-spec = ""
+         else
+            set self.field-spec = parts[0]
+            {return}
+        }
+     elseif parts.size == 3 and parts[2] == "" then
+        set self.field-spec = parts[1]
+        set self.filter = {self.parse-filter parts[0]}
+     else
+        {error {hlformat "Invalid path '%s'", path}}
+    }
+  }
+
+  {doc-next
+    {purpose Parse a filter string and set self.filter.}
+  }
+  {method protected open {parse-filter filter-str:String}:#RecordFilter
+    def fparts = {filter-str.split split-chars = {CharClass ", "}}
+    def rd = {RecordData}
+    {for fpart in fparts do
+        def item = {fpart.split split-chars = {CharClass "= "}}
+        set rd[item[0]] = item[1]
+    }
+    {return rd asa RecordFilter}
+  }
+
+  || Get the value that this reference points to
+  {getter public open {value}:any
+    {error
+        {hlmessage
+            The value of a RecordSetRef is undefined. Iterate through
+            the values instead.
+        }
+    }
+  }
+
+  || Update the value that is the target of this reference
+  {setter public open {value val:any}:void
+    {error
+        {hlmessage
+            The value of a RecordSetRef is undefined. Iterate through
+            the values instead.
+        }
+    }
+  }
+
+  || Get the value that this reference points to as a String
+  {getter public open {as-String}:String
+    {error
+        {hlmessage
+            The value of a RecordSetRef is undefined. Iterate through
+            the values instead.
+        }
+    }
+  }
+
+  || Get the value that this reference points to asa double
+  {getter public open {as-double}:double
+    {error
+        {hlmessage
+            The value of a RecordSetRef is undefined. Iterate through
+            the values instead.
+        }
+    }
+  }
+
+  || Return true if this object references several values
+  {getter public open {composite?}:bool
+    {return true}
+  }
+
+  || If this is a composite reference, return an iterator for all of
+  || the values.
+  {method public open {to-Iterator}:{Iterator-of DataRef}
+    def rv = {RecordView self.record-source.record-set, filter = self.filter}
+    {return {RecordSetValueIterator rv, self.field-spec}}
+  }
+}
+
+{doc-next
+    {purpose Iterate over fields and records in a {docref RecordSet}.}
+}
+{define-class public final RecordSetValueIterator
+  {inherits {Iterator-of DataRef}, DataRefIteratorMixin}
+
+  {doc-next
+    {purpose The recordset to be iterated over.}
+  }
+  field protected rv:RecordSet
+
+  {doc-next
+    {purpose The names of the fields to be be included in the iteration.}
+  }
+  field protected field-names:StringArray
+
+  {doc-next
+    {purpose The index of the current record during iteration.}
+  }
+  field protected ri:int
+
+  {doc-next
+    {purpose The index of the current field during iteration.}
+  }
+  field protected fi:int
+
+  {doc-next
+    {purpose An array containing the records to be iterated over.}
+  }
+  field protected records:{Array-of Record} = 
+      {uninitialized-value-for-type {Array-of Record}}
+
+  {doc-next
+    {purpose Initialize a new {docref RecordSetValueIterator}.}
+    {parameter rv, The {docref RecordSet} to be iterated over.}
+    {parameter field-names, The names of the fields to be included in the
+        iteration results.
+    }
+  }
+  {constructor public {default
+                          rv:RecordSet,
+                          field-names:String
+                      }
+    {construct-super.{Iterator-of DataRef}}
+    {construct-super.DataRefIteratorMixin}
+    set self.rv = rv
+    set self.field-names = {RecordSetDataSource.parse-fields field-names, rv}
+    {self.reset}
+  }
+
+  {method public {reset}:void
+    set self.records = {self.rv.select}
+    set self.ri = 0
+    set self.fi = 0
+  }
+
+  {method public {read-one}:(v:DataRef, eof?:bool)
+
+    || At the end?
+    {if self.ri >= self.records.size
+        or (self.ri == self.records.size - 1
+            and (self.fi >= self.field-names.size)
+           )
+     then
+        {return ({uninitialized-value-for-type DataRef}, true)}
+    }
+
+    || current value
+    def f = self.rv.fields[self.field-names[self.fi]]
+    def v = self.records[self.ri][f.name]
+    {self.set-ref v, f.domain}
+
+    || Increment for next time
+    {inc self.fi, 1}
+    {if self.fi >= self.field-names.size then
+        {inc self.ri}
+        set self.fi = 0
+    }
+    {return (self.value-ref, false)}
+  }
+}
+
+{doc-next
+    {purpose
+        A class to make a a {docref RecordSet} (or {docref
+        RecordView}) available as a {docref DataSource}.
+    }
+}
+{define-class public open RecordSetDataSource {inherits DataSource, CalcMixin}
+
+  {doc-next
+    {purpose
+        The character that separates field names in a string used to
+        specify a {docref RecordRef} or {docref RecordSetRef}
+    }
+  }
+  def public field-name-separator = ","
+
+  {doc-next
+    {purpose Parse a {param field-spec} and return the list of fields.}
+    {parameter field-spec, A comma-separated list of filed names, such as
+        "a, b, c" or "field A, field B". An empty string means all fields.
+    }
+    {parameter record-set, The fields of this {docref RecordSet} are used
+        to validate the field names in the {param field-spec}.
+    }        
+  }
+  {define-proc public {parse-fields
+                          field-spec:String,
+                          record-set:RecordSet
+                      }:StringArray
+    def field-names = {StringArray}
+    {if field-spec == "" then
+        {for fn in record-set.fields do
+            {field-names.append fn.name}
+        }
+     else
+        def names =
+            {field-spec.split
+                split-chars = RecordSetDataSource.field-name-separator
+            }
+        {for n in names do
+            def fn = {n.trim-clone}
+            || This will throw an error if the field name is unknown
+            def f = record-set.fields[fn]
+            {field-names.append fn}
+        }
+    }
+    {return field-names}
+  }
+
+
+  ||FIXME: Better to call it record-source, as on other classes?
+  {doc-next
+    {purpose
+        The {docref RecordSet} that contains the data for this
+        {ctext RecordSetDataSource}.
+    }
+  }
+  field public-get protected-set record-set:RecordSet
+
+  {doc-next
+    {purpose Create and initialize a new {docref RecordSetDataSource}.}
+    {parameter record-set, The data for this data source.}
+  }
+  {constructor public {default
+                          record-set:RecordSet
+                      }
+    {construct-super.DataSource}
+    {construct-super.CalcMixin}
+    set self.record-set = record-set
+    {self.record-set.add-event-handler
+        {on e:RecordsChanged do
+            {self.update}
+        }
+    }
+  }
+
+  {method public open {get-ref
+                          ...
+                      }:DataRef
+    let ref:#String = null
+    {for (a,k) in ... do
+        {if-non-null k then
+            {error {hlformat "Unexpected keyword: %s", k}}
+         else
+            {type-switch a
+             case ref-str:String do
+                {if ref != null then
+                    {error
+                        {hlformat
+                            "Unexpected extra string argument: '%s'", ref-str
+                        }
+                    }
+                }
+                set ref = ref-str
+             else
+                {error {hlmessage Argument must be a string.}}
+            }
+        }
+    }
+    {return {RecordSetRef self, {non-null ref}}}
+  }
+
+
+  {method public open {make-formula
+                          target:DataRef,
+                          domain:Domain,
+                          formula:CalcProc,
+                          ...:DataRef
+                      }:Formula
+
+    {if not target isa RecordSetRef then
+        {error
+            {hlmessage Target must be a RecordSetRef}
+        }
+    }
+    || {assert target.field-names.size == 1}
+    
+    def f = {super.make-formula target, domain, formula, ...}
+    {self.update}
+    {return f}
+  }
+
+  {method protected open {handle-observer-message
+                             sender:Observable,
+                             message:any
+                         }:void
+||--    {dump sender, message, self, self._refresh-requested?}
+    {self.recalc} || no notification
+  }
+
+  {method public open {refresh}:void
+    {self.recalc}
+    {self.notify-observers}
+  }
+
+  {method public open {recalc}:void
+    ||FIXME: if args come from other recordsets, how does iteration work?
+    ||FIXME: what about nested batch-events?
+    {for f:Formula in self.ordered-calcs do
+        {type-switch f.target
+         case target-rsr:RecordSetRef do
+            set target-rsr.record-source.record-set.batch-events? = true
+        }
+    }
+    {for f:Formula in self.ordered-calcs do
+        {type-switch f.target
+         case target-rsr:RecordSetRef do
+            def trs = target-rsr.record-source.record-set
+            def records = {trs.select filter = target-rsr.filter}
+            set target-rsr.current-records = records
+            {for r:Record key ri in records do
+                set target-rsr.current-record-index = ri
+                def tref =
+                    {RecordRef target-rsr.record-source, r, target-rsr.field-spec}
+                {self.eval f.formula, tref, {splice f.args}}
+            }
+         else
+            {error "Internal error. Should validate target in make-formula."} ||""
+        }
+    }
+    {for f:Formula in self.ordered-calcs do
+        {type-switch f.target
+         case target-rsr:RecordSetRef do
+            set target-rsr.record-source.record-set.batch-events? = false
+        }
+    }
+  }
+
+}
+

@@ -1,0 +1,31 @@
+{define-class public open StatusBar {inherits Frame}
+  field protected _status-messages-enabled?:bool
+  field protected icon-rack:#HBox
+
+  {constructor public {default status-messages-enabled?:bool = true, ...}
+    {construct-super
+        width = {add-stretch},
+        height = 0.5cm,
+        background = "#d4d0c8",
+        border-width = 1px,
+        border-style = "sunken",
+        border-color = "#c0c0c0",
+        {splice ...}
+    }
+    set self.status-messages-enabled? = status-messages-enabled?
+  }
+
+  {getter public {status-messages-enabled?}:bool
+    {return self._status-messages-enabled?}
+  }
+
+  {setter public {status-messages-enabled? b?:bool}:void
+    set self._status-messages-enabled? = b?
+  }
+
+  {method public open {set-status-text text:String}:void
+    {if self.status-messages-enabled? then
+        {output "TODO set-status-text: ", text}
+    }
+  }
+}

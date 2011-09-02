@@ -1,0 +1,115 @@
+||| Copyright (C) 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An Open Curl project.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+
+{doc-next
+    {purpose
+        The draggable tab label for a standard {docref SinglePane} that is in a tab group.
+    }
+}
+{define-class package TabDragger {inherits BaseFrame, PaneDragger}
+  
+  field package tab-pane:TabPane = {uninitialized-value-for-type TabPane}
+  
+  {doc-next
+    {purpose
+        Construct a {docref TabDragger} object.
+    }
+    {parameter pane,
+        The {docref BasePane} with which this {docref TabDragger} will be associated.
+    }
+  }
+  {constructor package {default pane:BasePane}
+    {construct-super.BaseFrame}
+    {construct-super.PaneDragger pane}
+    {self.add-internal {TextFlowBox pane.name-for-tab}}
+  }
+
+  {method public final {on-context-menu-event e:ContextMenuEvent}:void 
+    {self.tab-pane.tab-container.show-pane self.tab-pane}
+    {super.on-context-menu-event e}
+  }
+    
+  {method protected final {allow-dragging? e:GuiInputEvent}:bool
+    let drag?:bool = false
+
+    {if-non-null layout = self.layout then
+        {if {layout.bounds-valid?} then
+            let bounds:GRect = {layout.get-bounds}
+
+            set drag? = not {bounds.within? e.x, e.y}
+        }
+    }
+
+    {return drag?}
+  }
+
+  {method public final {on-pointer-press e:PointerPress}:void 
+    {if e.button == left-button then
+        || Tab pane won't cause this to happen
+        {if e.click-count == 2 and 
+            e.button == left-button and
+            self.pane.state == PaneState.docked 
+         then
+            {e.consume}
+            {self.pane.float true}
+        }
+    }
+    {super.on-pointer-press e}
+  }
+
+  {method public final {on-drag-started e:DragStarted}:void
+    {self.handle-drag-started e, self}
+    {super.on-drag-started e}
+    {self.request-key-focus}
+  }
+
+  {method public final {on-pointer-motion e:PointerMotion}:void
+    {self.handle-pointer-motion e, self}
+    {super.on-pointer-motion e}
+  }
+  
+  || Also intercept raw key press/release events so we can monitor changes in state
+  || of the Control key during drags.
+  {method public open {on-raw-key-press e:RawKeyPress}:void
+    {self.handle-pointer-motion e, self}
+    {super.on-raw-key-press e}
+  }
+  
+  {method public open {on-raw-key-release e:RawKeyRelease}:void
+    {self.handle-pointer-motion e, self}
+    {super.on-raw-key-release e}
+  }
+  
+  {method public final {on-pointer-release e:PointerRelease}:void
+    {self.handle-pointer-release e, self}
+    {super.on-pointer-release e}
+  }
+
+  {method public open {on-grab-release e:GrabRelease}:void
+    {self.handle-grab-release}
+    {super.on-grab-release e}
+  }
+
+  {method public open {on-key-press e:KeyPress}:void
+    {self.handle-key-press e}
+    {super.on-key-press e}
+  }
+
+  {method protected open {can-drop-on-self?}:bool
+    {return true}
+  }
+}

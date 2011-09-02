@@ -1,0 +1,13 @@
+Created 2011-05-19 16:14:46.484000 -0700
+_id,_pid,_ord,_expand?,_depth,_ln,_rn,_hide,title,notes,status
+1,0,1,false,0,1,2,false,Sample TreeGrid,"This is a sample TreeGrid. The second column (this one) is a muliline text cell, so you can type several lines of text in each item in this column. The first column is always a single line of text.",ToDo
+2,0,2,false,0,3,8,false,Collapsed Node,This node is collapsed. Click the triangle at the left to reveal the children,ToDo
+3,2,3,false,1,4,5,true,Add nodes,Use the buttons Add Node or Add Child to add new nodes,ToDo
+4,2,4,false,1,6,7,true,Shortcuts,Use the menu shortcuts Ctrl-N and Ctrl-J to add a node or child respectively,ToDo
+5,0,5,false,0,9,10,false,Indent/Unindent,You can indent or un-indent the current node,ToDo
+6,0,6,false,0,11,12,false,Move Up/Down,You can move nodes up and down,ToDo
+7,0,7,true,0,13,20,false,Drag and Drop,,ToDo
+8,7,8,false,1,14,15,false,Rearrange with drag and drop,Drag the little graphic at the left of an item,ToDo
+9,7,9,false,1,16,17,false,Drop on another icon,Drop it on the icon where you want to move it,ToDo
+10,7,10,false,1,18,19,false,Drop above or below,"Drop it above the icon to insert it above the item, drop it below the icon to move it after the item you dropped it on.",ToDo
+11,0,11,false,0,21,22,false,File Menu,"The File menu has the usual file commands (New, Open, Save, Save As, Revert, Exit",ToDo

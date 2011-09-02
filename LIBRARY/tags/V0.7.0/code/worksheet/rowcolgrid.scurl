@@ -1,0 +1,752 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{def package stretchy = {make-elastic stretch-order = compliant-stretch-order}}
+{def package stretchy-fill-color = "transparent"} ||"" azure
+
+|| ----------------------------------------------------------------------------
+
+{define-class public open GridLineFill {inherits Fill}
+  {getter public open {style-element}:String
+    {if self._style-element == "" then
+        {return "GridLineFill"} ||""
+     else
+        {return self._style-element}
+    }
+  }
+
+  {constructor public {default ...}
+    {construct-super ...}
+  }
+}
+
+||FIXME: override non-/keyword-init to handle row/col children in rest args
+{doc-next
+    {purpose
+        A subclass of {docref Grid} that arranges its children in
+        a rectangular grid of rows and columns with grid lines in
+        between.
+    }
+}
+{define-class public open RowColGrid {inherits Grid}
+
+  || doc inherited
+  {nonlocal-option public grid-line-color:FillPattern
+    {for ci = 0 below self.col-spacers.size do
+        set self.col-spacers[ci].background = self.grid-line-color
+    }
+    {for ri = 0 below self.row-spacers.size do
+        set self.row-spacers[ri].background = self.grid-line-color
+    }
+  }
+
+  || doc inherited
+  {nonlocal-option public vertical-grid-line-width:any
+    def vglw = {self.any-to-Distance vertical-grid-line-width}
+    {for ri = 0 below self.col-spacers.size do
+        set self.col-spacers[ri].width = vglw
+    }
+  }
+
+  || doc inherited
+  {nonlocal-option public horizontal-grid-line-width:any
+    def hglw = {self.any-to-Distance horizontal-grid-line-width}
+    {for ri = 0 below self.row-spacers.size do
+        set self.row-spacers[ri].height = hglw
+    }
+  }
+
+  {doc-next
+    {purpose Field to store the number of rows.}
+  }
+  field protected _rows:int
+
+  {doc-next
+    {purpose Field to store the number of columns.}
+  }
+  field protected _cols:int
+
+  {doc-next
+    {purpose The number of rows in the {docref RowColGrid}.}
+  }
+  {getter public open {rows}:int
+    {return self.cells.rows}
+  }
+
+  {doc-next
+    {purpose The number of columns in the {docref RowColGrid}.}
+  }
+  {getter public open {cols}:int
+    {return self.cells.cols}
+  }
+
+  || Right edge of every column
+  {doc-next
+    {purpose Fiducials used between the columns.}
+    {details
+        The first value in this array is {ctext self.left}, which is
+        the left edge of self. The last value in this array is
+        {ctext self.right}, wich is the right edge of self. In between
+        are fidicials used between a grid line and the cells in a
+        column. The method {docref RowColGrid.get-col-fiducials} is
+        used to obtain the fiducials on the left and right of
+        a column in the grid.
+    }
+  }
+  field protected col-edges:{Array-of GridFiducial}
+
+  field public-get protected-set top-edge:GridFiducial
+  field public-get protected-set left-edge:GridFiducial
+
+  || This is needed because otherwise you get strange behavior when resizing
+  || the last column. All columns will stretch until you release the mouse.
+  {doc-next
+    {purpose The right edge of self.}
+  }
+  field protected right-edge:GridFiducial
+  field protected right-spacer:Fill
+
+  || Bottom edge of every row
+  {doc-next
+    {purpose Fiducials used between the rows.}
+    {details
+        The first value in this array is {ctext self.top}, which is
+        the top edge of self. The last value in this array is
+        {ctext self.bottom}, wich is the bottom edge of self. In between
+        are fidicials used between grid lines and cells in a row. The
+        method {docref RowColGrid.get-row-fiducials} is used to obtain
+        the fiducials above and below a row in the grid.
+    }
+  }
+  field protected row-edges:{Array-of GridFiducial}
+
+  field protected bottom-edge:GridFiducial
+  field protected bottom-spacer:Fill
+
+  {doc-next
+    {purpose The objects used to display the vertical grid lines.}
+  }
+  field protected col-spacers:{Array-of Fill}
+
+  {doc-next
+    {purpose The objects used to display the horizontal grid lines.}
+  }
+  field protected row-spacers:{Array-of Fill}
+
+  {doc-next
+    {purpose
+        The graphical objects that may be shown in this grid.
+    }
+  }
+  field public cells:{ResizableArray-of #Graphic}
+
+  {doc-next
+    {purpose
+        Initialize a {docref RowColGrid} to display the specified
+        number of {param rows} and {param cols} columns.
+    }
+  }
+  {constructor public {default
+                          rows:int,
+                          cols:int,
+                          ...
+                      }
+    {construct-super}
+    set self.top-edge =
+        {self.make-fiducial orientation = Orientation.horizontal}
+    set self.left-edge =
+        {self.make-fiducial orientation = Orientation.vertical}
+
+||--    ||DEBUG
+||--    {self.add {Fill background = "pink"},
+||--        top = {self.top}, bottom = self.top-edge,
+||--        left = {self.left}, right = {self.right}
+||--    }
+||--    {self.add {Fill background = "orange"},
+||--        top = {self.top}, bottom = {self.bottom},
+||--        left = {self.left}, right = self.left-edge
+||--    }
+
+    set self.cells = {new {ResizableArray-of #Graphic}, rows, cols}
+
+    set self.row-edges = {new {Array-of GridFiducial},
+                             efficient-size = 2*rows + 1,
+                             self.top-edge
+                         }
+    set self.col-edges = {new {Array-of GridFiducial},
+                             efficient-size = 2*cols + 1,
+                             self.left-edge
+                         }
+    set self.row-spacers =  {new {Array-of Fill},
+                                efficient-size = rows
+                            }
+    set self.col-spacers =  {new {Array-of Fill},
+                                efficient-size = cols
+                            }
+
+    || Note: seems better to use a floating fiducial for the right and
+    || bottom edges. Otherwise, you get some unwanted stretching.
+||--    set self.right-edge = {self.right}
+||--    set self.bottom-edge = {self.bottom}
+
+    set self.right-edge =
+        {self.make-fiducial orientation = Orientation.vertical}
+    set self.right-spacer =
+        {Fill
+            width = stretchy, height = stretchy,
+            style-class = "right-spacer",
+            background = stretchy-fill-color
+        }
+    {self.add self.right-spacer,
+        left = self.right-edge, right = {self.right},
+        top = {self.top}, bottom = {self.bottom}
+    }
+
+    set self.bottom-edge =
+        {self.make-fiducial orientation = Orientation.horizontal}
+    set self.bottom-spacer =
+        {Fill
+            width = stretchy, height = stretchy,
+            style-class = "bottom-spacer",
+            background = stretchy-fill-color
+        }
+    {self.add self.bottom-spacer,
+        left = {self.left}, right = {self.right},
+        top = self.bottom-edge, bottom = {self.bottom}
+    }
+
+    set self._rows = rows
+    set self._cols = cols
+    {for ri = 0 below rows do
+        {self.insert-row-spacer ri}
+    }
+    {for ci = 0 below cols do
+        {self.insert-col-spacer ci}
+    }
+
+    {self.process-rest-args
+||--        vorigin = "top", horigin = "left",
+        {splice ...}
+    }
+    {self.check-invariants}
+  }
+
+  {doc-next
+      {purpose Check the state of self and throw an error if
+          something is wrong.
+      }
+  }
+  {method protected {check-invariants}:void
+    {assert self.row-edges.size == self.rows*2 + 1}
+    {assert self.col-edges.size == self.cols*2 + 1}
+    {assert self._rows == self.rows}
+    {assert self._cols == self.cols}
+    {assert self.row-spacers.size == self.rows}
+    {assert self.col-spacers.size == self.cols}
+    {if self.col-edges.size > 1 then
+        {assert self.col-edges[0] == self.left-edge}
+        {assert self.col-edges[self.col-edges.size - 1] == self.right-edge}
+    }
+    {if self.row-edges.size > 1 then
+        {assert self.row-edges[0] == self.top-edge}
+        {assert self.row-edges[self.row-edges.size - 1] == self.bottom-edge}
+    }
+    || Check that everything in self.cells is a child
+    {for g in self.cells do
+        {if-non-null g then
+||--            {dump {g.get-text}}
+            {assert g.visual-parent == self or g.visual-parent == null}
+        }
+    }
+  }
+
+  ||Override
+  {method public {clear}:void
+    {super.clear}
+    {self.cells.clear}
+    {self.row-edges.clear}
+    {self.row-edges.append self.top-edge}
+    {self.col-edges.clear}
+    {self.col-edges.append self.left-edge}
+    {self.row-spacers.clear}
+    {self.col-spacers.clear}
+    {self.insert-rows 0, self.rows}
+    {self.insert-cols 0, self.cols}
+    {self.check-invariants}
+  }
+
+  {doc-next
+    {purpose
+        Call this to detach a cell in the {docref RowColGrid} so that
+        it is removed from the {ctext self.cells} array and detached
+        from the graphical hierarchy.
+    }
+  }
+  {method public open {remove-cell
+                          row:int, col:int
+                      }:void
+    {if-non-null cell = self.cells[row, col] then
+        {cell.detach}
+    }
+    set self.cells[row, col] = null
+  }
+
+    
+  {doc-next
+    {purpose Add a graphical object to the grid at the specified row and
+        column.
+    }
+    {parameter row, The row where the graphic is added (0 is the first row).
+        If the value is one higher than the current number of rows,
+        a new row is added. If it is larger, or negative, an {docref
+        ArrayBoundsException} will be thrown.
+    }
+    {parameter col, The column where the graphic is added
+        (0 is the first column).  If the value is one higher than the
+        current number of columns, a new column is added.  If it is
+        larger, or negative, an {docref ArrayBoundsException} will be
+        thrown.
+    }
+    {parameter rowspan, The number of rows covered by the object.}
+    {parameter colspan, The number of columns covered by the object.}
+    {parameter g, The object to be added}
+    {return-vals The object that was actually added (in case a cast
+        or conversion creates a new object).
+    }
+  }        
+  {method public open {add-cell
+                          row:int, col:int,
+                          g:Graphic,
+                          rowspan:int = 1,
+                          colspan:int = 1
+                      }:Graphic
+    || Allow expansion by one row or column at a time
+    {if row == self.cells.rows then
+        {self.insert-rows row, 1}
+    }
+    {if col == self.cells.cols then
+        {self.insert-cols col, 1}
+    }
+
+    {if g != self.cells[row, col] then
+        || Detach existing cell because it might not be attached elsewhere
+        {if-non-null cell = self.cells[row, col] then
+            {cell.detach}
+        }
+        set self.cells[row, col] = g
+    }
+
+    || Can't span right edge of grid, and don't want that to be an error
+    def (left, right) = {self.get-col-fiducials col, span = colspan}
+    def (top, bottom) = {self.get-row-fiducials row, span = rowspan}
+||--    {dump "add-cell", row, col, rowspan, colspan, left, right}
+    {return
+        {super.add
+            g,
+            left = left, right = right, top = top, bottom = bottom
+        }
+    }
+  }
+
+  {doc-next
+    {purpose
+        Return the fiducials above and below any cell in row {param ri}
+        and spannning {param span} rows.
+    }
+  }
+  {method public open {get-row-fiducials
+                          ri:int, span:int = 1
+                      }:(top:GridFiducial, bottom:GridFiducial)
+    def spanrow = {min ri + span - 1, self.rows - 1}
+    {return self.row-edges[ri * 2 + 1], self.row-edges[spanrow * 2 + 2]}
+  }
+
+  {doc-next
+    {purpose
+        Return the fiducials to the left and right of any cell in
+        column {param ci} and spannning {param span} columns.
+    }
+  }
+  {method public open {get-col-fiducials
+                          ci:int, span:int = 1
+                      }:(left:GridFiducial, right:GridFiducial)
+    def spancol = {min ci + span - 1, self.cols - 1}
+
+    ||DEBUG
+||--    def li = ci * 2 + 1
+||--    def ri = spancol * 2 + 2
+||--    {dump li, ri, self.left-edge, self.right-edge}
+||--    {for f key fi in self.col-edges do
+||--        def a = {if fi == li then "li" elseif fi == ri then "ri" else ""}
+||--        def t = a & " " &
+||--        {if f == {self.left} then "self.left"
+||--         elseif f == self.left-edge then "left-edge"
+||--         elseif f == self.right-edge then "right-edge"
+||--         elseif f == {self.right} then "self.right"
+||--         else ""
+||--        }
+||--        {dump fi, f, t}
+||--    }
+
+    {return self.col-edges[ci * 2 + 1], self.col-edges[spancol * 2 + 2]}
+  }
+
+  || This could be span-aware (error if you get from a covered cell)
+  {doc-next
+    {purpose Get the graphical object at the specified row and column.}
+  }
+  {method public open {get-cell row:int, col:int}:#Graphic
+    {return self.cells[row, col]}
+  }
+
+
+  ||                0 1   2   ei
+  ||  One row/col  ~|s|ccc|~  s is spacer, c is cell, | is fiducial
+  ||                   0      ri
+  || 
+  {method private {insert-row-spacer ri:int}:void
+||--    {dump "insert-row-spacer", ri}
+    let ei:int = ri*2 || The top edge of a spacer
+    || Fiducial for the bottom of a spacer, top of the cell at ri
+    {self.row-edges.insert
+        {self.make-fiducial orientation = Orientation.horizontal}, ei + 1
+    }
+    || Fiducial for the bottom of the cell at ri, top of the next spacer
+    {self.row-edges.insert
+        {if self.row-spacers.size == 0 then
+            self.bottom-edge
+         else
+            {self.make-fiducial orientation = Orientation.horizontal}
+        },
+        ei + 2
+    }
+||--    ||DEBUG
+||--    {for f key fi in self.row-edges do
+||--        {dump fi, f}
+||--    }
+||--    {dump "^ after  ^"}
+
+    || Keep self.bottom-edge as the last fiducial
+    {if ri != 0 and ri == self.row-spacers.size then
+        {assert self.row-edges[ei] == self.bottom-edge}
+        set self.row-edges[ei] = self.row-edges[ei + 2]
+        set self.row-edges[ei + 2] = self.bottom-edge
+    }
+    ||FIXME: should use set-style-option-by-name to make this stylable?
+    def spacer = 
+        {GridLineFill _style-element = "Fill/horizontal-grid-line",
+            background = self.grid-line-color,
+            height = self.horizontal-grid-line-width
+        }
+
+    {self.row-spacers.insert spacer, ri}
+    {self.add self.row-spacers[ri],
+        top = self.row-edges[ei],
+        bottom = self.row-edges[ei + 1],
+        left = {self.left}, right = {self.right}
+    }
+  }
+
+
+  {method private {insert-col-spacer ci:int}:void
+    let ei:int = ci*2 || The left edge of a spacer
+    || Fiducial for right of spacer, left of cell
+    {self.col-edges.insert
+        {self.make-fiducial orientation = Orientation.vertical}, ei + 1
+    }
+    || Fiducial for right of cell, left of next spacer
+    {self.col-edges.insert
+        {if self.col-spacers.size == 0 then
+            self.right-edge
+         else
+            {self.make-fiducial orientation = Orientation.vertical}
+        },
+        ei + 2
+    }
+
+    || Keep self.right-edge as the last fiducial
+    {if ci != 0 and ci == self.col-spacers.size then
+        {assert self.col-edges[ei] == self.right-edge}
+        set self.col-edges[ei] = self.col-edges[ei + 2]
+        set self.col-edges[ei + 2] = self.right-edge
+    }
+||--    || This fiducial will be the right edge of the cell
+||--    {if self.col-edges.size == 1 then
+||--        {self.col-edges.insert self.right-edge, ei + 1}
+||--     else
+||--        {self.col-edges.insert 
+||--            {self.make-fiducial orientation = Orientation.vertical},
+||--            ei
+||--        }
+||--    }
+||--    || This fiducial will push the previous one right, and be the left edge
+||--    {self.col-edges.insert 
+||--        {self.make-fiducial orientation = Orientation.vertical},
+||--        ei + 1
+||--    }
+    def spacer =
+        {GridLineFill _style-element = "Fill/vertical-grid-line",
+            background = self.grid-line-color,
+            width = self.vertical-grid-line-width
+        }
+    {self.col-spacers.insert spacer, ci}
+||--    {dump "insert-col-spacer", ci, ei}
+    {self.add self.col-spacers[ci],
+        left = self.col-edges[ei],
+        right = self.col-edges[ei + 1],
+        top = {self.top}, bottom = {self.bottom}
+    }
+  }
+
+  {doc-next
+    {purpose Insert {param count} empty rows at the row indicated by
+        {param first}, pushing existing rows down to make room. If
+        count is negative, rows are removed.
+    }
+    {parameter first, The position where rows will be added or
+        deleted. The value must range between 0 and the number of
+        rows currently in the grid, or {docref ArrayBoundsException}
+        will be thrown.
+    }
+    {parameter count, If positive, the number of rows to be
+        added. If negative, the number of rows to be removed.
+    }
+    {parameter init-proc, If cells are added, this procedure is called
+        to provide the initial value for each cell.
+    }
+  }
+  {method public open {insert-rows 
+                          first:int, count:int,
+                          init-proc:#{proc-type {r:int, c:int}:Graphic} = null
+                      }:void
+    {if count == 0 then
+        {return}
+    }
+    {self.check-invariants}
+
+    let rows:int = self.row-edges.size div 2
+    let cols:int = self.col-edges.size div 2
+
+    {if first > rows or first < 0 then
+        {throw {ArrayBoundsException
+                   {hlformat "first is out of bounds: %s", first}
+               }
+        }
+    }
+    {if count > 0 then
+        || Allocate space for the new cells
+        {self.cells.insert-rows first, count, init-proc = init-proc}
+
+        || Detach the spacer that will attach to a new fiducial
+        let ds:#Graphic = null || detached spacer, if any
+        {if first < rows then
+            set ds = self.row-spacers[first]
+            {ds.detach}
+        }
+        {for ri = first below first + count do
+            {self.insert-row-spacer ri}
+        }
+        {if-non-null ds then
+            def ei = (first + count) * 2
+            {super.add ds,
+                left = {self.left}, right = {self.right},
+                top = self.row-edges[ei],
+                bottom = self.row-edges[ei + 1]
+            }
+        }
+        {for ri = {max first - 1, 0} to {min first + count - 1, self.rows - 1} do
+            {for ci = 0 below self.cols do
+                {if-non-null cell = self.cells[ri, ci] then
+                    {self.add-cell ri, ci, cell,
+                        rowspan = 1, colspan = 1 ||FIXME: remember the spans!
+                    }
+                }
+            }
+        }
+     else
+        || Adjust count if it specifies deletion of too many rows
+        set count = {max -(rows - first), count}
+
+        || First re-attach any spacers that would be left hanging
+        def si = first - count
+        def s-bottom = {min self.row-edges.size - 1, si * 2 + 1}
+        def ei = first * 2
+        {if si < self.rows then
+            {self.add self.row-spacers[si],
+                top = self.row-edges[ei],
+                bottom = self.row-edges[s-bottom],
+                left = {self.left}, right = {self.right}
+            }
+        }
+
+        {for ri = first below first - count do
+            {assert ri != si}
+            {self.row-spacers[ri].detach}
+            {for ci = 0 below self.cols do
+                {if-non-null cell = self.cells[ri, ci] then
+                    {cell.detach}
+                }
+            }
+        }
+
+        || Remove the deleted cells
+        {self.cells.insert-rows first, count, init-proc = init-proc}
+
+        || Remove unused fiducials, spacers, etc.
+        {self.row-spacers.remove first, length = -count}
+        {self.row-edges.remove first*2 + 1, length = -count*2}
+
+        || If the bottom-edge fiducial was removed, put it back
+        set self.row-edges[self.row-edges.size - 1] = self.bottom-edge
+
+        ||FIXME: remove spans from hash tables
+
+        || Re-attach cells in the new location
+        {if self.rows > 0 then
+            def ri = {min first, self.rows - 1}
+            {for ci = 0 below self.cols do
+                {if-non-null cell = self.cells[ri, ci] then
+                    {self.add-cell ri, ci, cell,
+                        rowspan = 1, colspan = 1 ||FIXME: remember the spans!
+                    }
+                }
+            }
+        }
+    }
+    {inc self._rows, count}
+    {self.check-invariants}
+  }
+
+  {doc-next
+    {purpose Insert {param count} empty columns at the column indicated by
+        {param first}, pushing existing columns right to make room. If
+        count is negative, columns are removed.
+    }
+    {parameter first, The position where columns will be added or
+        deleted. The value must range between 0 and the number of
+        columns currently in the grid, or {docref ArrayBoundsException}
+        will be thrown.
+    }
+    {parameter count, If positive, the number of columns to be
+        added. If negative, the number of columns to be removed.
+    }
+    {parameter init-proc, If cells are added, this procedure is called
+        to provide the initial value for each cell.
+    }
+  }
+  {method public open {insert-cols
+                          first:int, count:int,
+                          init-proc:#{proc-type {r:int, c:int}:Graphic} = null
+                      }:void
+    {if count == 0 then
+        {return}
+    }
+    {self.check-invariants}
+
+    let rows:int = self.row-edges.size div 2
+    let cols:int = self.col-edges.size div 2
+
+    {if first > cols or first < 0 then
+        {throw {ArrayBoundsException
+                   {hlformat "first is out of bounds: %s", first}
+               }}
+    }
+
+    {if count > 0 then
+        || Allocate space for the new cells
+        {self.cells.insert-cols first, count, init-proc = init-proc}
+
+        || Detach the spacer that will attach to a new fiducial
+        let ds:#Graphic = null || detached spacer, if any
+        {if first < cols then
+            set ds = self.col-spacers[first]
+            {ds.detach}
+        }
+        {for ci = first below first + count do
+            {self.insert-col-spacer ci}
+        }
+        {if-non-null ds then
+            def ei = (first + count) * 2
+            {super.add ds,
+                left = self.col-edges[ei],
+                right = self.col-edges[ei + 1],
+                top = {self.top}, bottom = {self.bottom}
+            }
+        }
+        {for ci = {max first - 1, 0} to {min first + count - 1, self.cols - 1} do
+            {for ri = 0 below self.rows do
+                {if-non-null cell = self.cells[ri, ci] then
+                    {self.add-cell ri, ci, cell,
+                        rowspan = 1, colspan = 1 ||FIXME: remember the spans!
+                    }
+                }
+            }
+        }
+     else
+        || Adjust count if it specifies deletion of too many columns
+        set count = {max -(cols - first), count}
+
+        || First re-attach any spacers that would be left hanging
+        def si = first - count
+        def s-right = {min self.col-edges.size - 1, si * 2 + 1}
+        def ei = first * 2
+        {if si < self.cols then
+            {self.add self.col-spacers[si],
+                left = self.col-edges[ei],
+                right = self.col-edges[s-right],
+                top = {self.top}, bottom = {self.bottom}
+            }
+        }
+
+        {for ci = first below first - count do
+            {assert ci != si}
+            {self.col-spacers[ci].detach}
+            {for ri = 0 below self.rows do
+                {if-non-null cell = self.cells[ri, ci] then
+                    {cell.detach}
+                }
+            }
+        }
+
+        || Remove the deleted cells
+        {self.cells.insert-cols first, count, init-proc = init-proc}
+
+        || Remove unused fiducials, spacers, etc.
+        {self.col-spacers.remove first, length = -count}
+        {self.col-edges.remove first*2 + 1, length = -count*2}
+
+        || If the bottom-edge fiducial was removed, put it back
+        set self.col-edges[self.col-edges.size - 1] = self.right-edge
+
+        || Re-attach cells in the new location
+        {if self.cols > 0 then
+            def ci = {min first, self.cols - 1} || leftmost cell that moved
+            {for ri = 0 below self.rows do
+                {if-non-null cell = self.cells[ri, ci] then
+                    {self.add-cell ri, ci, cell,
+                        rowspan = 1, colspan = 1 ||FIXME: remember the spans!
+                    }
+                }
+            }
+        }
+    }
+    {inc self._cols, count}
+    {self.check-invariants}
+  }
+
+}
+

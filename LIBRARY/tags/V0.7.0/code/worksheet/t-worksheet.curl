@@ -1,0 +1,330 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0, 8.0 applet}
+
+{applet manifest = "../manifest.mcurl", locale = "en"}
+
+{import * from CURL.UTIL.OBSERVER}
+{import * from CURL.IO.JSON}
+||--{import * from COM.CURL.EXT.GUI}
+||--{import * from COM.CURL.EXT.DATA-ACCESS}
+||--{import * from CURL.IDE.DOCUMENTATION}
+
+{import * from COM.CURL.EXT.WORKSHEET}
+
+{set-document-properties
+    font-size = 9pt
+}
+
+{title Test Worksheets}
+
+|| ------------------
+|| Testing Utilities
+|| ------------------
+
+{let test-count:int = 0}
+
+{def public HandlerProc = {proc-type {sender:Observable, message:any}:void}}
+
+{define-proc public {output-messages sender:Observable, message:any}:void
+    {output
+        {format "message: sender=%s message=%s", sender, message}
+    }
+}
+
+{define-class public open ObservationRecorder {inherits Observer}
+  field public recorder:HandlerProc
+  {constructor public {default
+                          recorder:HandlerProc = output-messages,
+                          target:#Observable = null
+                      }
+    set self.recorder = recorder
+    {if-non-null target then
+        {target.add-observer self}
+    }
+  }
+
+  {method protected open {handle-observer-message
+                             sender:Observable,
+                             message:any
+                         }:void
+    {self.recorder sender, message}
+  }
+}
+
+{define-proc {make-model
+                 rows:int, cols:int,
+                 initial-vals?:bool = false,
+                 recorder:#HandlerProc = null
+             }:WorksheetModel
+    def wm = {WorksheetModel rows, cols}
+    {if-non-null recorder then
+        let obs = {ObservationRecorder recorder = recorder, target = wm}
+    }
+    {if initial-vals? then
+        {for ri = 0 below rows do
+            {for ci = 0 below cols do
+                def cv = wm.vals[ri, ci]
+                def v = {format "R%sC%s", ri, ci}
+                set cv.value = v
+||--                set cv.domain = DataSource.string-domain
+            }
+        }
+    }
+    {return wm}
+}
+
+{define-proc public {make-insert-delete-cluster
+                        wks:Worksheet,
+                        row:int = 0, col:int = 0,
+                        count:int = 1
+                    }:Graphic
+    let r:int = row
+    let c:int = col
+    let n:int = count
+    def row-ctl =
+        {SpinControl
+            width = 36pt,
+            value = row,
+            {on ValueChanged at ctl:SpinControl do
+                set r = ctl.value asa int
+            }
+        }
+    def col-ctl =
+        {SpinControl
+            width = 36pt,
+            value = col,
+            {on ValueChanged at ctl:SpinControl do
+                set c = ctl.value asa int
+            }
+        }
+    def count-ctl =
+        {SpinControl
+            width = 36pt,
+            value = count,
+            {on ValueChanged at ctl:SpinControl do
+                set n = ctl.value asa int
+            }
+        }
+    def ins-row-button =
+        {CommandButton
+            label = {bold + Rows},
+            width = 42pt,
+            tooltip = "Insert rows",
+            {on Action do
+                {inc test-count}
+                {wks.insert-rows r, n}
+            }
+        }
+    def ins-col-button =
+        {CommandButton
+            label = {bold + Cols},
+            width = 42pt,
+            tooltip = "Insert cols",
+            {on Action do
+                {inc test-count}
+                {wks.insert-cols r, n}
+            }
+        }
+    def del-row-button =
+        {CommandButton
+            label = {bold - Rows},
+            width = 42pt,
+            tooltip = "Delete rows",
+            {on Action do
+                {inc test-count}
+                {wks.insert-rows r, -n}
+            }
+        }
+    def del-col-button =
+        {CommandButton
+            label = {bold - Cols},
+            width = 42pt,
+            tooltip = "Delete cols",
+            {on Action do
+                {inc test-count}
+                {wks.insert-cols r, -n}
+            }
+        }
+
+    {return {HBox spacing = 3pt,
+                "row:", row-ctl,
+                "col:", col-ctl,
+                "count:", count-ctl,
+                ins-row-button, ins-col-button,
+                del-row-button, del-col-button
+            }
+    }
+}
+
+
+{value
+    def m = {make-model 10, 6, initial-vals? = true}
+    def wks = {Worksheet
+                  m,
+                  width = 5in, height = 3in,
+                  default-row-height = .33in,
+                  default-column-width = 1.1in,
+                  frozen-rows = 2,
+                  frozen-cols = 2,
+                  row-selector-width = 5mm,
+                  column-selector-height = 5mm,
+                  scrollable? = true,
+                  grid-line-color = "blue",
+                  vertical-grid-line-width = 3px,
+                  horizontal-grid-line-width = 4px,
+                  alternate-row-background = "beige"
+              }
+    {after 2s do
+        set wks.row-selector-width = 2mm
+        set wks.vertical-grid-line-width = 1px
+        set wks.horizontal-grid-line-width = 2px
+        set wks.row-selector-width = 2mm
+        set wks.column-selector-height = 10mm
+        set wks.grid-line-color = "crimson"
+    }
+    wks
+}
+
+|| Worksheet constructor example
+{value
+        {def sum =
+            {proc {dest:DataRef, src:DataRef}:void
+                let sum:double = 0.0
+                {for v in src do
+                    {inc sum, v.as-double}
+                }
+                set dest.value = sum
+            }
+        }
+
+        || A procedure to compute the next day from a cell containing a date
+        {def next-day =
+            {proc {dest:DataRef, src:DataRef}:void
+                set dest.value = src.value + 1d
+            }
+        }
+
+        || A procedure to compute the day name from a cell containing a date
+        {def day-name =
+            {proc {dest:DataRef, src:DataRef}:void
+                set dest.value =
+                    (src.value asa DateTime).info.locale-weekday
+            }
+        }
+
+        || A procedure that concatenates any number of cell values
+        {def concat =
+            {proc {dest:DataRef, ...:DataRef}:void
+                def buf = {StringBuf}
+                {for r in ... do
+                    {buf.concat r.as-String}
+                }
+                set dest.value = {buf.to-String}
+            }
+        }
+
+        || A cell with a formula to compute the next day from the cell above
+        {def next-date-cell =
+            {formula-cell
+                domain = DataSource.date-domain, next-day, {RelativeCellRef -1, 0}
+            }
+        }
+
+        || A cell with a formula to compute the day name from the cell to the right
+        {def day-cell =
+            {formula-cell domain = String, day-name, {RelativeCellRef 0, 1}}}
+
+        {Worksheet
+            10, 6,
+            default-column-width = 1.5in,
+            {widths 1in, 1.2in},
+            colspan = 2, {bold Example Worksheet},
+            grid-line-color = "orange",
+
+            row = 1, col = 0, {row-group 6},
+            {formula-cell domain = String, 
+                concat, {ValueRef "Week of "}, {RelativeCellRef 1, 2}
+            },
+            "Day", "Date", "Hours",
+
+            row = 2, col = 1,
+            {formula-cell domain = String, day-name, {RelativeCellRef 0, 1}},
+            {input-cell {DateTime.date "2010-10-11"}},
+            {input-cell halign = "right", 7},
+
+            row = 3,
+            col = 2, next-date-cell,
+            col = 1, day-cell,
+            col = 3, {input-cell halign = "right", 9},
+
+            row = 4,
+            col = 2, next-date-cell,
+            col = 1, day-cell,
+            col = 3, {input-cell halign = "right", 8},
+
+            row = 5, 
+            col = 2, next-date-cell,
+            col = 1, day-cell,
+            col = 3, {input-cell halign = "right", 9},
+
+            row = 6,
+            col = 2, next-date-cell,
+            col = 1, day-cell,
+            col = 3, {input-cell halign = "right", 4},
+
+            row = 7, col = 2,
+            "Total:", {formula-cell halign = "right", sum, {StringRef "D3:D7"}},
+
+            row = 9, col = 0,
+            {CommandButton
+                label = "Show Json Data",
+                {on e:Action at cb:CommandButton do
+                    {type-switch cb.selection-context
+                     case wks:Worksheet do
+                        {popup-message
+                            title = "Time Sheet Data",
+                            {Frame margin = 6pt,
+                                text-preserve-whitespace? = true,
+                                {JsonValue-to-String 
+                                    {wks.model.get-data}, prettify? = true
+                                }
+                            }
+                        }
+                    }                    
+                }
+            }
+        }
+}
+
+
+{value
+    def m = {make-model 8, 3, initial-vals? = true}
+    def wks = {Worksheet
+                  m,
+                  default-row-height = 15pt,
+                  default-column-width = .8in,
+                  scrollable? = false,
+                  background = "lightblue",
+                  alternate-row-background = "gainsboro"
+              }
+    {text 8 x 3 with scrollable? = false{br}
+        {value wks}
+    }
+}
+

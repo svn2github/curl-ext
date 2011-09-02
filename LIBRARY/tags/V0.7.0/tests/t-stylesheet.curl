@@ -1,0 +1,325 @@
+||| Copyright (C) 1998-2011, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An Open Curl project.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+{curl 7.0, 8.0 applet}
+{applet manifest = "manifest.mcurl",
+    {compiler-directives careful? = true}
+}
+{import * from COM.CURL.CDU.CURL-UNIT}
+{import * from COM.CURL.CDU.CURL-UNIT-UI}
+{import * from COM.CURL.EXT.STANDARD}
+
+
+|| ===== \\
+{import * from CURL.IDE.COVERAGE}
+{import COM.CURL.EXT.GUI}
+{def start-coverage =
+    {CommandButton
+        label = "Start Coverage",
+        {on Action do
+            {coverage-enable}
+            {coverage-instrument
+                COM.CURL.EXT.GUI
+            }
+            {coverage-start}
+        }}
+}
+{def stop-coverage =
+    {CommandButton
+        label = "Stop Coverage",
+        {on Action do
+            {coverage-stop}
+            def data = {coverage-results}
+            {CoverageAdjustment.adjust-data data}
+            {coverage-view data}
+        }}
+} 
+|| ===== //
+
+{title ExtStyleManager Test}
+
+{define-proc {basic-style-test}:void
+
+    def f1 = {Frame style-class = "L1"}
+    def f2 = {Frame style-class = "L2"}
+    def f3 = {Frame style-class = "L3"}
+    def ft = {Frame style-class = ""}
+    def b1 = {CommandButton style-class = "x", name = "b1", label = "b1"}
+    def b2 = {CommandButton style-class = "x y", name = "b2", label = "b2"}
+    def b3 = {CommandButton style-class = "x y z", name = "b3", label = "b3"}
+
+    
+    def vb = {VBox style-class = "L4",
+                b1, b2, b3, ft
+            }
+
+    {f1.add f2}
+    {f2.add f3}
+    {f3.add vb}
+
+    def ss = {StyleSheet
+                 {StyleRule ".L1",
+                     border-width = 1pt,
+                     font-family = "monospace",
+                     font-size = 24pt
+                 },
+                 {StyleRule ".L2",
+                     border-width = 2pt,
+                     font-family = "courier",
+                     font-style = "normal"
+                 },
+                 {StyleRule ".L3",
+                     border-width = 3pt
+                 },
+                 {StyleRule ".L1 .L2",
+                     font-style = "italic" || Stronger rule
+                 },
+                 {StyleRule "Frame.L1 Frame.L2 .x.y",
+                     width = 2in
+                 }
+             }
+
+    def old-sm = f1.style-manager
+    def esm = {ExtStyleManager ss}
+
+    || Test initial conditions
+    {TestCondition.assert f1.border-width == 0pt}
+    {TestCondition.assert f2.border-width == 0pt}
+    {TestCondition.assert f3.border-width == 0pt}
+    {TestCondition.assert f1.font-family != "monospace"}
+    {TestCondition.assert f1.font-size != 24pt}
+    {TestCondition.assert f1.font-style != FontStyle.italic}
+
+    || Impose a variety of new rules and check for proper values
+    set f1.style-manager = esm
+    {TestCondition.assert f1.border-width == 1pt}
+    {TestCondition.assert f1.font-family == "monospace"}
+    {TestCondition.assert f1.font-size == 24pt}
+    {TestCondition.assert f1.font-style != FontStyle.italic}
+
+    {TestCondition.assert f2.border-width == 2pt}
+    {TestCondition.assert f2.font-family == "courier"}
+    {TestCondition.assert f2.font-size == 24pt}
+    {TestCondition.assert f2.font-style == FontStyle.italic}
+
+    {TestCondition.assert f3.border-width == 3pt}
+    {TestCondition.assert f3.font-family == "courier"}
+    {TestCondition.assert f3.font-size == 24pt}
+    {TestCondition.assert f3.font-style == FontStyle.italic}
+
+    {TestCondition.assert b1.width != 2in}
+    {TestCondition.assert b2.width == 2in}
+    {TestCondition.assert b3.width == 2in}
+
+    || Inserting extra frames doesn't interfere
+    def f4 = {Frame {Frame f2}}
+    {f1.add replace? = true, f4}
+    {TestCondition.assert f1.border-width == 1pt}
+    {TestCondition.assert f1.font-family == "monospace"}
+    {TestCondition.assert f1.font-size == 24pt}
+    {TestCondition.assert f1.font-style != FontStyle.italic}
+
+    {TestCondition.assert f2.border-width == 2pt}
+    {TestCondition.assert f2.font-family == "courier"}
+    {TestCondition.assert f2.font-size == 24pt}
+    {TestCondition.assert f2.font-style == FontStyle.italic}
+
+    {TestCondition.assert f3.border-width == 3pt}
+    {TestCondition.assert f3.font-family == "courier"}
+    {TestCondition.assert f3.font-size == 24pt}
+    {TestCondition.assert f3.font-style == FontStyle.italic}
+
+    {TestCondition.assert b1.width != 2in}
+    {TestCondition.assert b2.width == 2in}
+    {TestCondition.assert b3.width == 2in}
+
+    || Verify buttons inherit from L&F
+    def lnf = the-default-look-and-feel
+    {TestCondition.assert b1.border-width == lnf.border-width}
+    {TestCondition.assert b1.font-family == lnf.font-family}
+    {TestCondition.assert b1.font-size == lnf.font-size}
+    {TestCondition.assert b1.font-style == lnf.font-style}
+
+    set b1.control-appearance-changeable? = true
+    {TestCondition.assert b1.border-width == 0pt}
+    {TestCondition.assert b1.font-family == "courier"}
+    {TestCondition.assert b1.font-size == 24pt}
+    {TestCondition.assert b1.font-style == FontStyle.italic}
+
+    || Restoring the original StyleManager should restore the original values
+    set f1.style-manager = old-sm
+    {TestCondition.assert f1.border-width == 0pt}
+    {TestCondition.assert f2.border-width == 0pt}
+    {TestCondition.assert f3.border-width == 0pt}
+    {TestCondition.assert f1.font-family != "monospace"}
+    {TestCondition.assert f1.font-size != 24pt}
+    {TestCondition.assert f1.font-style != FontStyle.italic}
+
+}
+
+{define-proc {iss-style-test}:void
+
+    def f1 = {Frame style-class = "L1"}
+    def f2 = {Frame style-class = "L2"}
+    def f3 = {Frame style-class = "L3"}
+    def ft = {Frame style-class = ""}
+    def b1 = {CommandButton style-class = "x", name = "b1", label = "b1"}
+    def b2 = {CommandButton style-class = "x y", name = "b2", label = "b2"}
+    def b3 = {CommandButton style-class = "x y z", name = "b3", label = "b3"}
+
+    
+    def vb = {VBox style-class = "L4",
+                b1, b2, b3, ft
+            }
+
+    {f1.add f2}
+    {f2.add f3}
+    {f3.add vb}
+
+    def ss = {StyleSheet
+                 {StyleRule ".L1",
+                     border-width = 1pt,
+                     font-family = "monospace",
+                     font-size = 24pt
+                 },
+                 {StyleRule ".L2",
+                     border-width = 2pt,
+                     font-family = "courier",
+                     font-style = "normal"
+                 },
+                 {StyleRule ".L3",
+                     border-width = 3pt
+                 },
+                 {StyleRule ".L1 .L2",
+                     font-style = "italic" || Stronger rule
+                 },
+                 {StyleRule "Frame.L1 Frame.L2 .x.y",
+                     width = 2in
+                 }
+             }
+
+    def old-sm = f1.style-manager
+    def esm = {ExtStyleManager ss}
+
+    || Test initial conditions
+    {TestCondition.assert f1.border-width == 0pt}
+    {TestCondition.assert f2.border-width == 0pt}
+    {TestCondition.assert f3.border-width == 0pt}
+    {TestCondition.assert f1.font-family != "monospace"}
+    {TestCondition.assert f1.font-size != 24pt}
+    {TestCondition.assert f1.font-style != FontStyle.italic}
+
+    || Impose a variety of new rules and check for proper values
+    {ext-install-style-sheet-on-Graphic f1, ss}
+
+    {TestCondition.assert f1.border-width == 1pt}
+    {TestCondition.assert f1.font-family == "monospace"}
+    {TestCondition.assert f1.font-size == 24pt}
+    {TestCondition.assert f1.font-style != FontStyle.italic}
+
+    {TestCondition.assert f2.border-width == 2pt}
+    {TestCondition.assert f2.font-family == "courier"}
+    {TestCondition.assert f2.font-size == 24pt}
+    {TestCondition.assert f2.font-style == FontStyle.italic}
+
+    {TestCondition.assert f3.border-width == 3pt}
+    {TestCondition.assert f3.font-family == "courier"}
+    {TestCondition.assert f3.font-size == 24pt}
+    {TestCondition.assert f3.font-style == FontStyle.italic}
+
+    {TestCondition.assert b1.width != 2in}
+    {TestCondition.assert b2.width == 2in}
+    {TestCondition.assert b3.width == 2in}
+
+    || Inserting extra frames doesn't interfere
+    def f4 = {Frame {Frame f2}}
+    {f1.add replace? = true, f4}
+    {TestCondition.assert f1.border-width == 1pt}
+    {TestCondition.assert f1.font-family == "monospace"}
+    {TestCondition.assert f1.font-size == 24pt}
+    {TestCondition.assert f1.font-style != FontStyle.italic}
+
+    {TestCondition.assert f2.border-width == 2pt}
+    {TestCondition.assert f2.font-family == "courier"}
+    {TestCondition.assert f2.font-size == 24pt}
+    {TestCondition.assert f2.font-style == FontStyle.italic}
+
+    {TestCondition.assert f3.border-width == 3pt}
+    {TestCondition.assert f3.font-family == "courier"}
+    {TestCondition.assert f3.font-size == 24pt}
+    {TestCondition.assert f3.font-style == FontStyle.italic}
+
+    {TestCondition.assert b1.width != 2in}
+    {TestCondition.assert b2.width == 2in}
+    {TestCondition.assert b3.width == 2in}
+
+    || Verify buttons inherit from L&F
+    def lnf = the-default-look-and-feel
+    {TestCondition.assert b1.border-width == lnf.border-width}
+    {TestCondition.assert b1.font-family == lnf.font-family}
+    {TestCondition.assert b1.font-size == lnf.font-size}
+    {TestCondition.assert b1.font-style == lnf.font-style}
+
+    set b1.control-appearance-changeable? = true
+    {TestCondition.assert b1.border-width == 0pt}
+    {TestCondition.assert b1.font-family == "courier"}
+    {TestCondition.assert b1.font-size == 24pt}
+    {TestCondition.assert b1.font-style == FontStyle.italic}
+
+    || Restoring the original StyleManager should restore the original values
+    set f1.style-manager = old-sm
+    {TestCondition.assert f1.border-width == 0pt}
+    {TestCondition.assert f2.border-width == 0pt}
+    {TestCondition.assert f3.border-width == 0pt}
+    {TestCondition.assert f1.font-family != "monospace"}
+    {TestCondition.assert f1.font-size != 24pt}
+    {TestCondition.assert f1.font-style != FontStyle.italic}
+
+}
+
+{document-style PlainDocument}
+{set-document-properties hstretch? = true, vstretch? = true}
+
+{value
+    def target = {RecordSetTestTarget}
+    set TestTarget.current = target
+    let suite:TestSuite =
+        {TestSuite "main",
+            || packages
+            {ManifestTestSuite.from-name "COM.CURL.EXT"},
+            {TestSuite "ExtStyleManager",
+                {test-case "Basic Test",
+                    {do
+                        {basic-style-test}
+                    }
+                },
+                {test-case "Install Style Sheet Test",
+                    {do
+                        {iss-style-test}
+                    }
+                }
+            }
+        }
+    
+    || presentation
+    {VBox
+        {HBox
+            start-coverage,
+            stop-coverage,
+            {Fill}},
+        {test-ui suite}
+    }
+}

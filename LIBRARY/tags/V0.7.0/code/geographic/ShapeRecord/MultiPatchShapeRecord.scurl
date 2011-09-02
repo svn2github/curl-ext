@@ -1,0 +1,120 @@
+||| Copyright (C) 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+{define-class public MultiPatchShapeRecord {inherits ShapeRecord}
+  
+  field public mbr           :MinimumBoundingRectangle
+  field public num-parts     :int
+  field public num-points    :int
+  field public part-indices  :{Array-of int}
+  field public part-type     :{Array-of int}
+  field public points        :{Array-of GISPoint}
+  field public zrange        :GISPoint
+  field public zarray        :{Array-of double}
+  field public mrange        :GISPoint
+  field public marray        :{Array-of double}
+  
+  let public record-fields:RecordFields = {RecordFields
+                                            {RecordField "shape-type",   domain = int},
+                                            {RecordField "mbr",          domain = any},
+                                            {RecordField "num-parts",    domain = int},
+                                            {RecordField "num-points",   domain = int},
+                                            {RecordField "part-indices", domain = any},
+                                            {RecordField "part-type",    domain = any},
+                                            {RecordField "points",       domain = any},
+                                            {RecordField "zrange",       domain = any},
+                                            {RecordField "zarray",       domain = any},
+                                            {RecordField "mrange",       domain = any},
+                                            {RecordField "marray",       domain = any}}
+  
+  {constructor public {default
+                          shape-type    :int,
+                          mbr           :MinimumBoundingRectangle,
+                          num-parts     :int,
+                          num-points    :int,
+                          part-indices  :{Array-of int},
+                          part-type     :{Array-of int},
+                          points        :{Array-of GISPoint},
+                          zrange        :GISPoint,
+                          zarray        :{Array-of double},
+                          mrange        :GISPoint,
+                          marray        :{Array-of double}
+                      }
+    
+    set self.shape-type    = shape-type
+    set self.mbr           = mbr
+    set self.num-parts     = num-parts
+    set self.num-points    = num-points
+    set self.part-indices  = part-indices
+    set self.part-type     = part-type
+    set self.points        = points
+    set self.zrange        = zrange
+    set self.zarray        = zarray
+    set self.mrange        = mrange
+    set self.marray        = marray
+    
+  }
+  
+  {factory public {from-Record record:Record}:MultiPatchShapeRecord
+    {with-compiler-directives allow-implicit-any-casts? = true do
+        {return
+            {MultiPatchShapeRecord
+                record["shape-type"] asa int,
+                record["mbr"],
+                record["num-parts"],
+                record["num-points"],
+                record["part-indices"],
+                record["part-type"],
+                record["points"],
+                record["zrange"],
+                record["zarray"],
+                record["mrange"],
+                record["marray"]
+            }
+        }
+    }
+  }
+  
+  {method public {to-RecordData}:RecordData
+    let record-data:RecordData = {RecordData}
+    set record-data["shape-type"]   = self.shape-type
+    set record-data["mbr"]          = self.mbr
+    set record-data["num-parts"]    = self.num-parts
+    set record-data["num-points"]   = self.num-points
+    set record-data["part-indices"] = self.part-indices
+    set record-data["part-type"]    = self.part-type
+    set record-data["points"]       = self.points
+    set record-data["zrange"]       = self.zrange
+    set record-data["zarray"]       = self.zarray
+    set record-data["mrange"]       = self.mrange
+    set record-data["marray"]       = self.marray
+    {return record-data}
+  }
+  
+  {method public {to-polygons}:{Array-of {Array-of Double2d}}
+    
+    ||TO DO
+    ||TEMP
+    let point:Double2d = {Double2d 0, 0}
+    let array1:{Array-of Double2d} = {{Array-of Double2d} point}
+    let array2:{Array-of {Array-of Double2d}} = {{Array-of {Array-of Double2d}} array1}
+    
+    {return array2}
+  }
+  
+  
+}
+
+

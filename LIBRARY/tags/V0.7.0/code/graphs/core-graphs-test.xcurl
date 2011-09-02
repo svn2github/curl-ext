@@ -1,0 +1,88 @@
+||| Copyright 1998-2010, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An OpenCurl project.
+|||
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0, 8.0 script}
+{curl-file-attributes character-encoding = "utf8"}
+{script manifest = "../manifest.mcurl"}
+
+{import * from COM.CURL.EXT.GRAPHS}
+
+
+{define-proc package {create-digraph weighted?:bool}:{DirectedGraph-of int}
+    {if weighted? then
+        {return {new {DefaultWeightedDirectedGraph-of int, int}, 1}}   
+     else
+        {return {new {DefaultDirectedGraph-of int}}}
+    }
+}
+
+{define-proc package {test-for-basic-loop-cycle-detection
+                         weighted?:bool,
+                         node-count:int
+                     }:void
+    def g = {create-digraph weighted?}
+    {try
+        def n1 = {g.create-node 0}
+        let prev-n:{GraphNode-of int} = n1
+        {for i = 0 below node-count do
+            def n = {g.create-node i}
+            {prev-n.add-edge n}
+            set prev-n = n
+        }
+        {prev-n.add-edge n1}
+        {g.topological-sort}
+        {error "Failed to throw a GraphCycleException."}
+     catch e:GraphCycleException do
+        || This exception is what we're looking for.
+    }
+}
+
+{define-proc package {test-topological-sort-line
+                         weighted?:bool,
+                         node-count:int
+                     }:void
+    def node-count = 30
+    def g = {create-digraph weighted?}
+    
+    def n1 = {g.create-node 0}
+    let prev:{GraphNode-of int} = n1
+    {for i = 1 below node-count do
+        def n = {g.create-node i}
+        {if-non-null prev then
+            {prev.add-edge n}
+        }
+        set prev = n
+    }
+    
+    def topo-array = {g.topological-sort}        
+    
+    {for n key i in topo-array do
+        {assert n.data == i}
+    }
+    
+}
+
+{test-for-basic-loop-cycle-detection true, 2}
+{test-for-basic-loop-cycle-detection true, 3}
+{test-for-basic-loop-cycle-detection false, 2}
+{test-for-basic-loop-cycle-detection false, 3}
+
+{test-topological-sort-line true, 2}
+{test-topological-sort-line true, 30}
+{test-topological-sort-line false, 2}
+{test-topological-sort-line false, 30}
+

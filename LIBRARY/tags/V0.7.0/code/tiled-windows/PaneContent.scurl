@@ -1,0 +1,256 @@
+{define-class public open PaneContent {inherits BaseFrame}
+
+  field public single-pane:#SinglePane
+
+  field public constant pane-name:PaneContentID
+
+  field private _content:#Graphic = null
+
+  field private _title:String = ""
+  field private _title-controls:Graphic = {Fill}
+
+  field public has-focus?:bool = false
+
+||--  {constructor public {default decorations-parent:Decorations, name:String}
+  {constructor public {default
+                          pane-name:PaneContentID,
+                          content:Visual,
+                          title:String = "",
+                          title-controls:Graphic = {Fill},
+                          request-focus?:bool = false
+                      }
+    {construct-super 
+        width = {add-stretch}, 
+        height = {make-elastic},
+        name = {pane-name.to-String}
+    }
+||--    {construct-super.Decorations decorations-parent = decorations-parent}
+    set self.pane-name = pane-name
+    set self.content = content
+    set self.title = title
+    set self.title-controls = title-controls
+    {if request-focus? then
+        {after 0seconds do
+            {self.request-pane-focus}
+        }
+    }
+  }
+
+  {constructor public {empty}
+    {construct-super 
+        width = {add-stretch}, 
+        height = {make-elastic}
+    }
+|| TODO: Do we need an empty PaneContent constructor?
+|| TODO: Multiple empty PaneContents with "" for pane-name will clash in a PaneMap - Wait, not if the user specifies a proc that utilizes a pane-id
+    set self.pane-name = ""
+  }
+
+  {getter public {root-container}:#PaneContainer
+    {return
+        {if-non-null p = self.single-pane
+         then p.root-container
+         else null}}
+  }
+
+  || Ensure immediate decorations focus on incoming pointer activity.
+  || Note that this is in addition to a similar handler on the entire 
+  || BasePane which will make a similar call after 0s.  
+  {method public open {on-pointer-envelope-event ev:PointerEnvelopeEvent}:void
+    {if ev.contents isa PointerPress then
+        {self.request-pane-focus}
+||--        {self.request-decorations-focus}
+    }
+    {super.on-pointer-envelope-event ev}
+  }
+
+  {getter public open {name-for-tab}:String
+    {return self.title}
+  }
+
+  {getter public open {title}:String
+    {return self._title}
+  }
+
+  {setter public open {title title:String}:void
+    {if self._title != title then
+        set self._title = title
+        {if-non-null single-pane = self.single-pane then
+            {single-pane.notify-content-title-changed self, title}
+        }
+    }
+  }
+
+  {getter public open {title-controls}:Graphic
+    {return self._title-controls}
+  }
+
+  {setter public open {title-controls title-controls:Graphic}:void
+    {if self._title-controls != title-controls then
+        set self._title-controls = title-controls
+        {if-non-null single-pane = self.single-pane then
+            {if single-pane.visible-pane-content == self then
+                set single-pane.title-bar.controls = title-controls
+            }
+        }
+    }
+  }
+  
+  {getter public open {content}:Graphic
+    {return self._content}
+  }
+
+  {setter public open {content v:Graphic}:void
+    {self.clear}
+    {self.add-internal v}
+    set self._content = v
+    set v.width = {add-stretch}
+    set v.height = {add-stretch}
+  }
+
+  {method public open {set-status-text str:String}:void
+    {if-non-null single-pane = self.single-pane then
+        {single-pane.set-status-text str}
+    }
+  }
+
+  {method public open {show}:void
+    {if-non-null pane = self.single-pane then
+        {if pane.hidden? then
+|| TODO: root-container could be null
+            {pane.root-container.show-pane pane}
+        }
+        {pane.maybe-raise-tab self}
+        {if pane.state != PaneState.docked then
+            {{pane.get-view}.raise}
+        }
+    }
+  }
+
+  {method public open {hide}:void
+    {if-non-null pane = self.single-pane then
+        {if not pane.hidden? then
+            {pane.hide content = self}
+        }
+    }
+  }
+
+  {getter public open {hidden?}:bool
+    {return
+        {if-non-null pane = self.single-pane then
+            pane.hidden?
+         else
+            false
+        }
+    }
+  }
+
+  {method package {make-tab-dragger}:TabDragger
+    {return {TabDragger self}}
+  }
+
+  {method public {request-pane-focus}:void
+    {if self.has-focus? then
+        {return}
+    }
+    {if-non-null sp = self.single-pane then
+        {if-non-null pfm = sp.pane-focus-mgr then
+            {if-non-null focus-object = pfm.focus-object then
+                {focus-object.release-pane-focus}
+            }
+            set pfm.focus-object = self
+        }
+    }
+    {self.on-pane-focus-in}
+  }
+
+  {method public open {release-pane-focus}:void
+    || a no-op
+    {if not self.has-focus? then     
+        {return}
+    }
+
+    || make sure to release at leaf-- call on leaf if needed.
+    {if-non-null sp = self.single-pane then
+        {if-non-null pfm = sp.pane-focus-mgr then
+            {if-non-null leaf = pfm.focus-object then
+                {if leaf != self then
+                    {leaf.release-pane-focus}
+                    {return}
+                }
+            }
+            set pfm.focus-object = null
+        }
+    }
+
+||--    || Disable all views whose validation is our responsibility.
+||--    {self.set-enabled-all-views false}
+    || Tell the focus-manager we're no longer the focus object.
+    {self.on-pane-focus-out}
+  }
+
+  {method public open {on-pane-focus-in}:void|| e:FocusIn}:void
+    let had-focus?:bool = self.has-focus?
+    set self.has-focus? = true
+
+|| TODO: Does traversing the ancestry become important in tabbed pane groups?
+
+||--    {if-non-null parent = self.parent then
+||--        {parent.on-pane-focus-in}
+||--    }
+||--    {if not had-focus? then
+||--        {self.activate}
+||--    }
+    {self.sync-focus-to-title-bar}
+  }
+
+||--||--  || Note: This method forces a fresh decorations focus and is a 
+||--||--  || workaround until we can get a better story for driving focus
+||--||--  || changes in the cde (see below also).
+||--||--  {method package  {refresh-decorations-focus}:void
+||--||--    {if self.has-decorations-focus? then
+||--||--        {self.release-decorations-focus}
+||--||--        {self.request-decorations-focus}
+||--||--    }
+||--||--  }
+  {method package {refresh-pane-focus}:void
+    {if self.has-focus? then
+        {self.release-pane-focus}
+        {self.request-pane-focus}
+    }
+  }
+
+||--  || Note that if we can fix Decorations to call {on-decorations-focus-in}
+||--  || only when the object became *newly* focused, this method 
+||--  || could be removed, and any work done here could be done in 
+||--  || {on-decorations-focus-in}
+||--  {method protected open {activate}:void
+||--    || Clear out old focus manager state from any 
+||--    || other Panes.
+||--    {if-non-null fm = self.focus-manager then
+||--        set fm.active-selection-context = null
+||--        {fm.manager-release-key-focus}
+||--    }
+||--  }
+
+  {method public open {on-pane-focus-out}:void|| e:FocusOut}:void
+    set self.has-focus? = false
+
+|| TODO: Does traversing the ancestry become important in tabbed pane groups?
+
+||--    {if-non-null parent = self.parent then
+||--        {parent.on-pane-focus-out}
+||--    }
+    {self.sync-focus-to-title-bar}
+  }
+
+  {method package {sync-focus-to-title-bar}:void
+    {if-non-null single-pane = self.single-pane then
+        {if self.has-focus? then
+            {single-pane.title-bar.display-focus-gained}
+         else
+            {single-pane.title-bar.display-focus-lost}
+        }
+    }
+  }
+}

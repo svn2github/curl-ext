@@ -1,0 +1,336 @@
+||| Copyright (C) 1998-2011, Sumisho Computer Systems Corp.  All Rights Reserved.
+|||
+||| An Open Curl project.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+||| ----------------------------------------------------------------------------
+
+{curl 7.0, 8.0 applet}
+{applet manifest = "manifest.mcurl",
+    {compiler-directives careful? = true}
+}
+{import * from COM.CURL.CDU.CURL-UNIT}
+{import * from COM.CURL.CDU.CURL-UNIT-UI}
+{import * from COM.CURL.EXT.GANTT}
+{import * from COM.CURL.EXT.STANDARD}
+
+
+{import * from CURL.IDE.COVERAGE}
+{import COM.CURL.EXT.STANDARD}
+
+{def start-coverage =
+    {CommandButton
+        label = "Start Coverage",
+        {on Action do
+            {coverage-enable}
+            {coverage-instrument
+                COM.CURL.EXT.GANTT
+            }
+            {coverage-start}
+        }}
+}
+{def stop-coverage =
+    {CommandButton
+        label = "Stop Coverage",
+        {on Action do
+            {coverage-stop}
+            def data = {coverage-results}
+            {CoverageAdjustment.adjust-data data}
+            {coverage-view data}
+        }}
+} 
+
+{def before-start = {DateTime.date "2010-01-01"}}
+{def start = {DateTime.date "2010-01-04"}}
+{def end = {DateTime.date "2010-04-30"}}
+
+|| ----------------------------------------------------------------------------
+
+{define-proc {test-create-model}:void
+    def pm = {ProjectModel
+                 start, end,
+                 data-dir = {url "data/t-gantt/"},
+                 schedule-date = before-start
+             }
+
+    {pm.refresh}
+    {for r:Record in {pm.resources.rs.select} do
+        def rr = {ResourceRecord r}
+        {TestCondition.assert {pm.resource-available? rr.id, before-start}}
+    }
+    let n:int = 0
+    {for r:Record in {pm.resources.rs.select} do
+        def rr = {ResourceRecord r}
+        {if not {pm.resource-available? rr.id, start} then
+            {inc n}
+        }
+    }
+    {TestCondition.assert n == 3}
+}
+
+{define-proc {check-tr r:Record}:void
+    def tr = {TaskRecord r}
+    {if not tr.has-subtasks? then
+        {TestCondition.assert tr.duration >= tr.effort}
+    }
+}
+
+{define-proc {verify-before d1:#DateTime, d2:#DateTime}:void
+    {TestCondition.assert d1 != null}
+    {TestCondition.assert d2 != null}
+    {TestCondition.assert {non-null d1} < {non-null d2}}
+}
+
+|| Make a ProjectModel with 3 tasks and a parent task
+{define-proc {make-pm}:ProjectModel
+    def pm = {ProjectModel
+                 start, end,
+                 data-dir = {url "data/gantt-test/"},
+                 schedule-date = before-start
+             }
+
+    def task-recs = {pm.tasks.rs.select}
+    set task-recs[1]["effort"] = 1d
+    set task-recs[2]["effort"] = 2d
+    set task-recs[3]["effort"] = 3d
+
+    || No dependencies
+    {pm.dependencies.rs.delete-all}
+    {pm.refresh}
+    {return pm}
+}
+
+|# Use Cases
+
+  o t1 t2 t3
+  o t1L t2 t3
+  o t1 t2 t3 -> t4
+  o t1L t2 t3 -> t4
+  o t1 -> t2 t3
+  o t1 -> t2 t3 -> t4
+  o t1 -> t2L t3 -> t4
+  o 
+  o 
+
+#|
+
+
+{define-proc {test-scheduler-a}:void
+    def pm = {make-pm}
+    def task-recs = {pm.tasks.rs.select}
+    def proj-tr = {TaskRecord task-recs[0]}
+    def t1-tr = {TaskRecord task-recs[1]}
+    def t2-tr = {TaskRecord task-recs[2]}
+    def t3-tr = {TaskRecord task-recs[3]}
+
+    || Use Case: 3 independent tasks done earliest possible
+    {TestCondition.assert
+        proj-tr.effort == t1-tr.effort + t2-tr.effort + t3-tr.effort
+    }
+    {for r:Record in task-recs do
+        {check-tr r}
+        def tr = {TaskRecord r}
+||--        {TestCondition.assert tr.begin == start}
+    }
+    {TestCondition.assert t3-tr.begin == proj-tr.begin}
+    {TestCondition.assert t3-tr.end == proj-tr.end}
+    {TestCondition.assert {non-null t3-tr.end} - {non-null t3-tr.begin} == t3-tr.effort}
+
+    || Use Case: 3 independent tasks, first/shortest done as late as possible
+    || latest => end date is same as latest sibling
+    || latest => will determine end date if all siblings finish earlier
+    set t1-tr.constraint = TaskConstraint.latest
+    {pm.refresh}
+    {TestCondition.assert
+        proj-tr.effort == t1-tr.effort + t2-tr.effort + t3-tr.effort
+    }
+    {verify-before t1-tr.end, t2-tr.end}
+    {verify-before t1-tr.end, t3-tr.end}
+    {verify-before t2-tr.end, t3-tr.end}
+
+    || Use case: All tasks assigned to same owner. Must be done sequentially.
+    set t2-tr.owner = t1-tr.owner
+    set t3-tr.owner = t1-tr.owner
+    {pm.refresh}
+    {dump t1-tr.owner, t2-tr.owner, t3-tr.owner}
+    {dump t1-tr.begin, t1-tr.end}
+    {dump t2-tr.begin, t2-tr.end}
+    {dump t3-tr.begin, t3-tr.end}
+    {TestCondition.assert t1-tr.end == t2-tr.begin}
+    {TestCondition.assert t2-tr.end == t3-tr.begin}
+    {TestCondition.assert proj-tr.begin== t1-tr.begin}
+    {TestCondition.assert proj-tr.end== t3-tr.end}
+}
+
+{define-proc {test-scheduler-b}:void
+    def pm = {make-pm}
+    def task-recs = {pm.tasks.rs.select}
+    def proj-tr = {TaskRecord task-recs[0]}
+    def t1-tr = {TaskRecord task-recs[1]}
+    def t2-tr = {TaskRecord task-recs[2]}
+    def t3-tr = {TaskRecord task-recs[3]}
+
+    || Use case: t1/t2/t3 feed into ntr
+    def ntr = {TaskRecord {pm.tasks.new-task "FINAL", 0s}}
+    {pm.add-dependency ntr.id, t1-tr.id}
+    {pm.add-dependency ntr.id, t2-tr.id}
+    {pm.add-dependency ntr.id, t3-tr.id}
+    {TestCondition.assert pm.dependencies.rs.size == 3}
+    set t1-tr.constraint = TaskConstraint.latest
+    {pm.refresh}
+    {dump t1-tr.begin, t1-tr.end}
+    {dump t2-tr.begin, t2-tr.end}
+    {dump t3-tr.begin, t3-tr.end}
+    {dump ntr.begin, ntr.end}
+
+    || Parent project's total effort is critical path effort
+    {TestCondition.assert
+        proj-tr.effort == t1-tr.effort + t2-tr.effort + t3-tr.effort
+    }
+    || t1 is "latest", so should end with longest (t3)
+    {TestCondition.assert t1-tr.end == t3-tr.end}
+
+    || Use case: t2 needs t1 and t3 needs t2 => sequential
+    {pm.add-dependency t2-tr.id, t1-tr.id}
+    {pm.add-dependency t3-tr.id, t2-tr.id}
+    {TestCondition.assert pm.dependencies.rs.size == 5}
+    {pm.refresh}
+    {TestCondition.assert
+        proj-tr.effort == (t1-tr.effort + t2-tr.effort + t3-tr.effort)
+    }
+    {TestCondition.assert t1-tr.end == t2-tr.begin}
+    {TestCondition.assert t2-tr.end == t3-tr.begin}
+    {TestCondition.assert t3-tr.end == ntr.begin}
+}
+
+|| Create 20 tasks of effort 1d, 2d, 3d, etc. and make sure the durations
+|| are correct (accounting for weekends)
+{define-proc {test-scheduler-c}:void
+    def pm = {make-pm}
+    def task-recs = {pm.tasks.rs.select}
+    def proj-tr = {TaskRecord task-recs[0]}
+    def t1-tr = {TaskRecord task-recs[1]}
+    def t2-tr = {TaskRecord task-recs[2]}
+    def t3-tr = {TaskRecord task-recs[3]}
+
+    def tasks = {new {Array-of TaskRecord}}
+    {for i = 1 to 20 do
+        def tr = {TaskRecord {pm.add-task {format "TASK%s", i}, i*1d}}
+        {tasks.append tr}
+    }
+    {pm.refresh}
+    {for tr key ti in tasks do
+        def w = (ti div 5) * 2
+        {TestCondition.assert tr.duration == tr.effort + w * 1d}
+    }
+}
+
+|| Check out the critical path computation
+{define-proc {test-scheduler-d}:void
+    def pm = {make-pm}
+    def task-recs = {pm.tasks.rs.select}
+    def proj-tr = {TaskRecord task-recs[0]}
+    def t1-tr = {TaskRecord task-recs[1]}
+    def t2-tr = {TaskRecord task-recs[2]}
+    def t3-tr = {TaskRecord task-recs[3]}
+
+    || Now add a task that requires the first 3
+    def ntr = {TaskRecord {pm.tasks.new-task "FINAL", 0s}}
+    {pm.add-dependency ntr.id, t1-tr.id}
+    {pm.add-dependency ntr.id, t2-tr.id}
+    {pm.add-dependency ntr.id, t3-tr.id}
+    {TestCondition.assert pm.dependencies.rs.size == 3}
+    {pm.refresh}
+
+    {TestCondition.assert not t1-tr.critical?}
+    {TestCondition.assert not t2-tr.critical?}
+    {TestCondition.assert t3-tr.critical?}
+
+    def owner2 = t2-tr.owner
+
+    set t2-tr.owner = t1-tr.owner
+    set t3-tr.owner = t1-tr.owner
+    {pm.refresh}
+    {TestCondition.assert t1-tr.critical?}
+    {TestCondition.assert t2-tr.critical?}
+    {TestCondition.assert t3-tr.critical?}
+
+    set t3-tr.owner = owner2
+    set t2-tr.effort = 4d
+    {pm.refresh}
+    {TestCondition.assert t1-tr.critical?}
+    {TestCondition.assert t2-tr.critical?}
+    {TestCondition.assert not t3-tr.critical?}
+}
+
+|| ----------------------------------------------------------------------------
+
+{document-style PlainDocument}
+{set-document-properties hstretch? = true, vstretch? = true}
+
+{value
+    def target = {RecordSetTestTarget}
+    set TestTarget.current = target
+
+    let suite:TestSuite =
+        {TestSuite "main",
+            || packages
+            {ManifestTestSuite.from-name "COM.CURL.EXT"},
+            {TestSuite "gantt - load",
+                {AppletTestCase
+                    {url "./gantt-test.curl"}
+                },
+                {test-case "Create model",
+                    {do
+                        {test-create-model}
+                    }
+                },
+                {test-case "Scheduler A",
+                    {do
+                        {test-scheduler-a}
+                    }
+                },
+                {test-case "Scheduler B",
+                    {do
+                        {test-scheduler-b}
+                    }
+                },
+                {test-case "Scheduler C",
+                    {do
+                        {test-scheduler-c}
+                    }
+                },
+                {test-case "Scheduler D (critical paths)",
+                    {do
+                        {test-scheduler-d}
+                    }
+                }
+            }
+||--,                {TestSuite.import
+||--                    {url "test-cases/dguide-test-cases.scurl"}}},
+||--            || samples
+||--            {TestSuite "samples"
+||--                || TODO
+||--            },
+        }
+
+    
+    || presentation
+    {VBox
+        {HBox
+            start-coverage,
+            stop-coverage,
+            {Fill}},
+        {test-ui suite}
+    }
+}
